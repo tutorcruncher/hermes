@@ -1,0 +1,9 @@
+.DS_Store
+env/
+.idea/
+__pycache__
+.manual_test.py
+.coverage
+/google_cal.py
+src/test.py
+node_modules/
