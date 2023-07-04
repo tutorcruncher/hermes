@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from tortoise.contrib.fastapi import register_tortoise
 
-from app.tutorcruncher2.views import tc2_router
 from app.settings import Settings
+from app.tutorcruncher2.views import tc2_router
 
 settings = Settings()
 

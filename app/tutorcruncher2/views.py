@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Header, HTTPException, APIRouter
+from fastapi import APIRouter, Header, HTTPException
 
 from app.settings import Settings
 from app.tutorcruncher2._process import update_from_client_event, update_from_invoice_event
@@ -19,7 +19,7 @@ def get_bearer(auth: str):
 
 
 @tc2_router.post('/callback/tc2/', name='TC2 callback')
-async def tc_callback(events: TCWebhook, Authorization: Optional[str] = Header(None)):
+async def tc_callback(webhook: TCWebhook, Authorization: Optional[str] = Header(None)):
     """
     Callback for TC2
     Updates Hermes and Hubspot based on events in TC2.
@@ -27,7 +27,7 @@ async def tc_callback(events: TCWebhook, Authorization: Optional[str] = Header(N
     """
     if not get_bearer(Authorization) == settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
-    for event in events:
+    for event in webhook.events:
         if event.subject.model == 'Client':
             await update_from_client_event(event.subject)
         elif event.subject.model == 'Invoice':

@@ -1,3 +1,4 @@
+from isort import settings
 from tortoise import fields, models
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -43,7 +44,6 @@ class Companies(BaseModel):
     STATUS_IN_ARREARS = 'in-arrears'
 
     id = fields.IntField(pk=True)
-    hubspot_id = fields.CharField(max_length=255, unique=True, null=True)
     tc_agency_id = fields.IntField(unique=True, null=True)
     tc_cligency_id = fields.IntField(unique=True, null=True)
     created = fields.DatetimeField(auto_now_add=True)
@@ -54,10 +54,14 @@ class Companies(BaseModel):
     country = fields.CharField(max_length=255, null=True)
 
     client_manager: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
-        'models.Admins', related_name='companies'
+        'models.Admins', related_name='companies', null=True
     )
-    sales_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField('models.Admins', related_name='sales')
-    bdr_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField('models.Admins', related_name='leads')
+    sales_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
+        'models.Admins', related_name='sales', null=True
+    )
+    bdr_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
+        'models.Admins', related_name='leads', null=True
+    )
 
     paid_invoice_count = fields.IntField(default=0)
 
@@ -79,7 +83,6 @@ class Companies(BaseModel):
 
 class Contacts(BaseModel):
     id = fields.IntField(pk=True)
-    hubspot_id = fields.CharField(max_length=255, unique=True)
     tc_sr_id = fields.IntField(unique=True)
 
     first_name = fields.CharField(max_length=255, null=True)
@@ -132,7 +135,6 @@ class Meetings(BaseModel):
     MEETING_TYPE_SUPPORT = 'SUPPORT'
 
     id = fields.IntField(pk=True)
-    hubspot_id = fields.CharField(max_length=255, unique=True)
 
     created = fields.DatetimeField(auto_now_add=True)
 
