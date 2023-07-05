@@ -1,9 +1,9 @@
 from pydantic import ValidationError
 
 from app.models import Admins, Companies, Contacts
-from app.tutorcruncher2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleUser
-from app.tutorcruncher2._utils import app_logger
-from app.tutorcruncher2.api import tc_request
+from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleUser
+from app.tc2._utils import app_logger
+from app.tc2.api import tc_request
 
 
 async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companies]:

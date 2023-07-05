@@ -3,9 +3,9 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 
 from app.settings import Settings
-from app.tutorcruncher2._process import update_from_client_event, update_from_invoice_event
-from app.tutorcruncher2._schema import TCWebhook
-from app.tutorcruncher2._utils import app_logger
+from app.tc2._process import update_from_client_event, update_from_invoice_event
+from app.tc2._schema import TCWebhook
+from app.tc2._utils import app_logger
 
 tc2_router = APIRouter()
 settings = Settings()
