@@ -1,9 +1,12 @@
-.DS_Store
 env/
-.idea/
+
+# PyCharm files
+.pytest_cache
 __pycache__
-.manual_test.py
+.idea/
+
+# Lint files
+.ruff_cache
+
+# Coverage
 .coverage
-/google_cal.py
-src/test.py
-node_modules/
