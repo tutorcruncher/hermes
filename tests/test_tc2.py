@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 from tortoise.contrib.test import TestCase, finalizer, initializer
 
-from app.main import app
+from app.main import app, settings
 from app.models import Admins, Companies, Contacts
 
 
@@ -54,7 +54,7 @@ def client_deleted_event_data():
 
 class TCCallbackTestCase(TestCase):
     def setUp(self):
-        initializer(['app.models'])
+        initializer(['app.models'], db_url=settings.pg_dsn)
         self.client = AsyncClient(app=app, base_url='http://test')
         self.url = '/callback/tc2/'
 
@@ -292,49 +292,3 @@ class TCCallbackTestCase(TestCase):
 
     def tearDown(self):
         finalizer()
-
-
-# @pytest.mark.anyio
-# async def test_callback_invalid_api_key2(self):
-#     r = await client.post(
-#         '/callback/tc2/', headers={'Authorization': 'Bearer 999'}, json={'_request_time': 123, 'events': []}
-#     )
-#     assert r.status_code == 403, r.json()
-#
-#
-# @pytest.mark.anyio
-# async def test_callback_missing_api_key(self):
-#     r = await client.post('/callback/tc2/', json={'_request_time': 123, 'events': []})
-#     assert r.status_code == 403, r.json()
-#
-#
-# CLIENT_FULL_EVENT_DATA = {
-#     'action': 'create',
-#     'verb': 'create',
-#     'subject': {
-#         'model': 'Client',
-#         'meta_agency': {
-#             'id': 11,
-#             'name': 'MyTutors',
-#             'website': 'www.example.com',
-#             'status': 'active',
-#             'paid_invoice_count': 7,
-#         },
-#         'associated_admin': {
-#             'id': 22,
-#             'first_name': 'Brain',
-#             'last_name': 'Johnson',
-#             'email': 'brian@tc.com',
-#         },
-#         'paid_recipients': [
-#             {
-#                 'id': 33,
-#                 'first_name': 'Mary',
-#                 'last_name': 'Booth',
-#                 'email': 'mary@booth.com',
-#             }
-#         ],
-#     },
-# }
-#
-#
