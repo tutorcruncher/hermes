@@ -8,20 +8,20 @@ install:
 
 .PHONY: format
 format:
-	$(isort) src/
+	$(isort) app/
 	$(isort) tests/
-	$(black) src/ tests/
+	$(black) app/ tests/
 
 .PHONY: lint
 lint:
-	flake8 src/ tests/
-	$(isort) --check-only src
+	flake8 app/ tests/
+	$(isort) --check-only app
 	$(isort) --check-only tests
-	$(black) --check src tests
+	$(black) --check app tests
 
 .PHONY: test
 test:
-	pytest --cov=src
+	pytest --cov=app
 
 .PHONY: reset-db
 reset-db:
