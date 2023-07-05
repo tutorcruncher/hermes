@@ -1,6 +1,9 @@
-from isort import settings
 from tortoise import fields, models
 from tortoise.contrib.pydantic import pydantic_model_creator
+
+from app.settings import Settings
+
+settings = Settings()
 
 
 class BaseModel(models.Model):

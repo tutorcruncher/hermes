@@ -1,0 +1,27 @@
+[tool.ruff]
+    line-length = 120
+
+[tool.black]
+    line-length = 120
+    skip-string-normalization = true
+
+[tool.ruff.isort]
+    combine-as-imports = true
+
+[tool.pytest]
+    testpaths = ['tests']
+
+[tool.coverage.run]
+    source = ['app']
+    branch = true
+    omit = ['app/main.py']
+
+[tool.coverage.report]
+    precision = 2
+    exclude_lines = [
+        'pragma: no cover',
+        'def __repr__',
+        'def __str__',
+        'raise NotImplementedError',
+        'raise NotImplemented',
+    ]
