@@ -1,8 +1,6 @@
-from httpx import AsyncClient
-from tortoise.contrib.test import TestCase, finalizer, initializer
-
 from app.main import app, settings
 from app.models import Admins, Companies, Contacts
+from tests._common import HermesTestCase
 
 
 def client_full_event_data():
@@ -52,10 +50,9 @@ def client_deleted_event_data():
     }
 
 
-class TCCallbackTestCase(TestCase):
+class TCCallbackTestCase(HermesTestCase):
     def setUp(self):
-        initializer(['app.models'], db_url=settings.pg_dsn)
-        self.client = AsyncClient(app=app, base_url='http://test')
+        super().setUp()
         self.url = '/callback/tc2/'
 
     async def test_callback_invalid_api_key(self):
@@ -289,6 +286,3 @@ class TCCallbackTestCase(TestCase):
         Processing an invoice event means we get the client from TC. Testing an error.
         """
         pass
-
-    def tearDown(self):
-        finalizer()

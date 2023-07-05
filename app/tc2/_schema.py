@@ -4,6 +4,10 @@ from pydantic import BaseModel, validator
 
 
 class TCSubject(BaseModel):
+    """
+    A webhook Subject (generally a Client or Invoice)
+    """
+
     model: str
     id: int
 
@@ -91,6 +95,10 @@ class TCInvoice(BaseModel):
 
 
 class TCEvent(BaseModel):
+    """
+    A TC webhook event
+    """
+
     action: str
     verb: str
     subject: TCSubject
@@ -100,5 +108,9 @@ class TCEvent(BaseModel):
 
 
 class TCWebhook(BaseModel):
+    """
+    A TC webhook
+    """
+
     events: list[TCEvent]
     _request_time: int

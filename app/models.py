@@ -27,7 +27,7 @@ class Admins(BaseModel):
     is_client_manager = fields.BooleanField(default=False)
     is_bdr_person = fields.BooleanField(default=False)
 
-    password = fields.CharField(max_length=255)
+    password = fields.CharField(max_length=255, default='')
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'.strip()
@@ -53,7 +53,7 @@ class Companies(BaseModel):
     status = fields.CharField(max_length=25, null=True)
 
     name = fields.CharField(max_length=255)
-    domain = fields.CharField(max_length=255, null=True)
+    website = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255, null=True)
 
     client_manager: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
@@ -86,14 +86,13 @@ class Companies(BaseModel):
 
 class Contacts(BaseModel):
     id = fields.IntField(pk=True)
-    tc_sr_id = fields.IntField(unique=True)
+    tc_sr_id = fields.IntField(unique=True, null=True)
 
     first_name = fields.CharField(max_length=255, null=True)
     last_name = fields.CharField(max_length=255, null=True)
     email = fields.CharField(max_length=255, null=True)
     phone = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255, null=True)
-    website_url = fields.CharField(max_length=255, null=True)
 
     company: fields.ForeignKeyRelation[Companies] = fields.ForeignKeyField('models.Companies', related_name='contacts')
 

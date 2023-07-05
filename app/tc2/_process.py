@@ -7,6 +7,9 @@ from app.tc2.api import tc_request
 
 
 async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companies]:
+    """
+    Creates or updates a Company in our database from a TutorCruncher client/meta_agency.
+    """
     company_data = tc_client.dict()
     admin_lu = {a.tc_admin_id: a for a in await Admins.all()}
 
@@ -28,6 +31,9 @@ async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companie
 
 
 async def _create_or_update_contact(tc_sr: TCRecipient, company: Companies) -> tuple[bool, Contacts]:
+    """
+    Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
+    """
     contact_data = tc_sr.dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc_sr_id')
@@ -39,6 +45,10 @@ async def _create_or_update_contact(tc_sr: TCRecipient, company: Companies) -> t
 
 
 async def update_from_client_event(tc_subject: TCSubject):
+    """
+    When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
+    in our db.
+    """
     try:
         tc_client = TCClient(**tc_subject.dict())
     except ValidationError as e:
@@ -70,6 +80,9 @@ async def update_from_client_event(tc_subject: TCSubject):
 
 
 async def update_from_invoice_event(tc_subject: TCSubject):
+    """
+    As above, but we also check when an invoice changes in some way (as we have the paid_invoice_count on a Company).
+    """
     tc_invoice = TCInvoice(**tc_subject.dict())
     tc_client_subject = TCSubject(**await tc_request(f'clients/{tc_invoice.client.id}'))
     await update_from_client_event(tc_client_subject)

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from tortoise.contrib.fastapi import register_tortoise
 
+from app.callbooker.views import cb_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
 
@@ -15,3 +16,4 @@ register_tortoise(
     add_exception_handlers=True,
 )
 app.include_router(tc2_router)
+app.include_router(cb_router)

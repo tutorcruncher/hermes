@@ -19,11 +19,10 @@ def get_bearer(auth: str):
 
 
 @tc2_router.post('/callback/tc2/', name='TC2 callback')
-async def tc_callback(webhook: TCWebhook, Authorization: Optional[str] = Header(None)):
+async def callback(webhook: TCWebhook, Authorization: Optional[str] = Header(None)):
     """
     Callback for TC2
-    Updates Hermes and Hubspot based on events in TC2.
-    These options are seen in EVENT_DEAL_STAGE_LU in hubspot.py
+    Updates Hermes and other systems based on events in TC2.
     """
     if not get_bearer(Authorization) == settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
