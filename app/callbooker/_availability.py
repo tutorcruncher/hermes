@@ -1,27 +1,13 @@
 from copy import copy
 from datetime import date, datetime
 
-import googleapiclient
 import pytz
 from dateutil.relativedelta import relativedelta
 
-from app.callbooker._google import GoogleCalendar, logger
+from app.callbooker._google import run_free_busy
 
 DATE_STRING_FORMAT = '%Y-%m-%d'
 TIME_STRING_FORMAT = '%-I:%M %p'
-
-
-def run_free_busy(email, data) -> dict:
-    """
-    Authenticates with google for the correct calendar then requests all the freebusy
-    slots for the month sent in the url
-    """
-    google_cal = GoogleCalendar(email=email).create_builder()
-    try:
-        return google_cal.freebusy().query(body=data).execute()
-    except googleapiclient.errors.HttpError as e:
-        logger.info(e)
-        return {}
 
 
 def end_of_day_check(date_time, mins=0):
@@ -34,7 +20,7 @@ def end_of_day_check(date_time, mins=0):
             return date_time.replace(day=1, month=date_time.month + 1, hour=0, minute=mins)
 
 
-async def process_availablility(data: dict) -> dict:
+async def process_availability(data: dict) -> dict:
     """
     Gets the unavailable times from Googles freebusy API then breaks them down
     against 10:00 - 17:00 to find the available slots to send back to TC.com

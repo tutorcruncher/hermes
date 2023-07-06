@@ -1,4 +1,3 @@
-from app.main import app, settings
 from app.models import Admins, Companies, Contacts
 from tests._common import HermesTestCase
 

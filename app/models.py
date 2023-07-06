@@ -54,23 +54,16 @@ class Companies(BaseModel):
 
     name = fields.CharField(max_length=255)
     website = fields.CharField(max_length=255, null=True)
-    country = fields.CharField(max_length=255, null=True)
+    country = fields.CharField(max_length=255)
 
-    client_manager: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
-        'models.Admins', related_name='companies', null=True
-    )
-    sales_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
-        'models.Admins', related_name='sales', null=True
-    )
-    bdr_person: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField(
-        'models.Admins', related_name='leads', null=True
-    )
+    client_manager = fields.ForeignKeyField('models.Admins', related_name='companies', null=True)
+    sales_person = fields.ForeignKeyField('models.Admins', related_name='sales', null=True)
+    bdr_person = fields.ForeignKeyField('models.Admins', related_name='leads', null=True)
 
     paid_invoice_count = fields.IntField(default=0)
 
     estimated_income = fields.CharField(max_length=255, null=True)
     currency = fields.CharField(max_length=255, null=True)
-    form_json = fields.JSONField(null=True)
 
     contacts: fields.ReverseRelation['Contacts']
     deals: fields.ReverseRelation['Deals']
@@ -94,7 +87,7 @@ class Contacts(BaseModel):
     phone = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255, null=True)
 
-    company: fields.ForeignKeyRelation[Companies] = fields.ForeignKeyField('models.Companies', related_name='contacts')
+    company = fields.ForeignKeyField('models.Companies', related_name='contacts')
 
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
@@ -116,12 +109,8 @@ class Deals(BaseModel):
     close_date = fields.DatetimeField(null=True)
     stage = fields.CharField(max_length=255, null=True)
 
-    contact: fields.ForeignKeyRelation[Contacts] = fields.ForeignKeyField(
-        'models.Contacts', related_name='contact_deals'
-    )
-    company: fields.ForeignKeyRelation[Contacts] = fields.ForeignKeyField(
-        'models.Contacts', related_name='company_deals'
-    )
+    contact = fields.ForeignKeyField('models.Contacts', related_name='contact_deals')
+    company = fields.ForeignKeyField('models.Contacts', related_name='company_deals')
 
     def __str__(self):
         return f'{self.name} ({self.amount})'
@@ -133,20 +122,19 @@ class Meetings(BaseModel):
     STATUS_NO_SHOW = 'NO_SHOW'
     STATUS_COMPLETED = 'COMPLETED'
 
-    MEETING_TYPE_SALES = 'SALES'
-    MEETING_TYPE_SUPPORT = 'SUPPORT'
+    TYPE_SALES = 'SALES'
+    TYPE_SUPPORT = 'SUPPORT'
 
     id = fields.IntField(pk=True)
 
     created = fields.DatetimeField(auto_now_add=True)
 
-    name = fields.CharField(max_length=255, null=True)
     start_time = fields.DatetimeField(null=True)
+    end_time = fields.DatetimeField(null=True)
     status = fields.CharField(max_length=255, default=STATUS_PLANNED)
     meeting_type = fields.CharField(max_length=255)
 
-    admin: fields.ForeignKeyRelation[Admins] = fields.ForeignKeyField('models.Admins', related_name='meetings')
-    contact: fields.ForeignKeyRelation[Contacts] = fields.ForeignKeyField('models.Contacts', related_name='meetings')
+    admin = fields.ForeignKeyField('models.Admins', related_name='meetings')
+    contact = fields.ForeignKeyField('models.Contacts', related_name='meetings')
 
-    def __str__(self):
-        return f'{self.name} ({self.start_time})'
+    form_json = fields.JSONField(null=True)

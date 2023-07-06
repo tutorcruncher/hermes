@@ -1,10 +1,9 @@
-import time
 from datetime import datetime
 from functools import cached_property
 from typing import Optional
 
-import pytz
 from pydantic import BaseModel, validator
+from pytz import utc
 
 
 class CBEvent(BaseModel):
@@ -36,11 +35,17 @@ class CBEvent(BaseModel):
     def name_to_title(cls, v):
         return v.title()
 
-    @validator('sales_person')
+    @validator('sales_person', always=True)
     def validate_sales_person_or_client_manager(cls, v, values):
         if not v and not values.get('client_manager'):
             raise ValueError('Either sales_person or client_manager must be provided')
+        elif v and values.get('client_manager'):
+            raise ValueError('Only one of sales_person or client_manager must be provided')
         return v
+
+    @validator('meeting_dt', pre=True)
+    def convert_from_ts(cls, v):
+        return datetime.fromtimestamp(v, tz=utc)
 
     @cached_property
     def _name_split(self):
@@ -54,14 +59,6 @@ class CBEvent(BaseModel):
     @property
     def last_name(self):
         return self._name_split[-1]
-
-    @property
-    def local_start(self) -> datetime:
-        return (
-            pytz.timezone(self.timezone)
-            .localize(self.meeting_dt, is_dst=time.localtime().tm_isdst > 0)
-            .astimezone(pytz.timezone('Europe/London'))
-        )
 
     @property
     def meeting_admin(self):

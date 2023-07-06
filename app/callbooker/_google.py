@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from uuid import uuid4
 
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
 from google.oauth2 import service_account
+from googleapiclient.discovery import Resource, build
+from googleapiclient.errors import HttpError
 
 from ..settings import Settings
 
@@ -14,22 +14,33 @@ settings = Settings()
 logger = logging.getLogger('google')
 
 
-class GoogleCalendar:
-    scopes = ['https://www.googleapis.com/auth/calendar']
+@dataclass
+class AdminGoogleCalendar:
+    admin_email: str
 
-    def __init__(self, email=None):
-        self.email = email
+    def __post_init__(self):
+        self.resource = self._create_resource()
 
-    def create_builder(self):
+    def _create_resource(self) -> Resource:
         creds = service_account.Credentials.from_service_account_info(
-            settings.google_credentials, scopes=self.scopes
-        ).with_subject(self.email)
+            settings.google_credentials, scopes=['https://www.googleapis.com/auth/calendar']
+        ).with_subject(self.admin_email)
         return build('calendar', 'v3', credentials=creds)
 
+    def get_free_busy_slots(self, start: datetime) -> dict:
+        q_data = {
+            'timeMin': start.isoformat(),
+            'timeMax': (start + timedelta(days=1)).isoformat(),
+            'timeZone': 'utc',
+            'groupExpansionMax': 100,
+            'items': [{'id': self.admin_email}],
+        }
+        return self.resource.freebusy().query(body=q_data).execute()
+
     def get_recent_events(self, cutoff: datetime):
-        cal = self.create_builder()
+        cal = self._create_resource()
         cutoff_str = cutoff.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-        yield from cal.events().list(calendarId=self.email, updatedMin=cutoff_str).execute()['items']
+        yield from cal.events().list(calendarId=self.admin_email, updatedMin=cutoff_str).execute()['items']
 
     def create_cal_event(self, client: str, company_dict: dict, tc_id: int):
         event = {
@@ -66,7 +77,7 @@ Approximate Monthly Revenue: {client.currency} {client.estimated_income}
             },
             'end': {
                 'dateTime': datetime.strftime(
-                    datetime.strptime(client.meeting_dt, '%Y-%m-%dT%H:%M:%S.%fZ') + relativedelta(minutes=30),
+                    datetime.strptime(client.meeting_dt, '%Y-%m-%dT%H:%M:%S.%fZ') + timedelta(minutes=30),
                     '%Y-%m-%dT%H:%M:%S.%fZ',
                 ),
             },

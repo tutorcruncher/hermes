@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     support_ttl_days: int = 4
     call_booker_base_url: str = 'https://tutorcruncher.com/book-a-call/'
+    meeting_dur_mins: int = 30
 
     #  TC
     tc2_api_key: str = 'test-key'
