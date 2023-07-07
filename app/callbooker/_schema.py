@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from functools import cached_property
 from typing import Optional
 
@@ -83,3 +84,24 @@ class CBEvent(BaseModel):
             'phone': (self.phone_ext or '' + self.phone) if self.phone else None,
             'country': self.country,
         }
+
+
+class AvailType(Enum, str):
+    """
+    When showing the booking slots to clients, we generally allow a lead time of at least 2 hours. For support calls,
+    we want an "instant" meeting to allow the client to book a meeting immediately.
+    """
+
+    INSTANT = 'instant'
+    STANDARD = 'standard'
+
+
+class AvailabilityData(BaseModel):
+    admin_id: int
+    start_dt: datetime
+    end_dt: datetime
+    avail_type: AvailType
+
+    @validator('start_dt', 'end_dt', pre=True)
+    def convert_from_ts(cls, v):
+        return datetime.fromtimestamp(v, tz=utc)

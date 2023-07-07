@@ -1,119 +1,75 @@
-from copy import copy
-from datetime import date, datetime
+from datetime import datetime, timedelta
+from typing import Iterable
 
 import pytz
-from dateutil.relativedelta import relativedelta
 
-from app.callbooker._google import run_free_busy
-
-DATE_STRING_FORMAT = '%Y-%m-%d'
-TIME_STRING_FORMAT = '%-I:%M %p'
-
-
-def end_of_day_check(date_time, mins=0):
-    if date_time.hour < 23:
-        return date_time.replace(hour=date_time.hour + 1, minute=mins)
-    else:
-        try:
-            return date_time.replace(day=date_time.day + 1, hour=0, minute=mins)
-        except ValueError:
-            return date_time.replace(day=1, month=date_time.month + 1, hour=0, minute=mins)
+from app.callbooker._google import run_free_busy, AdminGoogleCalendar
+from app.callbooker._utils import _iso_8601_to_datetime
+from app.main import settings
+from app.models import Admins
 
 
-async def process_availability(data: dict) -> dict:
+def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterable[tuple[datetime, datetime]]:
+    """
+    For each day in the range, we get the earliest and latest possible working hours as if they were in the admin's
+    timezone. This allows us to accurately compare across ranges in DST etc.
+
+    For example, if the DST changes on 22nd Oct, then we should get returned:
+
+    21st Oct 10:00 - 17:00 UTC (10:00 - 17:00 GMT)
+    22nd Oct 09:00 - 16:00 UTC (10:00 - 17:00 GMT)
+    23rd Oct 09:00 - 16:00 UTC (10:00 - 17:00 GMT)
+    """
+    date_start_ends = []
+    min_start_hours, min_start_mins = settings.meeting_min_start.split(':')
+    min_start_hours = int(min_start_hours)
+    min_start_mins = int(min_start_mins)
+    max_end_hours, max_end_mins = settings.meeting_max_end.split(':')
+    max_end_hours = int(max_end_hours)
+    max_end_mins = int(max_end_mins)
+
+    start = start - timedelta(days=1)  # If the user is in the US, we need to check the day before as well
+    admin_tz = pytz.timezone(admin_tz)
+
+    while start < end:
+        admin_local_dt = start.astimezone(admin_tz)
+        admin_local_start = admin_local_dt.replace(hour=min_start_hours, minute=min_start_mins, second=0, microsecond=0)
+        admin_local_end = admin_local_dt.replace(hour=max_end_hours, minute=max_end_mins, second=0, microsecond=0)
+        date_start_ends.append((admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)))
+        yield admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)
+        start = start + timedelta(days=1)
+
+
+def get_admin_available_slots(start: datetime, end: datetime, admin: Admins) -> Iterable[tuple[datetime, datetime]]:
     """
     Gets the unavailable times from Googles freebusy API then breaks them down
     against 10:00 - 17:00 to find the available slots to send back to TC.com
+
+    We change everything into the admins timezone and work with that.
     """
+    # First we get all the "busy" slots from Google
+    g_cal = AdminGoogleCalendar(admin_email=admin.email)
+    cal_data = g_cal.get_free_busy_slots(start, end)
+    calendar_busy_slots = []
+    for time_slot in cal_data['calendars'][admin.email]['busy']:
+        _slot_start = _iso_8601_to_datetime(time_slot['start'])
+        _slot_end = _iso_8601_to_datetime(time_slot['end'])
+        calendar_busy_slots.append({'start': _slot_start, 'end': _slot_end})
 
-    from_date_time = copy(data['timeMin'])
-    to_date_time = copy(data['timeMax'])
-    data['timeMin'] = f"{data['timeMin'].strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}Z"
-    data['timeMax'] = f"{data['timeMax'].strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}Z"
-    client_tz = data['timeZone']
-    london_tz = pytz.timezone('Europe/London')
-    now = datetime.now().astimezone(london_tz)
-
-    email = data['items'][0]['id']
-    freebusy = run_free_busy(email, data)
-    freebusy_dict = {}
-    for time_slot in freebusy['calendars'][email]['busy']:
-        ts_start_str = time_slot['start']
-        ts_end_str = time_slot['end']
-        if ts_start_str.endswith('Z'):
-            ts_start = datetime.strptime(ts_start_str, '%Y-%m-%dT%H:%M:%SZ').astimezone(london_tz)
-            ts_end = datetime.strptime(ts_end_str, '%Y-%m-%dT%H:%M:%SZ').astimezone(london_tz)
-        else:
-            ts_start = (
-                pytz.timezone(client_tz)
-                .localize(datetime.strptime(ts_start_str[:-6], '%Y-%m-%dT%H:%M:%S'))
-                .astimezone(london_tz)
+    # First we create the day slots for the days in the range and loop through them to get the free slots.
+    for day_start, day_end in _get_day_start_ends(start, end, admin.timezone):
+        slot_start = day_start
+        day_calendar_busy_slots = [s for s in calendar_busy_slots if s['start'] >= day_start and s['end'] <= day_end]
+        while slot_start + timedelta(minutes=settings.meeting_dur_mins + settings.meeting_buffer_mins) <= day_end:
+            slot_end = slot_start + timedelta(minutes=settings.meeting_dur_mins)
+            is_overlapping = next(
+                (
+                    b
+                    for b in day_calendar_busy_slots
+                    if b['start'] <= slot_start <= b['end'] or b['start'] <= slot_end <= b['end']
+                ),
+                None,
             )
-            ts_end = (
-                pytz.timezone(client_tz)
-                .localize(datetime.strptime(ts_end_str[:-6], '%Y-%m-%dT%H:%M:%S'))
-                .astimezone(london_tz)
-            )
-
-        # Yeah this is a bit gross but keeps it clean around lunch and allows space around other busy periods
-        if ts_start.hour == 13:
-            ts_start = ts_start.replace(hour=13, minute=0)
-
-        if ts_start.minute < 15:
-            ts_start = ts_start.replace(hour=max(0, ts_start.hour - 1), minute=30)
-        elif ts_start.minute < 45:
-            ts_start = ts_start.replace(minute=0)
-        else:
-            ts_start = ts_start.replace(minute=30)
-
-        if ts_end.minute <= 15:
-            ts_end = ts_end.replace(minute=30)
-        elif ts_end.minute <= 45:
-            ts_end = end_of_day_check(ts_end)
-        else:
-            ts_end = end_of_day_check(ts_end, mins=30)
-
-        while ts_start < ts_end:
-            tzoned_time = ts_start.astimezone(pytz.timezone(client_tz))
-            date_str = tzoned_time.strftime(DATE_STRING_FORMAT)
-            time_str = tzoned_time.strftime(TIME_STRING_FORMAT)
-            if freebusy_dict.get(date_str):
-                freebusy_dict[date_str].append(time_str)
-            else:
-                freebusy_dict[date_str] = [time_str]
-            ts_start += relativedelta(minutes=30)
-    date_times = {}
-    date_time = from_date_time.astimezone(london_tz)
-    if date_time.hour < 10 or date_time.date() != date.today():
-        date_time = now.replace(hour=10, minute=0)
-    elif date_time.minute <= 30:
-        date_time = date_time.replace(minute=30)
-    else:
-        date_time = end_of_day_check(date_time)
-
-    while date_time.date() <= to_date_time.astimezone(london_tz).date():
-        if date_time.hour < 10:
-            date_time += relativedelta(minutes=30)
-            continue
-        elif date_time.hour > 17:
-            date_time = (date_time + relativedelta(days=1)).replace(hour=10, minute=0)
-            continue
-        if date_time.weekday() in [5, 6]:
-            date_time = (date_time + relativedelta(days=1)).replace(hour=10, minute=0)
-            continue
-        elif date_time.weekday() == 4:
-            end_time = date_time.astimezone(london_tz).replace(hour=17)
-        else:
-            end_time = date_time.astimezone(london_tz).replace(hour=17, minute=30)
-
-        while date_time < end_time:
-            time_slot = date_time.astimezone(pytz.timezone(client_tz)).strftime(TIME_STRING_FORMAT)
-            date_str = date_time.astimezone(pytz.timezone(client_tz)).strftime(DATE_STRING_FORMAT)
-            if not freebusy_dict.get(date_str) or time_slot not in freebusy_dict.get(date_str):
-                if date_times.get(date_str):
-                    date_times[date_str].append(time_slot)
-                else:
-                    date_times[date_str] = [time_slot]
-            date_time += relativedelta(minutes=30)
-        date_time = (date_time + relativedelta(days=1)).replace(hour=10, minute=0)
-    return date_times
+            if not is_overlapping:
+                yield slot_start, slot_end
+            slot_start = slot_end + timedelta(minutes=settings.meeting_buffer_mins)

@@ -52,7 +52,7 @@ def client_deleted_event_data():
 class TCCallbackTestCase(HermesTestCase):
     def setUp(self):
         super().setUp()
-        self.url = '/callback/tc2/'
+        self.url = '/tc2/callback/'
 
     async def test_callback_invalid_api_key(self):
         r = await self.client.post(

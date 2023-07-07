@@ -15,5 +15,5 @@ register_tortoise(
     generate_schemas=True,
     add_exception_handlers=True,
 )
-app.include_router(tc2_router)
-app.include_router(cb_router)
+app.include_router(tc2_router, prefix='/tc2')
+app.include_router(cb_router, prefix='/callbooker')

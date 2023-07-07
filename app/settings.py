@@ -11,10 +11,15 @@ class Settings(BaseSettings):
     support_ttl_days: int = 4
     call_booker_base_url: str = 'https://tutorcruncher.com/book-a-call/'
     meeting_dur_mins: int = 30
+    meeting_buffer_mins: int = 15
+    meeting_min_start: str = '10:00'
+    meeting_max_end: int = '17:30'
+    tc_local_timezone = 'Europe/London'
 
     #  TC
     tc2_api_key: str = 'test-key'
     tc2_api_url: str = 'https://localhost:8000/api/'
+    tc2_base_url: str = 'https://localhost:8000/'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'

@@ -18,7 +18,7 @@ def get_bearer(auth: str):
         return
 
 
-@tc2_router.post('/callback/tc2/', name='TC2 callback')
+@tc2_router.post('/callback/', name='TC2 callback')
 async def callback(webhook: TCWebhook, Authorization: Optional[str] = Header(None)):
     """
     Callback for TC2

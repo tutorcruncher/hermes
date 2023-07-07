@@ -22,6 +22,7 @@ class Admins(BaseModel):
     first_name = fields.CharField(max_length=255)
     last_name = fields.CharField(max_length=255)
     email = fields.CharField(max_length=255)
+    timezone = fields.CharField(max_length=255, default=settings.tc_local_timezone)
 
     is_sales_person = fields.BooleanField(default=False)
     is_client_manager = fields.BooleanField(default=False)
@@ -74,7 +75,7 @@ class Companies(BaseModel):
 
     @property
     def tc_cligency_url(self):
-        return f'{settings.TC_BASE_URL}/clients/{self.tc_cligency_id}/'
+        return f'{settings.tc2_base_url}/clients/{self.tc_cligency_id}/'
 
 
 class Contacts(BaseModel):

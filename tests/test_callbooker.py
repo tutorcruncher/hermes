@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest import mock
 
+from httpx import HTTPError
 from pytz import utc
 
 from app.models import Admins, Companies, Contacts, Meetings
@@ -24,27 +25,38 @@ def _as_iso_8601(dt: datetime):
     return dt.isoformat().replace('+00:00', 'Z')
 
 
-class MockGCalResource:
-    def execute(self):
-        return {
-            'calendars': {
-                'climan@example.com': {
-                    'busy': [
-                        {
-                            'start': _as_iso_8601(datetime(2023, 7, 3, 11, tzinfo=utc)),
-                            'end': _as_iso_8601(datetime(2023, 7, 3, 12, 30, tzinfo=utc)),
-                        }
-                    ]
+def fake_gcal_builder(error=False):
+    class MockGCalResource:
+        def execute(self):
+            return {
+                'calendars': {
+                    'climan@example.com': {
+                        'busy': [
+                            {
+                                'start': _as_iso_8601(datetime(2023, 7, 3, 11, tzinfo=utc)),
+                                'end': _as_iso_8601(datetime(2023, 7, 3, 12, 30, tzinfo=utc)),
+                            }
+                        ]
+                    }
                 }
             }
-        }
 
-    def query(self, body: dict):
-        self.body = body
-        return self
+        def query(self, body: dict):
+            self.body = body
+            return self
 
-    def freebusy(self, *args, **kwargs):
-        return self
+        def freebusy(self, *args, **kwargs):
+            return self
+
+        def events(self):
+            return self
+
+        def insert(self, *args, **kwargs):
+            if error:
+                raise HTTPError('error')
+            return self
+
+    return MockGCalResource
 
 
 class MeetingBookingTestCase(HermesTestCase):
@@ -55,7 +67,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
     def setUp(self):
         super().setUp()
-        self.url = '/callback/callbooker/'
+        self.url = '/callbooker/callback/'
 
     async def test_no_admin(self):
         meeting_data = CB_MEETING_DATA.copy()
@@ -95,7 +107,7 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact doesn't exist so create
         Create with client manager
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -141,7 +153,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -191,7 +203,7 @@ class MeetingBookingTestCase(HermesTestCase):
         meeting_data['tc_cligency_id'] = 10
         meeting_data.pop('client_manager')
         meeting_data['sales_person'] = 20
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -240,7 +252,7 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact exists - match by last name
         No admins linked
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         cli_man = await Admins.create(
@@ -291,7 +303,7 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact exists - match by last name
         No admins linked
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -341,7 +353,7 @@ class MeetingBookingTestCase(HermesTestCase):
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data.pop('client_manager')
         meeting_data['sales_person'] = 20
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -387,7 +399,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
@@ -447,6 +459,49 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'message': 'You already have a meeting booked around this time.', 'status': 'error'}
 
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_error_creating_gcal_event(self, mock_gcal_builder):
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['tc_cligency_id'] = 10
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        cli_man = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB')
+        await Contacts.create(first_name='B', last_name='J', email='brain@junes.com', company_id=company.id)
+
+        assert await Companies.all().count() == 1
+        assert await Contacts.all().count() == 1
+
+        r = await self.client.post(self.url, json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Companies.get()
+        assert not company.tc_cligency_id
+        assert company.name == 'Julies Ltd'
+        assert company.website == 'https://junes.com'
+        assert company.country == 'GB'
+        assert not company.sales_person_id
+        assert not company.bdr_person_id
+        assert not company.client_manager_id
+
+        contact = await Contacts.get()
+        assert contact.first_name == 'B'
+        assert contact.last_name == 'J'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meetings.get()
+        assert meeting.status == Meetings.STATUS_PLANNED
+        assert meeting.start_time == datetime(2023, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == cli_man
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meetings.TYPE_SALES
+
     async def test_admin_doesnt_exist(self):
         company = await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB')
         await Contacts.create(first_name='B', last_name='Junes', email='b@junes.com', company_id=company.id)
@@ -460,7 +515,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 12.30 and ends at 1.
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = int(datetime(2023, 7, 3, 12, 30, tzinfo=utc).timestamp())
@@ -483,7 +538,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 11.15 and ends at 11.45.
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = int(datetime(2023, 7, 3, 11, 15, tzinfo=utc).timestamp())
@@ -506,7 +561,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 10.30 and ends at 11.
         """
-        mock_gcal_builder.side_effect = MockGCalResource
+        mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = int(datetime(2023, 7, 3, 10, 45, tzinfo=utc).timestamp())
