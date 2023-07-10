@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
-from app.callbooker._schema import CBEvent, AvailabilityData
+from app.callbooker._schema import AvailabilityData, CBEvent
 from app.models import Admins, Companies, Contacts, Meetings
 from app.settings import Settings
 

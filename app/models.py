@@ -54,8 +54,8 @@ class Companies(BaseModel):
     status = fields.CharField(max_length=25, null=True)
 
     name = fields.CharField(max_length=255)
-    website = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255)
+    website = fields.CharField(max_length=255, null=True)
 
     client_manager = fields.ForeignKeyField('models.Admins', related_name='companies', null=True)
     sales_person = fields.ForeignKeyField('models.Admins', related_name='sales', null=True)

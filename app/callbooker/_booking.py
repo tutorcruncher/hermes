@@ -4,7 +4,7 @@ from pytz import utc
 
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._meeting_content_templates import MEETING_CONTENT_TEMPLATES
-from app.callbooker._utils import app_logger, _iso_8601_to_datetime
+from app.callbooker._utils import _iso_8601_to_datetime, app_logger
 from app.models import Meetings
 
 

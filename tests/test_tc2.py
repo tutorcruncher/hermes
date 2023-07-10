@@ -159,7 +159,7 @@ class TCCallbackTestCase(HermesTestCase):
             tc_admin_id=30, first_name='Brain', last_name='Johnson', email='brian@tc.com', password='foo'
         )
         await Companies.create(
-            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', client_manager=admin
+            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', client_manager=admin, country='GB'
         )
         assert await Contacts.all().count() == 0
 
@@ -193,7 +193,9 @@ class TCCallbackTestCase(HermesTestCase):
         Update a current company
         Create new contacts & Update contacts
         """
-        company = await Companies.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive')
+        company = await Companies.create(
+            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB'
+        )
         contact_a = await Contacts.create(
             first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company
         )
@@ -235,7 +237,7 @@ class TCCallbackTestCase(HermesTestCase):
         """
         Company deleted, has no contacts
         """
-        await Companies.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive')
+        await Companies.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB')
         r = await self.client.post(
             self.url,
             json={'_request_time': 123, 'events': [client_deleted_event_data()]},
@@ -248,7 +250,9 @@ class TCCallbackTestCase(HermesTestCase):
         """
         Company deleted, has contact
         """
-        company = await Companies.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive')
+        company = await Companies.create(
+            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB'
+        )
         await Contacts.create(first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company)
         r = await self.client.post(
             self.url,

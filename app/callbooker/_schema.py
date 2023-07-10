@@ -86,7 +86,7 @@ class CBEvent(BaseModel):
         }
 
 
-class AvailType(Enum, str):
+class AvailType(str, Enum):
     """
     When showing the booking slots to clients, we generally allow a lead time of at least 2 hours. For support calls,
     we want an "instant" meeting to allow the client to book a meeting immediately.

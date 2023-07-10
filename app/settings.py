@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     meeting_dur_mins: int = 30
     meeting_buffer_mins: int = 15
     meeting_min_start: str = '10:00'
-    meeting_max_end: int = '17:30'
+    meeting_max_end: str = '17:30'
     tc_local_timezone = 'Europe/London'
 
     #  TC

@@ -3,10 +3,12 @@ from typing import Iterable
 
 import pytz
 
-from app.callbooker._google import run_free_busy, AdminGoogleCalendar
+from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._utils import _iso_8601_to_datetime
-from app.main import settings
 from app.models import Admins
+from app.settings import Settings
+
+settings = Settings()
 
 
 def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterable[tuple[datetime, datetime]]:
