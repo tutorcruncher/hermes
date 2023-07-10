@@ -25,7 +25,7 @@ class Admins(models.Model):
 
     @property
     def call_booker_url(self):
-        return f'{settings.cb_base_url}/{self.first_name.lower()}'
+        return f'{settings.tc_call_booker_url}/{self.first_name.lower()}'
 
 
 class Companies(models.Model):

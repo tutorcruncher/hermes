@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from hmac import compare_digest
+from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from starlette.responses import JSONResponse
 from tortoise.exceptions import DoesNotExist
 from tortoise.expressions import Q
@@ -12,7 +13,7 @@ from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_e
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
 from app.models import Admins, Companies, Contacts, Meetings
 from app.settings import Settings
-from app.utils import sign_args
+from app.utils import sign_args, get_bearer
 
 cb_router = APIRouter()
 settings = Settings()
@@ -130,27 +131,31 @@ async def availability(avail_data: AvailabilityData):
 
 
 @cb_router.get('/support-link/generate/')
-async def generate_support_link(admin_id: int, company_id: int):
+async def generate_support_link(admin_id: int, company_id: int, Authorization: Optional[str] = Header(None)):
     """
     Endpoint to generate a support link for a company from within TC2
     """
+    if not get_bearer(Authorization) == settings.tc2_api_key:
+        raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admins.get(tc_admin_id=admin_id)
-    company = await Companies.get(id=company_id)
+    company = await Companies.get(tc_cligency_id=company_id)
     expiry = datetime.now() + timedelta(days=settings.support_ttl_days)
-    kwargs = {'admin': admin.id, 'company': company.id, 'e': int(expiry.timestamp())}
-    sig = sign_args(**kwargs)
+    kwargs = {'admin_id': admin.tc_admin_id, 'company_id': company.tc_cligency_id, 'e': int(expiry.timestamp())}
+    sig = await sign_args(*kwargs.values())
     return {'link': f"{admin.call_booker_url}/?{urlencode({'s': sig, **kwargs})}"}
 
 
 @cb_router.get('/support-link/validate/')
-async def validate_support_link(admin_id: int, company_id: int, expiry: datetime, s: str):
+async def validate_support_link(admin_id: int, company_id: int, e: int, s: str):
     """
     Endpoint to validate a support link for a company from the website
     """
-    kwargs = {'admin': admin_id, 'company': company_id, 'e': expiry}
-    sig = sign_args(**kwargs)
+    admin = await Admins.get(tc_admin_id=admin_id)
+    company = await Companies.get(tc_cligency_id=company_id)
+    kwargs = {'admin_id': admin.tc_admin_id, 'company_id': company.tc_cligency_id, 'e': e}
+    sig = await sign_args(*kwargs.values())
     if not compare_digest(sig, s):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
-    elif datetime.now() > expiry:
+    elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)
     return {'status': 'ok'}

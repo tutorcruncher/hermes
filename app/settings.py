@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     signing_key: str = 'test-key'
 
     # Call booker
-    cb_base_url: str = 'https://tutorcruncher.com/book-a-call'
+    tc_call_booker_url: str = 'https://tutorcruncher.com/book-a-call'
 
     # How long a support link is valid for
     support_ttl_days: int = 4

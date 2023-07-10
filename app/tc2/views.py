@@ -6,16 +6,10 @@ from app.settings import Settings
 from app.tc2._process import update_from_invoice_event, process_tc2_client
 from app.tc2._schema import TCWebhook, TCClient
 from app.tc2._utils import app_logger
+from app.utils import get_bearer
 
 tc2_router = APIRouter()
 settings = Settings()
-
-
-def get_bearer(auth: str):
-    try:
-        return auth.split(' ')[1]
-    except (AttributeError, IndexError):
-        return
 
 
 @tc2_router.post('/callback/', name='TC2 callback')

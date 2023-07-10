@@ -1,10 +1,13 @@
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from unittest import mock
+from urllib.parse import urlencode
 
 from httpx import HTTPError
 from pytz import utc
 
 from app.models import Admins, Companies, Contacts, Meetings
+from app.utils import sign_args
 from tests._common import HermesTestCase
 
 CB_MEETING_DATA = {
@@ -739,3 +742,125 @@ class AdminAvailabilityTestCase(HermesTestCase):
             json={'admin_id': self.admin.tc_admin_id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()},
         )
         assert r.json() == {'slots': [], 'status': 'ok'}
+
+
+class SupportLinkTestCase(HermesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.gen_url = '/callbooker/support-link/generate/'
+        self.valid_url = '/callbooker/support-link/validate/'
+
+    async def test_generate_support_link(self):
+        admin = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        company = await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB', tc_cligency_id=10)
+        r = await self.client.get(
+            self.gen_url,
+            params={'admin_id': admin.tc_admin_id, 'company_id': company.tc_cligency_id},
+            headers={'Authorization': 'Bearer test-key'},
+        )
+        assert r.status_code == 200
+        link = r.json()['link']
+        company_id = int(re.search(r'company_id=(\d+)', link).group(1))
+        assert company_id == 10
+        admin_id = int(re.search(r'admin_id=(\d+)', link).group(1))
+        assert admin_id == 20
+        expiry = datetime.fromtimestamp(int(re.search(r'e=(\d+)', link).group(1)))
+        assert expiry > datetime.utcnow()
+        sig = re.search(r's=(.*?)&', link).group(1)
+        expected_sig = await sign_args(admin_id, company_id, int(expiry.timestamp()))
+        assert sig == expected_sig
+
+    async def test_generate_support_link_company_doesnt_exist(self):
+        admin = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        r = await self.client.get(
+            self.gen_url,
+            params={'admin_id': admin.tc_admin_id, 'company_id': 10},
+            headers={'Authorization': 'Bearer test-key'},
+        )
+        assert r.status_code == 404
+
+    async def test_generate_support_link_admin_doesnt_exist(self):
+        await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB', tc_cligency_id=10)
+        r = await self.client.get(
+            self.gen_url,
+            params={'admin_id': 1, 'company_id': 10},
+            headers={'Authorization': 'Bearer test-key'},
+        )
+        assert r.status_code == 404
+
+    async def test_validate_support_link(self):
+        admin = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        company = await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB', tc_cligency_id=10)
+
+        expiry = datetime.now() + timedelta(minutes=1)
+        sig = await sign_args(admin.tc_admin_id, company.tc_cligency_id, int(expiry.timestamp()))
+        kwargs = {
+            's': sig,
+            'e': int(expiry.timestamp()),
+            'company_id': company.tc_cligency_id,
+            'admin_id': admin.tc_admin_id,
+        }
+        link = self.valid_url + f'?{urlencode(kwargs)}'
+
+        r = await self.client.get(link)
+        assert r.status_code == 200, r.json()
+
+    async def test_validate_support_link_invalid_sig(self):
+        admin = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        company = await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB', tc_cligency_id=10)
+        expiry = datetime.now() + timedelta(minutes=1)
+        kwargs = {
+            's': 'foo',
+            'e': int(expiry.timestamp()),
+            'company_id': company.tc_cligency_id,
+            'admin_id': admin.tc_admin_id,
+        }
+        link = self.valid_url + f'?{urlencode(kwargs)}'
+        r = await self.client.get(link)
+        assert r.status_code == 403
+        assert r.json()['message'] == 'Invalid signature'
+
+    async def test_validate_support_link_expired(self):
+        admin = await Admins.create(
+            first_name='Steve',
+            last_name='Jobs',
+            email='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+        )
+        company = await Companies.create(name='Junes Ltd', website='https://junes.com', country='GB', tc_cligency_id=10)
+        expiry = datetime.now() - timedelta(minutes=1)
+        kwargs = {
+            's': await sign_args(admin.tc_admin_id, company.tc_cligency_id, int(expiry.timestamp())),
+            'e': int(expiry.timestamp()),
+            'company_id': company.tc_cligency_id,
+            'admin_id': admin.tc_admin_id,
+        }
+        link = self.valid_url + f'?{urlencode(kwargs)}'
+        r = await self.client.get(link)
+        assert r.status_code == 403
+        assert r.json()['message'] == 'Link has expired'
