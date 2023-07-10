@@ -1,38 +1,46 @@
+from unittest import mock
+
+from requests import HTTPError
+
 from app.models import Admins, Companies, Contacts
 from tests._common import HermesTestCase
+
+
+def _client_data():
+    return {
+        'id': 10,
+        'model': 'Client',
+        'meta_agency': {
+            'id': 20,
+            'name': 'MyTutors',
+            'website': 'www.example.com',
+            'status': 'active',
+            'paid_invoice_count': 7,
+            'country': 'United Kingdom (GB)',
+        },
+        'associated_admin': {
+            'id': 30,
+            'first_name': 'Brain',
+            'last_name': 'Johnson',
+            'email': 'brian@tc.com',
+        },
+        'paid_recipients': [
+            {
+                'id': 40,
+                'first_name': 'Mary',
+                'last_name': 'Booth',
+                'email': 'mary@booth.com',
+            }
+        ],
+        'status': 'live',
+    }
 
 
 def client_full_event_data():
     return {
         'action': 'create',
         'verb': 'create',
-        'subject': {
-            'id': 10,
-            'model': 'Client',
-            'meta_agency': {
-                'id': 20,
-                'name': 'MyTutors',
-                'website': 'www.example.com',
-                'status': 'active',
-                'paid_invoice_count': 7,
-                'country': 'United Kingdom (GB)',
-            },
-            'associated_admin': {
-                'id': 30,
-                'first_name': 'Brain',
-                'last_name': 'Johnson',
-                'email': 'brian@tc.com',
-            },
-            'paid_recipients': [
-                {
-                    'id': 40,
-                    'first_name': 'Mary',
-                    'last_name': 'Booth',
-                    'email': 'mary@booth.com',
-                }
-            ],
-            'status': 'live',
-        },
+        'subject': _client_data(),
     }
 
 
@@ -47,6 +55,38 @@ def client_deleted_event_data():
             'last_name': 'Poster',
         },
     }
+
+
+def invoice_event_data():
+    return {
+        'action': 'send invoice',
+        'verb': 'send invoice',
+        'subject': {
+            'id': 50,
+            'model': 'Invoice',
+            'client': {
+                'id': 10,
+                'first_name': 'Mary',
+                'last_name': 'Booth',
+                'email': 'mary@booth.com',
+            },
+        },
+    }
+
+
+def mock_tc2_request(error=False):
+    class MockResponse:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def json(self):
+            return _client_data()
+
+        def raise_for_status(self):
+            if error:
+                raise HTTPError('Error')
+
+    return MockResponse
 
 
 class TCCallbackTestCase(HermesTestCase):
@@ -278,14 +318,36 @@ class TCCallbackTestCase(HermesTestCase):
         assert await Companies.all().count() == 0
         assert await Contacts.all().count() == 0
 
-    async def test_cb_invoice_event_update_client(self):
+    @mock.patch('app.tc2.api.session.request')
+    async def test_cb_invoice_event_update_client(self, mock_tc2_get):
         """
         Processing an invoice event means we get the client from TC.
         """
-        pass
+        mock_tc2_get.side_effect = mock_tc2_request()
 
-    async def test_cb_invoice_event_tc_request_error(self):
-        """
-        Processing an invoice event means we get the client from TC. Testing an error.
-        """
-        pass
+        assert await Companies.all().count() == 0
+        assert await Contacts.all().count() == 0
+        r = await self.client.post(
+            self.url,
+            json={'_request_time': 123, 'events': [invoice_event_data()]},
+            headers={'Authorization': 'Bearer test-key'},
+        )
+        assert r.status_code == 200, r.json()
+
+        company = await Companies.get()
+        assert company.name == 'MyTutors'
+        assert company.tc_agency_id == 20
+        assert company.tc_cligency_id == 10
+        assert company.status == 'active'
+        assert company.country == 'GB'
+        assert company.paid_invoice_count == 7
+        assert not await company.client_manager
+
+        assert not company.estimated_income
+        assert not company.sales_person
+        assert not company.bdr_person
+
+        contact = await Contacts.get()
+        assert contact.tc_sr_id == 40
+        assert contact.first_name == 'Mary'
+        assert contact.last_name == 'Booth'

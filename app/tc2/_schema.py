@@ -87,7 +87,6 @@ class TCClient(BaseModel):
 
 class TCInvoice(BaseModel):
     id: int
-    accounting_id: str
     client: _TCSimpleUser
 
     class Config:

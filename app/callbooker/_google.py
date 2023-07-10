@@ -37,11 +37,6 @@ class AdminGoogleCalendar:
         }
         return self.resource.freebusy().query(body=q_data).execute()
 
-    def get_recent_events(self, cutoff: datetime):
-        cal = self._create_resource()
-        cutoff_str = cutoff.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-        yield from cal.events().list(calendarId=self.admin_email, updatedMin=cutoff_str).execute()['items']
-
     def create_cal_event(self, *, summary: str, description: str, start: datetime, end: datetime, contact_email: str):
         event = {
             'summary': summary,
