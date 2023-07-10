@@ -351,3 +351,9 @@ class TCCallbackTestCase(HermesTestCase):
         assert contact.tc_sr_id == 40
         assert contact.first_name == 'Mary'
         assert contact.last_name == 'Booth'
+
+
+class CompanyCreateTestCase(HermesTestCase):
+    def test_company_create(self):
+        # TODO
+        pass

@@ -3,7 +3,7 @@ import requests
 session = requests.Session()
 
 
-async def tc_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
+async def tc2_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
     from ..main import settings
 
     headers = {'Authorization': f'token {settings.tc2_api_key}'}

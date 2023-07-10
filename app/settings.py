@@ -7,19 +7,24 @@ THIS_DIR = Path(__file__).parent.resolve()
 
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn = 'postgres://postgres@localhost:5432/hermes'
+    dft_timezone = 'Europe/London'
+    signing_key: str = 'test-key'
 
+    # Call booker
+    cb_base_url: str = 'https://tutorcruncher.com/book-a-call'
+
+    # How long a support link is valid for
     support_ttl_days: int = 4
-    call_booker_base_url: str = 'https://tutorcruncher.com/book-a-call/'
+
     meeting_dur_mins: int = 30
     meeting_buffer_mins: int = 15
     meeting_min_start: str = '10:00'
     meeting_max_end: str = '17:30'
-    dft_timezone = 'Europe/London'
 
-    #  TC
+    #  TC2
     tc2_api_key: str = 'test-key'
-    tc2_api_url: str = 'https://localhost:8000/api/'
-    tc2_base_url: str = 'https://localhost:8000/'
+    tc2_api_url: str = 'https://localhost:8000/api'
+    tc2_base_url: str = 'https://localhost:8000'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'
@@ -33,8 +38,6 @@ class Settings(BaseSettings):
     g_client_x509_cert_url: str = (
         'https://www.googleapis.com/robot/v1/metadata/x509/tc-hubspot%40tc-hubspot-314214.iam.gserviceaccount.com'
     )
-
-    process_google_cal: bool = False
 
     @property
     def google_credentials(self):
@@ -51,9 +54,9 @@ class Settings(BaseSettings):
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
 
-    class Config:
-        env_file = '.env'
-
     # @validator('pg_dsn')
     # def heroku_ready_pg_dsn(cls, v):
     #     return v.replace('gres://', 'gresql://')
+
+    class Config:
+        env_file = '.env'

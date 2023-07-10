@@ -1,21 +1,11 @@
 from tortoise import fields, models
-from tortoise.contrib.pydantic import pydantic_model_creator
 
 from app.settings import Settings
 
 settings = Settings()
 
 
-class BaseModel(models.Model):
-    @classmethod
-    def py_schema(cls):
-        return pydantic_model_creator(cls, name=cls.__name__)
-
-    class Meta:
-        abstract = True
-
-
-class Admins(BaseModel):
+class Admins(models.Model):
     id = fields.IntField(pk=True)
     tc_admin_id = fields.IntField(unique=True)
 
@@ -33,8 +23,12 @@ class Admins(BaseModel):
     def __str__(self):
         return f'{self.first_name} {self.last_name}'.strip()
 
+    @property
+    def call_booker_url(self):
+        return f'{settings.cb_base_url}/{self.first_name.lower()}'
 
-class Companies(BaseModel):
+
+class Companies(models.Model):
     """
     Represents a potential/current company using TutorCruncher.
     """
@@ -78,7 +72,7 @@ class Companies(BaseModel):
         return f'{settings.tc2_base_url}/clients/{self.tc_cligency_id}/'
 
 
-class Contacts(BaseModel):
+class Contacts(models.Model):
     id = fields.IntField(pk=True)
     tc_sr_id = fields.IntField(unique=True, null=True)
 
@@ -100,7 +94,7 @@ class Contacts(BaseModel):
         return self.last_name
 
 
-class Deals(BaseModel):
+class Deals(models.Model):
     id = fields.IntField(pk=True)
     hubspot_id = fields.CharField(max_length=255, unique=True)
     tc_sr_id = fields.IntField(unique=True)
@@ -117,14 +111,14 @@ class Deals(BaseModel):
         return f'{self.name} ({self.amount})'
 
 
-class Meetings(BaseModel):
+class Meetings(models.Model):
     STATUS_PLANNED = 'PLANNED'
     STATUS_CANCELED = 'CANCELED'
     STATUS_NO_SHOW = 'NO_SHOW'
     STATUS_COMPLETED = 'COMPLETED'
 
-    TYPE_SALES = 'SALES'
-    TYPE_SUPPORT = 'SUPPORT'
+    TYPE_SALES = 'sales'
+    TYPE_SUPPORT = 'support'
 
     id = fields.IntField(pk=True)
 
@@ -137,5 +131,3 @@ class Meetings(BaseModel):
 
     admin = fields.ForeignKeyField('models.Admins', related_name='meetings')
     contact = fields.ForeignKeyField('models.Contacts', related_name='meetings')
-
-    form_json = fields.JSONField(null=True)

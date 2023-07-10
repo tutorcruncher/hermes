@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 
 from app.settings import Settings
-from app.tc2._process import update_from_client_event, update_from_invoice_event
-from app.tc2._schema import TCWebhook
+from app.tc2._process import update_from_invoice_event, process_tc2_client
+from app.tc2._schema import TCWebhook, TCClient
 from app.tc2._utils import app_logger
 
 tc2_router = APIRouter()
@@ -28,9 +28,20 @@ async def callback(webhook: TCWebhook, Authorization: Optional[str] = Header(Non
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
         if event.subject.model == 'Client':
-            await update_from_client_event(event.subject)
+            await process_tc2_client(event.subject)
         elif event.subject.model == 'Invoice':
             await update_from_invoice_event(event.subject)
         else:
             app_logger.info('Ignoring event with subject model %s', event.subject.model)
     return {'status': 'ok'}
+
+
+@tc2_router.post('/companies/create/', name='Create company from TC2')
+async def create_company(client: TCClient, Authorization: Optional[str] = Header(None)):
+    """
+    Gets or creates a company from TC2 data.
+    """
+    if not get_bearer(Authorization) == settings.tc2_api_key:
+        raise HTTPException(status_code=403, detail='Unauthorized key')
+    company = await process_tc2_client(client)
+    return {'status': 'ok', 'company': company}

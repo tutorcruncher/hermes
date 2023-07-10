@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from app.models import Admins, Companies, Contacts
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleUser
 from app.tc2._utils import app_logger
-from app.tc2.api import tc_request
+from app.tc2.api import tc2_request
 
 
 async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companies]:
@@ -44,7 +44,7 @@ async def _create_or_update_contact(tc_sr: TCRecipient, company: Companies) -> t
     return created, contact
 
 
-async def update_from_client_event(tc_subject: TCSubject):
+async def process_tc2_client(tc_subject: TCSubject | TCClient) -> Companies:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
@@ -77,6 +77,7 @@ async def update_from_client_event(tc_subject: TCSubject):
             f'Contacts created: {contacts_created}, '
             f'Contacts updated: {contacts_updated}'
         )
+    return company
 
 
 async def update_from_invoice_event(tc_subject: TCSubject):
@@ -84,5 +85,5 @@ async def update_from_invoice_event(tc_subject: TCSubject):
     As above, but we also check when an invoice changes in some way (as we have the paid_invoice_count on a Company).
     """
     tc_invoice = TCInvoice(**tc_subject.dict())
-    tc_client_subject = TCSubject(**await tc_request(f'clients/{tc_invoice.client.id}'))
-    await update_from_client_event(tc_client_subject)
+    tc_client_subject = TCSubject(**await tc2_request(f'clients/{tc_invoice.client.id}'))
+    await process_tc2_client(tc_client_subject)
