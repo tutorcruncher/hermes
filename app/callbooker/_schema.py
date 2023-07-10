@@ -1,10 +1,18 @@
-from datetime import datetime
-from enum import Enum
+from datetime import datetime, timezone
 from functools import cached_property
 from typing import Optional
 
 from pydantic import BaseModel, validator
-from pytz import utc
+
+
+def convert_to_utc(v: datetime) -> datetime:
+    if not v.tzinfo:
+        v = v.replace(tzinfo=timezone.utc)
+    elif v.tzinfo and v.tzinfo != timezone.utc:
+        v = v.astimezone(timezone.utc)
+    if v <= datetime.now(timezone.utc):
+        raise ValueError('meeting_dt must be in the future')
+    return v
 
 
 class CBEvent(BaseModel):
@@ -23,6 +31,8 @@ class CBEvent(BaseModel):
     meeting_dt: datetime
     timezone: str
     form_json: dict = {}
+
+    _convert_to_utc = validator('meeting_dt', allow_reuse=True)(convert_to_utc)
 
     @validator('name', 'company_name', 'website', 'country')
     def strip(cls, v):
@@ -43,10 +53,6 @@ class CBEvent(BaseModel):
         elif v and values.get('client_manager'):
             raise ValueError('Only one of sales_person or client_manager must be provided')
         return v
-
-    @validator('meeting_dt', pre=True)
-    def convert_from_ts(cls, v):
-        return datetime.fromtimestamp(v, tz=utc)
 
     @cached_property
     def _name_split(self):
@@ -86,22 +92,19 @@ class CBEvent(BaseModel):
         }
 
 
-class AvailType(str, Enum):
-    """
-    When showing the booking slots to clients, we generally allow a lead time of at least 2 hours. For support calls,
-    we want an "instant" meeting to allow the client to book a meeting immediately.
-    """
-
-    INSTANT = 'instant'
-    STANDARD = 'standard'
+# class AvailType(str, Enum):
+#     """
+#     When showing the booking slots to clients, we generally allow a lead time of at least 2 hours. For support calls,
+#     we want an "instant" meeting to allow the client to book a meeting immediately.
+#     """
+#
+#     INSTANT = 'instant'
+#     STANDARD = 'standard'
 
 
 class AvailabilityData(BaseModel):
     admin_id: int
     start_dt: datetime
     end_dt: datetime
-    avail_type: AvailType
 
-    @validator('start_dt', 'end_dt', pre=True)
-    def convert_from_ts(cls, v):
-        return datetime.fromtimestamp(v, tz=utc)
+    _convert_to_utc = validator('start_dt', 'end_dt', allow_reuse=True)(convert_to_utc)

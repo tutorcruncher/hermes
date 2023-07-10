@@ -30,7 +30,10 @@ def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterab
     max_end_hours = int(max_end_hours)
     max_end_mins = int(max_end_mins)
 
-    start = start - timedelta(days=1)  # If the user is in the US, we need to check the day before as well
+    # We need the check the days either side of the dt range to catch where admins are in different timezones
+    start = start - timedelta(days=1)
+    end = end + timedelta(days=1)
+
     admin_tz = pytz.timezone(admin_tz)
 
     while start < end:
@@ -57,21 +60,26 @@ def get_admin_available_slots(start: datetime, end: datetime, admin: Admins) -> 
         _slot_start = _iso_8601_to_datetime(time_slot['start'])
         _slot_end = _iso_8601_to_datetime(time_slot['end'])
         calendar_busy_slots.append({'start': _slot_start, 'end': _slot_end})
-
     # First we create the day slots for the days in the range and loop through them to get the free slots.
     for day_start, day_end in _get_day_start_ends(start, end, admin.timezone):
         slot_start = day_start
         day_calendar_busy_slots = [s for s in calendar_busy_slots if s['start'] >= day_start and s['end'] <= day_end]
         while slot_start + timedelta(minutes=settings.meeting_dur_mins + settings.meeting_buffer_mins) <= day_end:
             slot_end = slot_start + timedelta(minutes=settings.meeting_dur_mins)
+            # We check that the slot is not overlapping with any of the busy slots. Either the start or end of the slot
+            # is within the busy slot, or the busy slot is within the slot.
             is_overlapping = next(
                 (
                     b
                     for b in day_calendar_busy_slots
-                    if b['start'] <= slot_start <= b['end'] or b['start'] <= slot_end <= b['end']
+                    if b['start'] <= slot_start <= b['end']
+                    or b['start'] <= slot_end <= b['end']
+                    or (slot_start <= b['start'] and slot_end >= b['end'])
                 ),
                 None,
             )
-            if not is_overlapping:
+            is_outside_range = slot_start < start or slot_end > end
+            if not is_overlapping and not is_outside_range:
+                # Since we need to get the day starts and end of a bigger range, we need to exclude those slots here.
                 yield slot_start, slot_end
             slot_start = slot_end + timedelta(minutes=settings.meeting_buffer_mins)

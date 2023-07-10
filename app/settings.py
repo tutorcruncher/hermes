@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     meeting_buffer_mins: int = 15
     meeting_min_start: str = '10:00'
     meeting_max_end: str = '17:30'
-    tc_local_timezone = 'Europe/London'
+    dft_timezone = 'Europe/London'
 
     #  TC
     tc2_api_key: str = 'test-key'

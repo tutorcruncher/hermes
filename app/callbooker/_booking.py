@@ -1,6 +1,4 @@
-import datetime
-
-from pytz import utc
+from datetime import datetime, timezone, timedelta
 
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._meeting_content_templates import MEETING_CONTENT_TEMPLATES
@@ -13,9 +11,9 @@ async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, 
     Queries Google to for all busy slots for the admin and checks if the start time is in one of them.
     """
     # Everything uses UTC
-    assert meeting_start.tzinfo == utc
+    assert meeting_start.tzinfo == timezone.utc
     g_cal = AdminGoogleCalendar(admin_email=admin_email)
-    cal_data = g_cal.get_free_busy_slots(meeting_start, (meeting_start + datetime.timedelta(days=1)))
+    cal_data = g_cal.get_free_busy_slots(meeting_start, (meeting_start + timedelta(days=1)))
     for time_slot in cal_data['calendars'][admin_email]['busy']:
         _slot_start = _iso_8601_to_datetime(time_slot['start'])
         _slot_end = _iso_8601_to_datetime(time_slot['end'])
