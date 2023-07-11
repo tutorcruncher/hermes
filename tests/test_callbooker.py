@@ -66,6 +66,8 @@ class MeetingBookingTestCase(HermesTestCase):
     """
     A TestCase for testing when a company and contact need to be created when creating a meeting, and for testing when
     the admin is free for the meeting.
+
+    We disable the tasks as we don't want to do any of the testing of Pipedrive here.
     """
 
     def setUp(self):
@@ -87,8 +89,9 @@ class MeetingBookingTestCase(HermesTestCase):
             ]
         }
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_dt_validate_check_no_tz(self, mock_gcal_builder):
+    async def test_dt_validate_check_no_tz(self, mock_gcal_builder, mock_add_task):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T07:08'
@@ -103,9 +106,11 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         meeting = await Meetings.get()
         assert meeting.start_time == datetime(2026, 1, 3, 7, 8, tzinfo=utc)
+        assert mock_add_task.call_count == 2
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_dt_validate_check_utc(self, mock_gcal_builder):
+    async def test_dt_validate_check_utc(self, mock_gcal_builder, mock_add_task):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T07:08:00+00:00'
@@ -121,8 +126,9 @@ class MeetingBookingTestCase(HermesTestCase):
         meeting = await Meetings.get()
         assert meeting.start_time == datetime(2026, 1, 3, 7, 8, tzinfo=utc)
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_dt_validate_check_toronto(self, mock_gcal_builder):
+    async def test_dt_validate_check_toronto(self, mock_gcal_builder, mock_add_task):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T02:08:00-05:00'
@@ -138,8 +144,9 @@ class MeetingBookingTestCase(HermesTestCase):
         meeting = await Meetings.get()
         assert meeting.start_time == datetime(2026, 1, 3, 7, 8, tzinfo=utc)
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_1(self, mock_gcal_builder):
+    async def test_com_cli_create_update_1(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company doesn't exist so create
@@ -182,8 +189,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_2(self, mock_gcal_builder):
+    async def test_com_cli_create_update_2(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company exists - match by cligency_id
@@ -229,8 +237,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_3(self, mock_gcal_builder):
+    async def test_com_cli_create_update_3(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company exists - match by cligency_id
@@ -279,8 +288,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_4(self, mock_gcal_builder):
+    async def test_com_cli_create_update_4(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company exists - match by cligency_id
@@ -330,8 +340,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_5(self, mock_gcal_builder):
+    async def test_com_cli_create_update_5(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company exists - match by name
@@ -376,8 +387,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_6(self, mock_gcal_builder):
+    async def test_com_cli_create_update_6(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company doens't exist but checking cligency_id
@@ -445,8 +457,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'message': 'You already have a meeting booked around this time.', 'status': 'error'}
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_error_creating_gcal_event(self, mock_gcal_builder):
+    async def test_error_creating_gcal_event(self, mock_gcal_builder, mock_add_task):
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -495,8 +508,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'message': 'Admin does not exist.', 'status': 'error'}
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_admin_busy_start(self, mock_gcal_builder):
+    async def test_admin_busy_start(self, mock_gcal_builder, mock_add_task):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 12.30 and ends at 1.
         """
@@ -517,8 +531,9 @@ class MeetingBookingTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=meeting_data)
         assert r.json() == {'status': 'error', 'message': 'Admin is not free at this time.'}
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_admin_busy_during(self, mock_gcal_builder):
+    async def test_admin_busy_during(self, mock_gcal_builder, mock_add_task):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 11.15 and ends at 11.45.
         """
@@ -540,8 +555,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'status': 'error', 'message': 'Admin is not free at this time.'}
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_admin_busy_end(self, mock_gcal_builder):
+    async def test_admin_busy_end(self, mock_gcal_builder, mock_add_task):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 10.30 and ends at 11.
         """
@@ -563,8 +579,9 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'status': 'error', 'message': 'Admin is not free at this time.'}
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_support_call_book_create_contact(self, mock_gcal_builder):
+    async def test_support_call_book_create_contact(self, mock_gcal_builder, mock_add_task):
         """
         Book a new SUPPORT meeting
         Company exists
@@ -601,6 +618,25 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.admin == cli_man
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meetings.TYPE_SUPPORT
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_admin_doesnt_exist(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new SUPPORT meeting
+        Company exists
+        Contact doesn't exist so create
+        Create with client manager
+        """
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['tc_cligency_id'] = 10
+        await Companies.create(name='Julies Ltd', country='GB', tc_cligency_id=10)
+        assert await Contacts.all().count() == 0
+        r = await self.client.post('/callbooker/support/book/', json=meeting_data)
+        assert r.status_code == 400
+        assert r.json() == {'status': 'error', 'message': 'Admin does not exist.'}
+        assert not mock_add_task.called
 
 
 @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')

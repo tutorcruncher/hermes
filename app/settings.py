@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
 
+    # Redis
+    redis_dsn: str = 'redis://localhost:6379'
+
     # Call booker
     tc_call_booker_url: str = 'https://tutorcruncher.com/book-a-call'
 
@@ -25,6 +28,10 @@ class Settings(BaseSettings):
     tc2_api_key: str = 'test-key'
     tc2_api_url: str = 'https://localhost:8000/api'
     tc2_base_url: str = 'https://localhost:8000'
+
+    # Pipedrive
+    pd_api_key: str = 'test-key'
+    pd_api_url: str = 'https://api.pipedrive.com/v1'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'

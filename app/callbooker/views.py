@@ -4,6 +4,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException
+from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 from tortoise.exceptions import DoesNotExist
 from tortoise.expressions import Q
@@ -12,6 +13,7 @@ from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
 from app.models import Admins, Companies, Contacts, Meetings
+from app.pipedrive.tasks import check_update_pipedrive, create_pipedrive_activity
 from app.settings import Settings
 from app.utils import sign_args, get_bearer
 
@@ -30,37 +32,54 @@ async def _get_or_create_contact(company: Companies, event: CBSalesCall | CBSupp
     return contact
 
 
-async def _book_call(company: Companies, contact: Contacts, event: CBSalesCall | CBSupportCall):
+async def _book_meeting(
+    company: Companies, contact: Contacts, event: CBSalesCall | CBSupportCall
+) -> tuple[int, str, Optional[Meetings]]:
+    """
+    Check that:
+    A) There isn't already a meeting booked for this contact within 2 hours
+    B) The admin exists
+    C) The admin is free at this time
+
+    If all of these are true, create the meeting and return it.
+    """
     # Then we check that the meeting object doesn't already exist for this customer
-    if await Meetings.filter(
+    meeting = None
+    meeting_exists = await Meetings.filter(
         contact_id=contact.id,
         start_time__range=(event.meeting_dt - timedelta(hours=2), event.meeting_dt + timedelta(hours=2)),
-    ):
-        return JSONResponse(
-            {'status': 'error', 'message': 'You already have a meeting booked around this time.'}, status_code=400
-        )
-    # Then we check that the admin has space in their calendar (we query Google for this)
-    try:
-        admin = await Admins.get(tc_admin_id=event.admin_id)
-    except DoesNotExist:
-        return JSONResponse({'status': 'error', 'message': 'Admin does not exist.'}, status_code=400)
-    meeting_start = event.meeting_dt
-    meeting_end = event.meeting_dt + timedelta(minutes=settings.meeting_dur_mins)
-    admin_is_free = await check_gcal_open_slots(meeting_start, meeting_end, admin.email)
-
-    if admin_is_free:
-        meeting = await Meetings.create(
-            company=company,
-            contact=contact,
-            meeting_type=Meetings.TYPE_SALES if isinstance(event, CBSalesCall) else Meetings.TYPE_SUPPORT,
-            start_time=meeting_start,
-            end_time=meeting_end,
-            admin=admin,
-        )
-        await create_meeting_gcal_event(meeting=meeting)
-        return {'status': 'ok', 'meeting_id': meeting.id}
+    ).exists()
+    if meeting_exists:
+        status_code = 400
+        message = 'You already have a meeting booked around this time.'
     else:
-        return JSONResponse({'status': 'error', 'message': 'Admin is not free at this time.'}, status_code=400)
+        # Then we check that the admin has space in their calendar (we query Google for this)
+        try:
+            admin = await Admins.get(tc_admin_id=event.admin_id)
+        except DoesNotExist:
+            status_code = 400
+            message = 'Admin does not exist.'
+        else:
+            meeting_start = event.meeting_dt
+            meeting_end = event.meeting_dt + timedelta(minutes=settings.meeting_dur_mins)
+            admin_is_free = await check_gcal_open_slots(meeting_start, meeting_end, admin.email)
+
+            if admin_is_free:
+                meeting = await Meetings.create(
+                    company=company,
+                    contact=contact,
+                    meeting_type=Meetings.TYPE_SALES if isinstance(event, CBSalesCall) else Meetings.TYPE_SUPPORT,
+                    start_time=meeting_start,
+                    end_time=meeting_end,
+                    admin=admin,
+                )
+                await create_meeting_gcal_event(meeting=meeting)
+                status_code = 200
+                message = 'ok'
+            else:
+                message = 'Admin is not free at this time.'
+                status_code = 400
+    return status_code, message, meeting
 
 
 async def _get_or_create_contact_company(event: CBSalesCall) -> tuple[Companies, Contacts]:
@@ -94,7 +113,7 @@ async def _get_or_create_contact_company(event: CBSalesCall) -> tuple[Companies,
 
 
 @cb_router.post('/sales/book/')
-async def sales_call(event: CBSalesCall):
+async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website. Different from the support endpoint as we may need to
     create a new company and contact.
@@ -103,11 +122,17 @@ async def sales_call(event: CBSalesCall):
 
     # First we get or create the company and contact objects.
     company, contact = await _get_or_create_contact_company(event)
-    return await _book_call(company, contact, event)
+    status_code, message, meeting = await _book_meeting(company, contact, event)
+    if meeting:
+        background_tasks.add_task(check_update_pipedrive, company, contact)
+        background_tasks.add_task(create_pipedrive_activity, meeting)
+    return JSONResponse(
+        {'status': 'ok' if status_code == 200 else 'error', 'message': message}, status_code=status_code
+    )
 
 
 @cb_router.post('/support/book/')
-async def support_call(event: CBSupportCall):
+async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website. Different from the sales endpoint as we already have
     the company and don't need as much data
@@ -117,7 +142,13 @@ async def support_call(event: CBSupportCall):
     # Get the company and get_or_create the contact
     company = await Companies.get(tc_cligency_id=event.tc_cligency_id)
     contact = await _get_or_create_contact(company, event)
-    return await _book_call(company, contact, event)
+    status_code, message, meeting = await _book_meeting(company, contact, event)
+    if meeting:
+        background_tasks.add_task(check_update_pipedrive, company, contact)
+        background_tasks.add_task(create_pipedrive_activity, meeting)
+    return JSONResponse(
+        {'status': 'ok' if status_code == 200 else 'error', 'message': message}, status_code=status_code
+    )
 
 
 @cb_router.post('/availability/')

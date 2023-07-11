@@ -8,6 +8,7 @@ settings = Settings()
 class Admins(models.Model):
     id = fields.IntField(pk=True)
     tc_admin_id = fields.IntField(unique=True)
+    pd_owner_id = fields.IntField(null=True)
 
     first_name = fields.CharField(max_length=255)
     last_name = fields.CharField(max_length=255)
@@ -30,7 +31,9 @@ class Admins(models.Model):
 
 class Companies(models.Model):
     """
-    Represents a potential/current company using TutorCruncher.
+    Represents a company.
+    In TC this is a mix between a meta Client and an Agency.
+    In Pipedrive this is an Organization.
     """
 
     STATUS_PENDING_EMAIL_CONF = 'pending_email_conf'
@@ -44,11 +47,13 @@ class Companies(models.Model):
     id = fields.IntField(pk=True)
     tc_agency_id = fields.IntField(unique=True, null=True)
     tc_cligency_id = fields.IntField(unique=True, null=True)
+    pd_org_id = fields.IntField(unique=True, null=True)
+
     created = fields.DatetimeField(auto_now_add=True)
-    status = fields.CharField(max_length=25, null=True)
+    status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
 
     name = fields.CharField(max_length=255)
-    country = fields.CharField(max_length=255)
+    country = fields.CharField(max_length=255, description='Country code, e.g. GB')
     website = fields.CharField(max_length=255, null=True)
 
     client_manager = fields.ForeignKeyField('models.Admins', related_name='companies', null=True)
@@ -56,9 +61,11 @@ class Companies(models.Model):
     bdr_person = fields.ForeignKeyField('models.Admins', related_name='leads', null=True)
 
     paid_invoice_count = fields.IntField(default=0)
-
     estimated_income = fields.CharField(max_length=255, null=True)
     currency = fields.CharField(max_length=255, null=True)
+
+    has_booked_call = fields.BooleanField(default=False)
+    has_signed_up = property(lambda self: bool(self.tc_cligency_id))
 
     contacts: fields.ReverseRelation['Contacts']
     deals: fields.ReverseRelation['Deals']
@@ -68,13 +75,23 @@ class Companies(models.Model):
         return self.name
 
     @property
-    def tc_cligency_url(self):
-        return f'{settings.tc2_base_url}/clients/{self.tc_cligency_id}/'
+    def tc_cligency_url(self) -> str:
+        if self.tc_cligency_id:
+            return f'{settings.tc2_base_url}/clients/{self.tc_cligency_id}/'
+        else:
+            return ''
 
 
 class Contacts(models.Model):
+    """
+    Represents a contact, an individual who works at a company.
+    In TC this is a mix between a meta Client and SR.
+    In Pipedrive this is an Person.
+    """
+
     id = fields.IntField(pk=True)
     tc_sr_id = fields.IntField(unique=True, null=True)
+    pd_person_id = fields.IntField(unique=True, null=True)
 
     first_name = fields.CharField(max_length=255, null=True)
     last_name = fields.CharField(max_length=255, null=True)

@@ -18,6 +18,8 @@ async def callback(webhook: TCWebhook, Authorization: Optional[str] = Header(Non
     Callback for TC2
     Updates Hermes and other systems based on events in TC2.
     """
+    # TODO: Check less than 1 paying invoice
+    # TODO: Add created and check that
     if not get_bearer(Authorization) == settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
