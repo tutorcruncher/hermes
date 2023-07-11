@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.models import Companies, Contacts
+from app.models import Companies, Contacts, Meetings
 
 
 def _remove_nulls(**kwargs):
@@ -62,4 +62,30 @@ class Person(BaseModel):
             phone=contact.phone,
             address_country=contact.country,
             org_id=company.pd_org_id,
+        )
+
+
+class Activity(BaseModel):
+    due_dt: str
+    due_time: str
+    subject: str
+    user_id: int
+    deal_id: Optional[int] = None
+    person_id: Optional[int] = None
+    org_id: Optional[int] = None
+
+    @classmethod
+    async def from_meeting(cls, meeting: Meetings):
+        return cls(
+            _remove_nulls(
+                **{
+                    'due_dt': meeting.start_time.strftime('%Y-%m-%d'),
+                    'due_time': meeting.start_time.strftime('%H:%M'),
+                    'subject': meeting.name,
+                    'user_id': (await meeting.admin).pd_owner_id,
+                    'deal_id': meeting.deal_id and (await meeting.deal).pd_deal_id,
+                    'person_id': meeting.contact_id and (await meeting.contact).pd_person_id,
+                    'org_id': meeting.contact_id and (await meeting.company).pd_org_id,
+                }
+            )
         )

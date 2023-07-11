@@ -13,7 +13,7 @@ We want to create activities in pipedrive when:
 import requests
 
 from app.settings import Settings
-from app.models import Companies, Contacts
+from app.models import Companies, Contacts, Meetings
 from app.pipedrive._schema import Organisation, Person
 
 session = requests.Session()
@@ -59,3 +59,19 @@ async def create_or_update_person(contact: Contacts) -> Person:
         contact.pd_person_id = pipedrive_person.id
         await contact.save()
     return pipedrive_person
+
+
+async def create_activity(meeting: Meetings) -> Activity:
+    """
+    Creates a new activity within Pipedrive.
+    """
+    # TODO
+    pass
+
+
+async def create_deal(deal: Deals) -> Deal:
+    """
+    Creates a new deal within Pipedrive.
+    """
+    # TODO
+    pass

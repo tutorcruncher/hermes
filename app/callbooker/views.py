@@ -13,7 +13,7 @@ from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
 from app.models import Admins, Companies, Contacts, Meetings
-from app.pipedrive.tasks import check_update_pipedrive, create_pipedrive_activity
+from app.pipedrive.tasks import post_sales_call, post_support_call
 from app.settings import Settings
 from app.utils import sign_args, get_bearer
 
@@ -124,8 +124,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
     company, contact = await _get_or_create_contact_company(event)
     status_code, message, meeting = await _book_meeting(company, contact, event)
     if meeting:
-        background_tasks.add_task(check_update_pipedrive, company, contact)
-        background_tasks.add_task(create_pipedrive_activity, meeting)
+        background_tasks.add_task(post_sales_call, company, contact, meeting)
     return JSONResponse(
         {'status': 'ok' if status_code == 200 else 'error', 'message': message}, status_code=status_code
     )
@@ -144,8 +143,7 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
     contact = await _get_or_create_contact(company, event)
     status_code, message, meeting = await _book_meeting(company, contact, event)
     if meeting:
-        background_tasks.add_task(check_update_pipedrive, company, contact)
-        background_tasks.add_task(create_pipedrive_activity, meeting)
+        background_tasks.add_task(post_support_call, company, contact, meeting)
     return JSONResponse(
         {'status': 'ok' if status_code == 200 else 'error', 'message': message}, status_code=status_code
     )

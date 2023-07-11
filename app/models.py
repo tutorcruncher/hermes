@@ -22,6 +22,10 @@ class Admins(models.Model):
     password = fields.CharField(max_length=255, default='')
 
     def __str__(self):
+        return self.name
+
+    @property
+    def name(self):
         return f'{self.first_name} {self.last_name}'.strip()
 
     @property
@@ -47,12 +51,14 @@ class Companies(models.Model):
     id = fields.IntField(pk=True)
     tc_agency_id = fields.IntField(unique=True, null=True)
     tc_cligency_id = fields.IntField(unique=True, null=True)
+
     pd_org_id = fields.IntField(unique=True, null=True)
 
     created = fields.DatetimeField(auto_now_add=True)
     status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
 
     name = fields.CharField(max_length=255)
+    price_plan = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255, description='Country code, e.g. GB')
     website = fields.CharField(max_length=255, null=True)
 
@@ -128,6 +134,11 @@ class Deals(models.Model):
         return f'{self.name} ({self.amount})'
 
 
+class Deals(models.Model):
+    id = fields.IntField(pk=True)
+    company = fields.ForeignKeyField('models.Companies', related_name='deals')
+
+
 class Meetings(models.Model):
     STATUS_PLANNED = 'PLANNED'
     STATUS_CANCELED = 'CANCELED'
@@ -148,3 +159,12 @@ class Meetings(models.Model):
 
     admin = fields.ForeignKeyField('models.Admins', related_name='meetings')
     contact = fields.ForeignKeyField('models.Contacts', related_name='meetings')
+
+    @property
+    def name(self):
+        admin = await self.admin
+        if self.meeting_type == Meetings.TYPE_SALES:
+            return f'Introduction call with {admin.name}'
+        else:
+            assert self.meeting_type == Meetings.TYPE_SUPPORT
+            return f'Support call with {admin.name}'
