@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.models import Companies, Contacts, Meetings
+from app.models import Companies, Contacts, Meetings, Deals
 
 
 def _remove_nulls(**kwargs):
@@ -76,16 +76,43 @@ class Activity(BaseModel):
 
     @classmethod
     async def from_meeting(cls, meeting: Meetings):
+        contact = await meeting.contact
         return cls(
-            _remove_nulls(
+            **_remove_nulls(
                 **{
                     'due_dt': meeting.start_time.strftime('%Y-%m-%d'),
                     'due_time': meeting.start_time.strftime('%H:%M'),
                     'subject': meeting.name,
                     'user_id': (await meeting.admin).pd_owner_id,
                     'deal_id': meeting.deal_id and (await meeting.deal).pd_deal_id,
-                    'person_id': meeting.contact_id and (await meeting.contact).pd_person_id,
-                    'org_id': meeting.contact_id and (await meeting.company).pd_org_id,
+                    'person_id': contact.pd_person_id,
+                    'org_id': (await contact.company).pd_org_id,
                 }
+            )
+        )
+
+
+class Deal(BaseModel):
+    id: Optional[int] = None
+    title: str
+    org_id: int
+    person_id: Optional[int] = None
+    pipeline_id: int
+    stage_id: int
+    status: str
+
+    @classmethod
+    async def from_deal(cls, deal: Deals):
+        company = deal.company_id and await deal.company
+        contact = deal.contact_id and await deal.contact
+        return cls(
+            **_remove_nulls(
+                title=deal.name,
+                org_id=company and company.pd_org_id,
+                user_id=(await deal.admin).pd_owner_id,
+                person_id=contact and contact.pd_person_id,
+                pipeline_id=deal.pipeline_id,
+                stage_id=deal.pipeline_stage_id,
+                status=deal.status,
             )
         )

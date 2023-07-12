@@ -13,8 +13,8 @@ We want to create activities in pipedrive when:
 import requests
 
 from app.settings import Settings
-from app.models import Companies, Contacts, Meetings
-from app.pipedrive._schema import Organisation, Person
+from app.models import Companies, Contacts, Meetings, Deals
+from app.pipedrive._schema import Organisation, Person, Deal as PDDeal, Activity
 
 session = requests.Session()
 settings = Settings()
@@ -61,17 +61,24 @@ async def create_or_update_person(contact: Contacts) -> Person:
     return pipedrive_person
 
 
-async def create_activity(meeting: Meetings) -> Activity:
+async def get_or_create_deal(deal: Deals) -> PDDeal:
+    """
+    Creates a new deal if none exists within Pipedrive.
+    """
+    pd_deal = await PDDeal.from_deal(deal)
+    if not deal.pd_deal_id:
+        pd_deal = PDDeal(**await pipedrive_request('deals', method='POST', data=pd_deal.dict(exclude={'id'})))
+        deal.pd_deal_id = pd_deal.id
+        await deal.save()
+    return pd_deal
+
+
+async def create_activity(meeting: Meetings, pipedrive_deal: PDDeal = None) -> Activity:
     """
     Creates a new activity within Pipedrive.
     """
-    # TODO
-    pass
-
-
-async def create_deal(deal: Deals) -> Deal:
-    """
-    Creates a new deal within Pipedrive.
-    """
-    # TODO
-    pass
+    hermes_activity = await Activity.from_meeting(meeting)
+    hermes_activity_data = hermes_activity.dict(exclude={'id'})
+    if pipedrive_deal:
+        hermes_activity_data['deal_id'] = pipedrive_deal.id
+    return Activity(**await pipedrive_request('activities/', method='POST', data=hermes_activity_data))

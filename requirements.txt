@@ -3,6 +3,7 @@ fastapi==0.100.0
 pydantic==1.10.10
 uvicorn==0.22.0
 requests==2.31.0
+aioredis==2.0.1
 
 # Look at all the Google libraries we need to install.
 google==3.0.0

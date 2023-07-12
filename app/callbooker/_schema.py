@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel, validator
 
+from app.models import Companies
+
 
 def _convert_to_utc(v: datetime) -> datetime:
     if not v.tzinfo:
@@ -40,11 +42,17 @@ class CBSalesCall(BaseModel):
     currency: str
     admin_id: int
     meeting_dt: datetime
+    price_plan: str
 
     _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
     _strip = validator('name', 'company_name', 'website', 'country', allow_reuse=True)(_strip)
     _to_lower = validator('email', allow_reuse=True)(_to_lower)
     _to_title = validator('name', allow_reuse=True)(_to_title)
+
+    @validator('price_plan')
+    def _price_plan(cls, v):
+        assert v in (Companies.PP_PAYG, Companies.PP_STARTUP, Companies.PP_ENTERPRISE)
+        return v
 
     @cached_property
     def _name_split(self):
@@ -67,6 +75,7 @@ class CBSalesCall(BaseModel):
             'website': self.website,
             'country': self.country,
             'name': self.company_name,
+            'price_plan': self.price_plan,
         }
 
     def contact_dict(self) -> dict:
@@ -91,6 +100,7 @@ class CBSupportCall(BaseModel):
     email: str
     name: str
     country: str
+    company_name: str
 
     _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
     _strip = validator('name', allow_reuse=True)(_strip)
@@ -118,15 +128,8 @@ class CBSupportCall(BaseModel):
             'country': self.country,
         }
 
-
-# class AvailType(str, Enum):
-#     """
-#     When showing the booking slots to clients, we generally allow a lead time of at least 2 hours. For support calls,
-#     we want an "instant" meeting to allow the client to book a meeting immediately.
-#     """
-#
-#     INSTANT = 'instant'
-#     STANDARD = 'standard'
+    def company_dict(self) -> dict:
+        return {'tc_cligency_id': self.tc_cligency_id, 'country': self.country, 'name': self.company_name}
 
 
 class AvailabilityData(BaseModel):
