@@ -1,0 +1,18 @@
+from fastapi_admin.providers.login import UsernamePasswordProvider
+
+from app.models import Admins
+
+
+class AuthProvider(UsernamePasswordProvider):
+    login_path = '/login'
+    logout_path = '/logout'
+    template = 'providers/login/login.html'
+    login_title = 'Login to your account'
+    login_logo_url = ''
+    admin_model = Admins
+
+    def __init__(self):
+        pass
+
+    async def create_user(self, username: str, password: str, **kwargs):
+        return await self.admin_model.create(email=username, username=username, password=password, **kwargs)

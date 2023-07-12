@@ -1,3 +1,4 @@
+from fastapi_admin.models import AbstractAdmin
 from tortoise import fields, models
 
 from app.settings import Settings
@@ -71,13 +72,13 @@ class Pipelines(models.Model):
     deals: fields.ReverseRelation['Deals']
 
 
-class Admins(models.Model):
+class Admins(AbstractAdmin):
     id = fields.IntField(pk=True)
-    tc_admin_id = fields.IntField(unique=True)
+    tc_admin_id = fields.IntField(unique=True, null=True)
     pd_owner_id = fields.IntField(null=True)
 
-    first_name = fields.CharField(max_length=255)
-    last_name = fields.CharField(max_length=255)
+    first_name = fields.CharField(max_length=255, default='')
+    last_name = fields.CharField(max_length=255, default='')
     email = fields.CharField(max_length=255)
     timezone = fields.CharField(max_length=255, default=settings.dft_timezone)
 
@@ -85,7 +86,7 @@ class Admins(models.Model):
     is_client_manager = fields.BooleanField(default=False)
     is_bdr_person = fields.BooleanField(default=False)
 
-    password = fields.CharField(max_length=255, default='')
+    password = fields.CharField(max_length=255)
 
     deals: fields.ReverseRelation['Deals']
 
