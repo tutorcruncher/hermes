@@ -3,10 +3,12 @@ fastapi==0.100.0
 pydantic==1.10.10
 uvicorn==0.22.0
 requests==2.31.0
+aioredis==2.0.1
 
+# Look at all the Google libraries we need to install.
 google==3.0.0
 google-api-core==2.11.1
-google-api-python-client==2.91.0
+google-api-python-client==2.92.0
 google-auth==2.21.0
 google-auth-httplib2==0.1.0
 googleapis-common-protos==1.59.1

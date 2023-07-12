@@ -1,17 +1,17 @@
 from datetime import datetime, timedelta
-from typing import Iterable
+from typing import AsyncIterable
 
 import pytz
 
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._utils import _iso_8601_to_datetime
 from app.models import Admins
-from app.settings import Settings
-
-settings = Settings()
+from app.utils import get_config
 
 
-def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterable[tuple[datetime, datetime]]:
+async def _get_day_start_ends(
+    start: datetime, end: datetime, admin_tz: str
+) -> AsyncIterable[tuple[datetime, datetime]]:
     """
     For each day in the range, we get the earliest and latest possible working hours as if they were in the admin's
     timezone. This allows us to accurately compare across ranges in DST etc.
@@ -22,11 +22,13 @@ def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterab
     22nd Oct 09:00 - 16:00 UTC (10:00 - 17:00 GMT)
     23rd Oct 09:00 - 16:00 UTC (10:00 - 17:00 GMT)
     """
+    config = await get_config()
+
     date_start_ends = []
-    min_start_hours, min_start_mins = settings.meeting_min_start.split(':')
+    min_start_hours, min_start_mins = config.meeting_min_start.split(':')
     min_start_hours = int(min_start_hours)
     min_start_mins = int(min_start_mins)
-    max_end_hours, max_end_mins = settings.meeting_max_end.split(':')
+    max_end_hours, max_end_mins = config.meeting_max_end.split(':')
     max_end_hours = int(max_end_hours)
     max_end_mins = int(max_end_mins)
 
@@ -45,7 +47,9 @@ def _get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> Iterab
         start = start + timedelta(days=1)
 
 
-def get_admin_available_slots(start: datetime, end: datetime, admin: Admins) -> Iterable[tuple[datetime, datetime]]:
+async def get_admin_available_slots(
+    start: datetime, end: datetime, admin: Admins
+) -> AsyncIterable[tuple[datetime, datetime]]:
     """
     Gets the unavailable times from Googles freebusy API then breaks them down
     against 10:00 - 17:00 to find the available slots to send back to TC.com
@@ -61,11 +65,12 @@ def get_admin_available_slots(start: datetime, end: datetime, admin: Admins) -> 
         _slot_end = _iso_8601_to_datetime(time_slot['end'])
         calendar_busy_slots.append({'start': _slot_start, 'end': _slot_end})
     # First we create the day slots for the days in the range and loop through them to get the free slots.
-    for day_start, day_end in _get_day_start_ends(start, end, admin.timezone):
+    config = await get_config()
+    async for day_start, day_end in _get_day_start_ends(start, end, admin.timezone):
         slot_start = day_start
         day_calendar_busy_slots = [s for s in calendar_busy_slots if s['start'] >= day_start and s['end'] <= day_end]
-        while slot_start + timedelta(minutes=settings.meeting_dur_mins + settings.meeting_buffer_mins) <= day_end:
-            slot_end = slot_start + timedelta(minutes=settings.meeting_dur_mins)
+        while slot_start + timedelta(minutes=config.meeting_dur_mins + config.meeting_buffer_mins) <= day_end:
+            slot_end = slot_start + timedelta(minutes=config.meeting_dur_mins)
             # We check that the slot is not overlapping with any of the busy slots. Either the start or end of the slot
             # is within the busy slot, or the busy slot is within the slot.
             is_overlapping = next(
@@ -82,4 +87,4 @@ def get_admin_available_slots(start: datetime, end: datetime, admin: Admins) -> 
             if not is_overlapping and not is_outside_range:
                 # Since we need to get the day starts and end of a bigger range, we need to exclude those slots here.
                 yield slot_start, slot_end
-            slot_start = slot_end + timedelta(minutes=settings.meeting_buffer_mins)
+            slot_start = slot_end + timedelta(minutes=config.meeting_buffer_mins)
