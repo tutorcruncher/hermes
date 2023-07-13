@@ -51,12 +51,7 @@ class AdminResource(Model):
     page_pre_title = page_title = label = 'Admins'
     fields = [
         Field('username', label='Email', input_=inputs.Email()),
-        Field(
-            name='password',
-            label='Password',
-            display=displays.InputOnly(),
-            input_=inputs.Password(),
-        ),
+        Field(name='password', label='Password', display=displays.InputOnly(), input_=inputs.Password()),
         Field('tc_admin_id', label='TC admin id', input_=inputs.Number()),
         Field('pd_owner_id', label='Pipedrive owner ID', input_=inputs.Number()),
         'first_name',

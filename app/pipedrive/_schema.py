@@ -105,14 +105,16 @@ class Deal(BaseModel):
     async def from_deal(cls, deal: Deals):
         company = deal.company_id and await deal.company
         contact = deal.contact_id and await deal.contact
+        pipeline = await deal.pipeline
+        pipeline_stage = await deal.pipeline_stage
         return cls(
             **_remove_nulls(
                 title=deal.name,
                 org_id=company and company.pd_org_id,
                 user_id=(await deal.admin).pd_owner_id,
                 person_id=contact and contact.pd_person_id,
-                pipeline_id=deal.pipeline_id,
-                stage_id=deal.pipeline_stage_id,
+                pipeline_id=pipeline.pd_pipeline_id,
+                stage_id=pipeline_stage.pd_stage_id,
                 status=deal.status,
             )
         )

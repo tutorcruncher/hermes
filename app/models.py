@@ -89,7 +89,7 @@ class Admins(AbstractAdmin):
     is_client_manager = fields.BooleanField(default=False)
     is_bdr_person = fields.BooleanField(default=False)
 
-    password = fields.CharField(max_length=255)
+    password = fields.CharField(max_length=255, null=True)
 
     deals: fields.ReverseRelation['Deals']
 

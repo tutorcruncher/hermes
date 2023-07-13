@@ -72,7 +72,6 @@ class MeetingBookingTestCase(HermesTestCase):
     """
 
     def setUp(self):
-        super().setUp()
         self.url = '/callbooker/sales/book/'
 
     async def test_dt_validate_check_ts(self):
@@ -93,14 +92,13 @@ class MeetingBookingTestCase(HermesTestCase):
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     async def test_dt_validate_check_no_tz(self, mock_gcal_builder, mock_add_task):
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T07:08'
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -113,14 +111,13 @@ class MeetingBookingTestCase(HermesTestCase):
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     async def test_dt_validate_check_utc(self, mock_gcal_builder, mock_add_task):
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T07:08:00+00:00'
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -132,14 +129,13 @@ class MeetingBookingTestCase(HermesTestCase):
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     async def test_dt_validate_check_toronto(self, mock_gcal_builder, mock_add_task):
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['meeting_dt'] = '2026-01-03T02:08:00-05:00'
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -157,12 +153,11 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact doesn't exist so create
         Create with admin
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -202,14 +197,13 @@ class MeetingBookingTestCase(HermesTestCase):
         Company exists - match by cligency_id
         Contact doesn't exist so create
         """
-        await self._basic_setup()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -251,14 +245,13 @@ class MeetingBookingTestCase(HermesTestCase):
         Company exists - match by cligency_id
         Contact exists - match by email
         """
-        await self._basic_setup()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -304,14 +297,13 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact exists - match by last name
         No admins linked
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -357,12 +349,11 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact exists - match by last name
         No admins linked
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -405,14 +396,13 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact doesn't exist so create
         No admins linked
         """
-        await self._basic_setup()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -447,11 +437,10 @@ class MeetingBookingTestCase(HermesTestCase):
         assert meeting.meeting_type == Meetings.TYPE_SALES
 
     async def test_meeting_already_exists(self):
-        await self._basic_setup()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -471,14 +460,13 @@ class MeetingBookingTestCase(HermesTestCase):
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     async def test_error_creating_gcal_event(self, mock_gcal_builder, mock_add_task):
-        await self._basic_setup()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -518,7 +506,6 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 12.30 and ends at 1.
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
@@ -527,7 +514,7 @@ class MeetingBookingTestCase(HermesTestCase):
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -542,7 +529,6 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 11.15 and ends at 11.45.
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
@@ -551,7 +537,7 @@ class MeetingBookingTestCase(HermesTestCase):
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -567,7 +553,6 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         The admin is busy from 11 - 12.30. Try booking a meeting at that starts at 10.30 and ends at 11.
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
         meeting_data = CB_MEETING_DATA.copy()
@@ -576,7 +561,7 @@ class MeetingBookingTestCase(HermesTestCase):
         await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -595,14 +580,13 @@ class MeetingBookingTestCase(HermesTestCase):
         Contact doesn't exist so create
         Create with client manager
         """
-        await self._basic_setup()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['tc_cligency_id'] = 10
         cli_man = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_client_manager=True,
             tc_admin_id=20,
         )
@@ -638,7 +622,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         self.admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -675,7 +659,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         self.admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             timezone='America/Toronto',
@@ -719,7 +703,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         self.admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -755,7 +739,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         self.admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -779,7 +763,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -805,7 +789,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -829,7 +813,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -852,7 +836,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )
@@ -873,7 +857,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
         )

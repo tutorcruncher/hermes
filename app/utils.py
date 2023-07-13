@@ -28,6 +28,9 @@ redis_client = aioredis.from_url(settings.redis_dsn)
 
 
 async def get_config() -> 'Configs':
+    """
+    We always want to have one Config object.
+    """
     from app.models import Configs
 
     try:

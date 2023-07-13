@@ -136,7 +136,6 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
     Endpoint for someone booking a Sales call from the website.
     """
     # TODO: We need to do authorization here
-
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
     try:

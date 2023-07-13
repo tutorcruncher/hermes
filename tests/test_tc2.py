@@ -162,7 +162,7 @@ class TCCallbackTestCase(HermesTestCase):
         assert await Contacts.all().count() == 0
 
         admin = await Admins.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', email='brian@tc.com', password='foo'
+            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
 
         modified_data = client_full_event_data()
@@ -196,7 +196,7 @@ class TCCallbackTestCase(HermesTestCase):
         Setting associated admin to None
         """
         admin = await Admins.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', email='brian@tc.com', password='foo'
+            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
         await Companies.create(
             tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', client_manager=admin, country='GB'

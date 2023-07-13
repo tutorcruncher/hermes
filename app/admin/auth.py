@@ -16,3 +16,7 @@ class AuthProvider(UsernamePasswordProvider):
 
     async def create_user(self, username: str, password: str, **kwargs):
         return await self.admin_model.create(email=username, username=username, password=password, **kwargs)
+
+    async def pre_save_admin(self, _, instance, using_db, update_fields):
+        if instance.password:
+            await super().pre_save_admin(_, instance, using_db, update_fields)
