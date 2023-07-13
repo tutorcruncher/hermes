@@ -79,7 +79,10 @@ class Admins(AbstractAdmin):
 
     first_name = fields.CharField(max_length=255, default='')
     last_name = fields.CharField(max_length=255, default='')
-    email = fields.CharField(max_length=255)
+
+    # This should be the user's actual email address, but it's a pain to overwrite fastapi to use email address instead
+    # of username, so we use username and have a property for email.
+    username = fields.CharField(max_length=255, description='Use their ACTUAL email address, not META')
     timezone = fields.CharField(max_length=255, default=settings.dft_timezone)
 
     is_sales_person = fields.BooleanField(default=False)
@@ -89,6 +92,10 @@ class Admins(AbstractAdmin):
     password = fields.CharField(max_length=255)
 
     deals: fields.ReverseRelation['Deals']
+
+    @property
+    def email(self):
+        return self.username
 
     def __str__(self):
         return self.name

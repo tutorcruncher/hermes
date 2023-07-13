@@ -3,20 +3,22 @@ import os
 import aioredis
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
-from fastapi_admin.constants import BASE_DIR
 from tortoise.contrib.fastapi import register_tortoise
 
 from app.admin.auth import AuthProvider
+
 from app.callbooker.views import cb_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
 
-from app.admin import resources, views
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+from app.admin import resources, views  # noqa: E402
 
 settings = Settings()
 
 app = FastAPI()
-app.mount('/admin', admin_app)
+app.mount('', admin_app)
 register_tortoise(
     app,
     db_url=settings.pg_dsn,
@@ -32,8 +34,12 @@ app.include_router(cb_router, prefix='/callbooker')
 async def startup():
     redis = await aioredis.from_url(settings.redis_dsn)
     await admin_app.configure(
-        logo_url='https://preview.tabler.io/static/logo-white.svg',
-        template_folders=[os.path.join(BASE_DIR, 'admin/templates')],
+        template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
         providers=[AuthProvider()],
+        language_switch=False,
         redis=redis,
+        admin_path='',
     )
+    from app.utils import get_config
+
+    await get_config()

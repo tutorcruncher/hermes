@@ -1,14 +1,19 @@
-from httpx import AsyncClient
+import pytest
 from tortoise.contrib.test import TestCase, finalizer, initializer
 
-from app.main import app, settings
+from app.main import settings
 from app.models import PipelineStages, Pipelines, Configs
 
 
+@pytest.mark.usefixtures('client')
 class HermesTestCase(TestCase):
     def setUp(self) -> None:
-        initializer(['app.models'], db_url=settings.pg_dsn)
-        self.client = AsyncClient(app=app, base_url='http://test')
+        initializer(['app.models'], db_url=f'{settings.pg_dsn}_test')
+        # self.client = AsyncClient(app=create_app(), base_url='http://test')
+
+    # @pytest.fixture(autouse=True)
+    # async def prepare_client(self, client):
+    #     self.client = client
 
     def tearDown(self):
         finalizer()
