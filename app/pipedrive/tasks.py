@@ -1,9 +1,9 @@
-from app.models import Companies, Contacts, Meetings, Deals
+from app.models import Companies, Contacts, Deals, Meetings
 from app.pipedrive.api import (
+    create_activity,
     create_or_update_organisation,
     create_or_update_person,
     get_or_create_deal,
-    create_activity,
 )
 
 

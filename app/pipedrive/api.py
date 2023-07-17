@@ -12,9 +12,11 @@ We want to create activities in pipedrive when:
 """
 import requests
 
+from app.models import Companies, Contacts, Deals, Meetings
+from app.pipedrive._schema import Activity
+from app.pipedrive._schema import Deal as PDDeal
+from app.pipedrive._schema import Organisation, Person
 from app.settings import Settings
-from app.models import Companies, Contacts, Meetings, Deals
-from app.pipedrive._schema import Organisation, Person, Deal as PDDeal, Activity
 
 session = requests.Session()
 settings = Settings()

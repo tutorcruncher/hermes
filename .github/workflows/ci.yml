@@ -30,6 +30,7 @@ jobs:
 
     env:
       PG_DSN: 'postgres://postgres:postgres@localhost:5432/hermes_test'
+      TEST_DB_URL: 'postgres://postgres:postgres@localhost:5432/hermes_test'
 
     steps:
     - uses: actions/checkout@v2

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._meeting_content_templates import MEETING_CONTENT_TEMPLATES

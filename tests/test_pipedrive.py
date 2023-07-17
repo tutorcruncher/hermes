@@ -1,8 +1,8 @@
 import re
-from datetime import timezone, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from app.models import Companies, Contacts, Admins, Meetings, Deals
+from app.models import Admins, Companies, Contacts, Deals, Meetings, Pipelines
 from app.pipedrive.tasks import post_sales_call, post_support_call
 from tests._common import HermesTestCase
 
@@ -55,7 +55,6 @@ class PipedriveTestCase(HermesTestCase):
         Test that the sales call flow creates the org, person, deal and activity in pipedrive. None of the objects
         already exist so should create one of each in PD.
         """
-        await self._basic_setup()
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB')
@@ -66,7 +65,7 @@ class PipedriveTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
@@ -121,7 +120,7 @@ class PipedriveTestCase(HermesTestCase):
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
                 'person_id': 1,
-                'pipeline_id': 1,
+                'pipeline_id': (await Pipelines.get()).pd_pipeline_id,
                 'stage_id': 1,
                 'status': 'open',
                 'id': 1,
@@ -148,7 +147,6 @@ class PipedriveTestCase(HermesTestCase):
         created for them.
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-        await self._basic_setup()
 
         company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=10)
         self.pipedrive.db['organizations'] = {
@@ -173,7 +171,7 @@ class PipedriveTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
@@ -236,7 +234,6 @@ class PipedriveTestCase(HermesTestCase):
         Test that the support call workflow works. The company doesn't exist in Pipedrive so no activity created
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-        await self._basic_setup()
 
         company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB')
         contact = await Contacts.create(
@@ -246,7 +243,7 @@ class PipedriveTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
@@ -269,7 +266,6 @@ class PipedriveTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_update_org_create_person_deal_exists(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-        await self._basic_setup()
         company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1)
         self.pipedrive.db['organizations'] = {
             1: {
@@ -293,7 +289,7 @@ class PipedriveTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
@@ -347,11 +343,10 @@ class PipedriveTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_create_org_create_person_with_owner_admin(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-        await self._basic_setup()
         sales_person = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
@@ -416,7 +411,6 @@ class PipedriveTestCase(HermesTestCase):
         This is basically testing that if the data in PD and the DB are up to date, we don't do the update request
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-        await self._basic_setup()
         company = await Companies.create(name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1)
         self.pipedrive.db['organizations'] = {
             1: {
@@ -451,7 +445,7 @@ class PipedriveTestCase(HermesTestCase):
         admin = await Admins.create(
             first_name='Steve',
             last_name='Jobs',
-            email='climan@example.com',
+            username='climan@example.com',
             is_sales_person=True,
             tc_admin_id=20,
             pd_owner_id=99,
