@@ -139,7 +139,7 @@ class Companies(models.Model):
 
     name = fields.CharField(max_length=255)
     price_plan = fields.CharField(max_length=255, default=PP_PAYG)
-    country = fields.CharField(max_length=255, description='Country code, e.g. GB')
+    country = fields.CharField(max_length=255, description='Country code, e.g. GB', null=True)
     website = fields.CharField(max_length=255, null=True)
 
     client_manager = fields.ForeignKeyField('models.Admins', related_name='companies', null=True)
@@ -208,7 +208,6 @@ class Deals(models.Model):
     pd_deal_id = fields.IntField(unique=True, null=True)
 
     name = fields.CharField(max_length=255, null=True)
-    close_date = fields.DatetimeField(null=True)
 
     status = fields.CharField(max_length=255, default=STATUS_OPEN)
 

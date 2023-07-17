@@ -14,7 +14,7 @@ import requests
 
 from app.models import Companies, Contacts, Deals, Meetings
 from app.pipedrive._schema import Activity
-from app.pipedrive._schema import Deal as PDDeal
+from app.pipedrive._schema import PDDeal
 from app.pipedrive._schema import Organisation, Person
 from app.settings import Settings
 

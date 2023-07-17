@@ -8,6 +8,7 @@ from tortoise.contrib.fastapi import register_tortoise
 from app.admin import resources, views  # noqa: F401
 from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
+from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
 
@@ -25,6 +26,7 @@ register_tortoise(
 )
 app.include_router(tc2_router, prefix='/tc2')
 app.include_router(cb_router, prefix='/callbooker')
+app.include_router(pipedrive_router, prefix='/pipedrive')
 # Has to go last otherwise it will override other routes
 app.mount('/', admin_app)
 

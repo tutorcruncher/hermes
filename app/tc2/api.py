@@ -1,6 +1,6 @@
 import requests
 
-from app.models import Contacts
+from app.models import Contacts, Deals
 
 session = requests.Session()
 
@@ -14,5 +14,5 @@ async def tc2_request(url: str, *, method: str = 'GET', data: dict = None) -> di
     return r.json()
 
 
-async def update_client(contact: Contacts):
+async def update_client_from_deal(deal: Deals):
     pass

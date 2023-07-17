@@ -44,7 +44,7 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
     return _pd_request
 
 
-class PipedriveTestCase(HermesTestCase):
+class PipedriveTasksTestCase(HermesTestCase):
     def setUp(self):
         super().setUp()
         self.pipedrive = FakePipedrive()
@@ -470,3 +470,42 @@ class PipedriveTestCase(HermesTestCase):
         await post_sales_call(company, contact, meeting, deal)
         call_args = mock_request.call_args_list
         assert not any('PUT' in str(call) for call in call_args)
+
+
+def basic_pd_org_data():
+    return {
+        'v': 1,
+        'matches_filters': {'current': []},
+        'meta': {'action': 'updated', 'object': 'organization'},
+        'current': {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
+        'previous': {},
+        'event': 'updated.organization',
+    }
+
+
+class PipedriveCallbackTestCase(HermesTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.admin = await Admins.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        self.url = '/pipedrive/callback/'
+        debug('setup done')
+
+    async def test_org_create(self):
+        assert not await Companies.exists()
+        r = await self.client.post(self.url, json=basic_pd_org_data())
+        assert r.status_code == 200, r.json()
+        company = await Companies.get()
+        assert company.name == 'Test company'
+        assert company.owner_id == self.admin.id
+
+    async def test_org_create_owner_doesnt_exist(self):
+        pass
+
+    async def test_org_delete(self):
+        pass
+
+    async def test_org_update(self):
+        pass
+
+    async def test_org_update_no_changes(self):
+        pass

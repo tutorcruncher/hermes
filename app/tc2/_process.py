@@ -44,7 +44,7 @@ async def _create_or_update_contact(tc_sr: TCRecipient, company: Companies) -> t
     return created, contact
 
 
-async def process_tc2_client(tc_subject: TCSubject | TCClient) -> Companies:
+async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Companies:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
@@ -86,4 +86,4 @@ async def update_from_invoice_event(tc_subject: TCSubject):
     """
     tc_invoice = TCInvoice(**tc_subject.dict())
     tc_client_subject = TCSubject(**await tc2_request(f'clients/{tc_invoice.client.id}'))
-    await process_tc2_client(tc_client_subject)
+    await update_from_client_event(tc_client_subject)
