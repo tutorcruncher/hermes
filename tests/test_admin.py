@@ -1,4 +1,4 @@
-from app.main import app
+from app.main import app, startup
 from app.models import Admins, Configs, Pipelines, PipelineStages
 from tests._common import HermesTestCase
 
@@ -6,7 +6,10 @@ from tests._common import HermesTestCase
 class AdminTestCase(HermesTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        await app.router.on_startup[1]()
+        if not app.middleware_stack:
+            # We need to call startup() to initialize the admin app, but since Tortoise's TestCase initializes the app
+            # once for the entire test suite, we need to make sure we don't call startup() more than once.
+            await startup()
 
     async def test_unauthenticated(self):
         r = await self.client.get('/')
@@ -106,14 +109,13 @@ class AdminTestCase(HermesTestCase):
         r = await self.client.get(f'/configs/update/{self.config.id}')
         assert r.status_code == 200
         assert self.config.meeting_min_start == '10:00'
-        config_data = {
-            'meeting_min_start': '10:30',
-            'payg_pipeline': 4,
-        }
+        an_other_pipeline = await Pipelines.create(name='An Other Pipeline', pd_pipeline_id='5')
+        config_data = {'meeting_min_start': '10:30', 'payg_pipeline_id': an_other_pipeline.id}
         r = await self.client.post(f'/configs/update/{self.config.id}', data=config_data)
         assert r.status_code == 303
         config = await Configs.get()
         assert config.meeting_min_start == '10:30'
+        assert await config.payg_pipeline == an_other_pipeline
 
     async def test_pipelines_view(self):
         await self._login()
@@ -126,12 +128,12 @@ class AdminTestCase(HermesTestCase):
         r = await self.client.get(f'/pipelines/update/{self.pipeline.id}')
         assert r.status_code == 200
         assert self.pipeline.dft_entry_stage_id == (await self.pipeline_stage).id
-        stage_2 = await PipelineStages.create(name='Stage 2', pd_stage_id=1)
-        data = {'name': 'Pay As You Go', 'pd_pipeline_id': '1234', 'dft_entry_stage': stage_2.id}
+        stage_2 = await PipelineStages.create(name='Stage 2', pd_stage_id=2)
+        data = {'name': 'Startup', 'pd_pipeline_id': '1234', 'dft_entry_stage_id': stage_2.id}
         r = await self.client.post(f'/pipelines/update/{self.pipeline.id}', data=data)
         assert r.status_code == 303
         pipeline = await Pipelines.get()
-        assert pipeline.name == 'Pay As You Go'
+        assert pipeline.name == 'Startup'
         assert pipeline.pd_pipeline_id == 1234
         assert pipeline.dft_entry_stage_id == stage_2.id
 

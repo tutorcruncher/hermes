@@ -15,36 +15,30 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 settings = Settings()
 
+app = FastAPI()
+register_tortoise(
+    app,
+    db_url=settings.pg_dsn,
+    modules={'models': ['app.models']},
+    generate_schemas=True,
+    add_exception_handlers=True,
+)
+app.include_router(tc2_router, prefix='/tc2')
+app.include_router(cb_router, prefix='/callbooker')
+# Has to go last otherwise it will override other routes
+app.mount('/', admin_app)
 
-def create_app(_settings):
-    _app = FastAPI()
-    register_tortoise(
-        _app,
-        db_url=_settings.pg_dsn,
-        modules={'models': ['app.models']},
-        generate_schemas=True,
-        add_exception_handlers=True,
+
+@app.on_event('startup')
+async def startup():
+    redis = await aioredis.from_url(settings.redis_dsn)
+    await admin_app.configure(
+        template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
+        providers=[AuthProvider()],
+        language_switch=False,
+        redis=redis,
+        admin_path='',
     )
-    _app.include_router(tc2_router, prefix='/tc2')
-    _app.include_router(cb_router, prefix='/callbooker')
-    # Has to go last otherwise it will override other routes
-    _app.mount('/', admin_app)
+    from app.utils import get_config
 
-    @_app.on_event('startup')
-    async def startup():
-        redis = await aioredis.from_url(_settings.redis_dsn)
-        await admin_app.configure(
-            template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
-            providers=[AuthProvider()],
-            language_switch=False,
-            redis=redis,
-            admin_path='',
-        )
-        from app.utils import get_config
-
-        await get_config()
-
-    return _app
-
-
-app = create_app(settings)
+    await get_config()

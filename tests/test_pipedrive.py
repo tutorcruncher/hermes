@@ -1,8 +1,8 @@
 import re
-from datetime import timezone, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from app.models import Companies, Contacts, Admins, Meetings, Deals, Pipelines
+from app.models import Admins, Companies, Contacts, Deals, Meetings, Pipelines
 from app.pipedrive.tasks import post_sales_call, post_support_call
 from tests._common import HermesTestCase
 

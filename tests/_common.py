@@ -2,7 +2,7 @@ from httpx import AsyncClient
 from tortoise.contrib.test import TestCase
 
 from app.main import app
-from app.models import PipelineStages, Pipelines
+from app.models import Pipelines, PipelineStages
 from app.utils import get_config
 
 

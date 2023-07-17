@@ -1,11 +1,11 @@
 import pytz
 from fastapi_admin.app import app as admin_app
 from fastapi_admin.enums import Method
-from fastapi_admin.resources import Link, Model, Field, Action
+from fastapi_admin.resources import Action, Field, Link, Model
 from fastapi_admin.widgets import displays, inputs
 from httpx import Request
 
-from app.models import Admins, Configs, PipelineStages, Pipelines
+from app.models import Admins, Configs, Pipelines, PipelineStages
 
 
 @admin_app.register
@@ -30,9 +30,9 @@ class ConfigResource(Model):
         'meeting_buffer_mins',
         'meeting_min_start',
         'meeting_max_end',
-        'payg_pipeline',
-        'startup_pipeline',
-        'enterprise_pipeline',
+        Field('payg_pipeline_id', label='PAYG Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
+        Field('startup_pipeline_id', label='Startup Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
+        Field('enterprise_pipeline_id', label='Enterprise Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
     ]
 
     async def get_toolbar_actions(self, request: Request):
@@ -74,7 +74,12 @@ class PipelinesResource(Model):
     model = Pipelines
     icon = 'fas fa-random'
     page_pre_title = page_title = label = 'Pipelines'
-    fields = ['id', 'pd_pipeline_id', 'name', 'dft_entry_stage']
+    fields = [
+        'id',
+        'pd_pipeline_id',
+        'name',
+        Field('dft_entry_stage_id', label='Dft entry pipeline stage', input_=inputs.ForeignKey(model=PipelineStages)),
+    ]
 
     async def get_toolbar_actions(self, request: Request):
         return []

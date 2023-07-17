@@ -5,7 +5,6 @@ from tortoise.contrib.test import finalizer, initializer
 
 from app.settings import Settings
 
-
 test_db_url = os.getenv('TEST_DB_URL', 'postgres://postgres@localhost:5432/hermes_test')
 
 

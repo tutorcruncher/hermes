@@ -11,10 +11,10 @@ from tortoise.expressions import Q
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
-from app.models import Admins, Companies, Contacts, Meetings, Deals
+from app.models import Admins, Companies, Contacts, Deals, Meetings
 from app.pipedrive.tasks import post_sales_call, post_support_call
 from app.settings import Settings
-from app.utils import sign_args, get_bearer, get_config
+from app.utils import get_bearer, get_config, sign_args
 
 cb_router = APIRouter()
 settings = Settings()

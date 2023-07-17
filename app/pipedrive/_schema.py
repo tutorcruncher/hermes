@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.models import Companies, Contacts, Meetings, Deals
+from app.models import Companies, Contacts, Deals, Meetings
 
 
 def _remove_nulls(**kwargs):
