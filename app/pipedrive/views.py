@@ -102,13 +102,11 @@ async def _process_pd_person(event: PipedriveEvent) -> Contacts | None:
     return contact
 
 
-async def _process_pd_organisation(event: PipedriveEvent) -> Companies | None:
+async def _process_pd_organisation(current_pd_org: Organisation, old_pd_org: Organisation) -> Companies | None:
     """
     Processes a Pipedrive Organisation/Company event. Creates the Organisation/Company if it didn't exist in Hermes,
     updates it if it did
     """
-    current_pd_org = event.current and Organisation(**event.current)
-    old_pd_org = event.previous and Organisation(**event.previous)
     company = None
     if not old_pd_org:
         # The org has just been created
@@ -144,5 +142,5 @@ async def callback(event: PipedriveEvent, background_tasks: BackgroundTasks):
     elif event.meta.object == 'person':
         await _process_pd_person(event)
     elif event.meta.object == 'organization':
-        await _process_pd_organisation(event)
+        await _process_pd_organisation(event.current, event.previous)
     return {'status': 'ok'}

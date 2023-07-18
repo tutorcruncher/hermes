@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, root_validator, Extra, validator
 from tortoise.exceptions import DoesNotExist
 
 from app.models import Companies, Contacts, Deals, Meetings, Pipelines, PipelineStages, Admins
@@ -24,24 +24,19 @@ def fk_field(model, fk_field_name='pk'):
     return ForeignKeyField
 
 
-class HermesBaseModel(BaseModel):
-    async def __new__(cls, *args, **kwargs):
-        debug('foo')
-
-    @root_validator(pre=False)
-    def fk_validator(cls, values: dict) -> dict:
-        for field_name, field in cls.__fields__.items():
+class HermesBaseModel(BaseModel, extra=Extra.allow):
+    async def a_validate(self):
+        for field_name, field in self.__fields__.items():
             if field.type_.__name__ == 'ForeignKeyField':
-                v = values.get(field_name)
+                v = self.dict().get(field_name)
                 model = field.type_.model()
                 field_name = field.type_.fk_field_name()
                 try:
-                    obj = asyncio.create_task(model.get(**{field_name: v}))
+                    related_obj = await model.get(**{field_name: v})
                 except DoesNotExist:
                     raise ValueError(f'{model.__name__} with {field_name}={v} does not exist')
                 else:
-                    values[model.__name__.lower().rstrip('s')] = obj
-        return values
+                    setattr(self, model.__name__.lower().rstrip('s'), related_obj)
 
 
 class Organisation(HermesBaseModel):
@@ -208,7 +203,24 @@ class WebhookMeta(BaseModel):
 
 
 class PipedriveEvent(BaseModel):
-    # We validate the current and previous dicts in the webhook handler
+    # We validate the current and previous dicts below depending on the object type
+    meta: WebhookMeta
     current: dict
     previous: dict
-    meta: WebhookMeta
+
+    @validator('current', 'previous')
+    def validate_current_previous(cls, v, values):
+        if v:
+            match values['meta'].object:
+                case 'deal':
+                    return PDDeal(**v)
+                case 'person':
+                    return Person(**v)
+                case 'organization':
+                    return Organisation(**v)
+                case 'pipeline':
+                    return PDPipeline(**v)
+                case 'stage':
+                    return PDStage(**v)
+                case _:
+                    return v
