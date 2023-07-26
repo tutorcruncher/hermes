@@ -5,7 +5,7 @@ from fastapi_admin.resources import Action, Field, Link, Model
 from fastapi_admin.widgets import displays, inputs
 from httpx import Request
 
-from app.models import Admins, Configs, Pipelines, PipelineStages
+from app.models import Admin, Config, Pipeline, Stage
 
 
 @admin_app.register
@@ -22,7 +22,7 @@ class TimezoneSelect(inputs.Select):
 
 @admin_app.register
 class ConfigResource(Model):
-    model = Configs
+    model = Config
     icon = 'fas fa-cogs'
     page_pre_title = page_title = label = 'Config'
     fields = [
@@ -30,9 +30,9 @@ class ConfigResource(Model):
         'meeting_buffer_mins',
         'meeting_min_start',
         'meeting_max_end',
-        Field('payg_pipeline_id', label='PAYG Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
-        Field('startup_pipeline_id', label='Startup Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
-        Field('enterprise_pipeline_id', label='Enterprise Pipeline', input_=inputs.ForeignKey(model=Pipelines)),
+        Field('payg_pipeline_id', label='PAYG Pipeline', input_=inputs.ForeignKey(model=Pipeline)),
+        Field('startup_pipeline_id', label='Startup Pipeline', input_=inputs.ForeignKey(model=Pipeline)),
+        Field('enterprise_pipeline_id', label='Enterprise Pipeline', input_=inputs.ForeignKey(model=Pipeline)),
     ]
 
     async def get_toolbar_actions(self, request: Request):
@@ -46,7 +46,7 @@ class ConfigResource(Model):
 
 @admin_app.register
 class AdminResource(Model):
-    model = Admins
+    model = Admin
     icon = 'fas fa-user'
     page_pre_title = page_title = label = 'Admins'
     fields = [
@@ -71,14 +71,14 @@ class AdminResource(Model):
 
 @admin_app.register
 class PipelinesResource(Model):
-    model = Pipelines
+    model = Pipeline
     icon = 'fas fa-random'
     page_pre_title = page_title = label = 'Pipelines'
     fields = [
         'id',
         'pd_pipeline_id',
         'name',
-        Field('dft_entry_stage_id', label='Dft entry pipeline stage', input_=inputs.ForeignKey(model=PipelineStages)),
+        Field('dft_entry_stage_id', label='Dft entry pipeline stage', input_=inputs.ForeignKey(model=Stage)),
     ]
 
     async def get_toolbar_actions(self, request: Request):
@@ -91,11 +91,11 @@ class PipelinesResource(Model):
 
 
 @admin_app.register
-class PipelineStagesResource(Model):
-    model = PipelineStages
+class StagesResource(Model):
+    model = Stage
     icon = 'fas fa-tasks'
-    page_pre_title = page_title = label = 'Pipeline Stages'
-    fields = ['id', 'pd_stage_id', 'name']
+    page_pre_title = page_title = label = 'Stages'
+    fields = ['id', 'name', 'pd_stage_id']
 
     async def get_toolbar_actions(self, request: Request):
         return []

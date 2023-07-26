@@ -5,7 +5,7 @@ import pytz
 
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._utils import _iso_8601_to_datetime
-from app.models import Admins
+from app.models import Admin
 from app.utils import get_config
 
 
@@ -48,7 +48,7 @@ async def _get_day_start_ends(
 
 
 async def get_admin_available_slots(
-    start: datetime, end: datetime, admin: Admins
+    start: datetime, end: datetime, admin: Admin
 ) -> AsyncIterable[tuple[datetime, datetime]]:
     """
     Gets the unavailable times from Googles freebusy API then breaks them down

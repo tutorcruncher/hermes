@@ -1,7 +1,7 @@
-from app.models import Meetings
+from app.models import Meeting
 
 MEETING_CONTENT_TEMPLATES = {
-    Meetings.TYPE_SUPPORT: {
+    Meeting.TYPE_SUPPORT: {
         'summary': 'Introduction to TutorCruncher with {admin_name}',
         'description': """
 Hi {contact_first_name},
@@ -33,7 +33,7 @@ The TutorCruncher Team
 <a href="{tc_cligency_url}" target="_blank">Link for TC</a>
 """,
     },
-    Meetings.TYPE_SALES: {
+    Meeting.TYPE_SALES: {
         'summary': 'Introduction to TutorCruncher with {admin_name}',
         'description': """
 Hi {contact_first_name},

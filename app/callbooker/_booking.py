@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from app.callbooker._google import AdminGoogleCalendar
 from app.callbooker._meeting_content_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker._utils import _iso_8601_to_datetime, app_logger
-from app.models import Meetings
+from app.models import Meeting
 
 
 async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, admin_email: str) -> bool:
@@ -24,7 +24,7 @@ async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, 
 
 
 # TODO: Make this a job and pass ID through
-async def create_meeting_gcal_event(meeting: Meetings):
+async def create_meeting_gcal_event(meeting: Meeting):
     """
     A job to create a meeting event in the admin/contact's Google Calendar.
     If the meeting is a sales meeting, then we check PipeDrive to see if they exist already. That way, we can include
@@ -46,7 +46,7 @@ async def create_meeting_gcal_event(meeting: Meetings):
     }
     if company.tc_cligency_id:
         meeting_templ_vars.update(tc_cligency_id=company.tc_cligency_id, tc_cligency_url=company.tc_cligency_url)
-    if meeting.meeting_type == Meetings.TYPE_SALES:
+    if meeting.meeting_type == Meeting.TYPE_SALES:
         # crm_url = get_pipedrive_url(contact)
         meeting_templ_vars['crm_url'] = ''
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]

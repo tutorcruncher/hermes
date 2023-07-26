@@ -7,7 +7,7 @@ from tortoise.exceptions import DoesNotExist
 from app.settings import Settings
 
 if TYPE_CHECKING:
-    from app.models import Configs
+    from app.models import Config
 
 settings = Settings()
 
@@ -27,14 +27,14 @@ def get_bearer(auth: str):
 redis_client = aioredis.from_url(settings.redis_dsn)
 
 
-async def get_config() -> 'Configs':
+async def get_config() -> 'Config':
     """
     We always want to have one Config object.
     """
-    from app.models import Configs
+    from app.models import Config
 
     try:
-        config = await Configs.get()
+        config = await Config.get()
     except DoesNotExist:
-        config = await Configs.create()
+        config = await Config.create()
     return config
