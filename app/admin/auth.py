@@ -1,6 +1,6 @@
 from fastapi_admin.providers.login import UsernamePasswordProvider
 
-from app.models import Admins
+from app.models import Admin
 
 
 class AuthProvider(UsernamePasswordProvider):
@@ -9,7 +9,7 @@ class AuthProvider(UsernamePasswordProvider):
     template = 'providers/login/login.html'
     login_title = 'Login to your account'
     login_logo_url = ''
-    admin_model = Admins
+    admin_model = Admin
 
     def __init__(self):
         pass

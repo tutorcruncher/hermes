@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, validator
 
-from app.models import Companies
+from app.models import Company
 
 
 def _convert_to_utc(v: datetime) -> datetime:
@@ -51,7 +51,7 @@ class CBSalesCall(BaseModel):
 
     @validator('price_plan')
     def _price_plan(cls, v):
-        assert v in (Companies.PP_PAYG, Companies.PP_STARTUP, Companies.PP_ENTERPRISE)
+        assert v in (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
         return v
 
     @cached_property

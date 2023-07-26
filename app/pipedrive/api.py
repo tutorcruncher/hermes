@@ -12,7 +12,7 @@ We want to create activities in pipedrive when:
 """
 import requests
 
-from app.models import Companies, Contacts, Deals, Meetings
+from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity
 from app.pipedrive._schema import PDDeal
 from app.pipedrive._schema import Organisation, Person
@@ -29,7 +29,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     return r.json()
 
 
-async def create_or_update_organisation(company: Companies) -> Organisation:
+async def create_or_update_organisation(company: Company) -> Organisation:
     """
     Create or update an organisation within Pipedrive.
     """
@@ -46,7 +46,7 @@ async def create_or_update_organisation(company: Companies) -> Organisation:
     return pipedrive_org
 
 
-async def create_or_update_person(contact: Contacts) -> Person:
+async def create_or_update_person(contact: Contact) -> Person:
     """
     Create or update a Person within Pipedrive.
     """
@@ -63,7 +63,7 @@ async def create_or_update_person(contact: Contacts) -> Person:
     return pipedrive_person
 
 
-async def get_or_create_deal(deal: Deals) -> PDDeal:
+async def get_or_create_deal(deal: Deal) -> PDDeal:
     """
     Creates a new deal if none exists within Pipedrive.
     """
@@ -75,7 +75,7 @@ async def get_or_create_deal(deal: Deals) -> PDDeal:
     return pd_deal
 
 
-async def create_activity(meeting: Meetings, pipedrive_deal: PDDeal = None) -> Activity:
+async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Activity:
     """
     Creates a new activity within Pipedrive.
     """

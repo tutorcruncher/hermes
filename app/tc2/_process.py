@@ -1,17 +1,17 @@
 from pydantic import ValidationError
 
-from app.models import Admins, Companies, Contacts
+from app.models import Admin, Company, Contact
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleUser
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 
 
-async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companies]:
+async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Company]:
     """
     Creates or updates a Company in our database from a TutorCruncher client/meta_agency.
     """
     company_data = tc_client.dict()
-    admin_lu = {a.tc_admin_id: a for a in await Admins.all()}
+    admin_lu = {a.tc_admin_id: a for a in await Admin.all()}
 
     # TODO: We should do proper validation on these fields.
     # This checks that, if the one of the fields is set for the company, we have a matching admin in our database.
@@ -23,28 +23,28 @@ async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Companie
                 company_data.pop(f)
 
     company_id = company_data.pop('tc_agency_id')
-    company, created = await Companies.get_or_create(tc_agency_id=company_id, defaults=company_data)
+    company, created = await Company.get_or_create(tc_agency_id=company_id, defaults=company_data)
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
     return created, company
 
 
-async def _create_or_update_contact(tc_sr: TCRecipient, company: Companies) -> tuple[bool, Contacts]:
+async def _create_or_update_contact(tc_sr: TCRecipient, company: Company) -> tuple[bool, Contact]:
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     contact_data = tc_sr.dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc_sr_id')
-    contact, created = await Contacts.get_or_create(tc_sr_id=contact_id, defaults=contact_data)
+    contact, created = await Contact.get_or_create(tc_sr_id=contact_id, defaults=contact_data)
     if not created:
         contact = await contact.update_from_dict(contact_data)
         await contact.save()
     return created, contact
 
 
-async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Companies:
+async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
@@ -59,7 +59,7 @@ async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Companie
         except ValidationError:
             raise e
         else:
-            company = await Companies.get_or_none(tc_cligency_id=tc_client.id)
+            company = await Company.get_or_none(tc_cligency_id=tc_client.id)
             if company:
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')

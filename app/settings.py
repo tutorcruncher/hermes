@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Pipedrive
     pd_api_key: str = 'test-key'
     pd_api_url: str = 'https://api.pipedrive.com/v1'
+    pd_base_url: str = 'https://tutorcruncher-sandbox.pipedrive.com'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'

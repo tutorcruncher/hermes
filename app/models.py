@@ -15,7 +15,7 @@ def _meeting_min_max_validator(value: str):
         raise ValueError('Must be a valid time in the format HH:MM')
 
 
-class Configs(models.Model):
+class Config(models.Model):
     """
     The model that stores the configuration for the app.
     """
@@ -36,43 +36,46 @@ class Configs(models.Model):
     )
 
     payg_pipeline = fields.ForeignKeyField(
-        'models.Pipelines',
+        'models.Pipeline',
         null=True,
         related_name='payg_pipeline',
         description='The pipeline that PAYG clients will be added to',
     )
     startup_pipeline = fields.ForeignKeyField(
-        'models.Pipelines',
+        'models.Pipeline',
         null=True,
         related_name='startup_pipeline',
         description='The pipeline that Startup clients will be added to',
     )
     enterprise_pipeline = fields.ForeignKeyField(
-        'models.Pipelines',
+        'models.Pipeline',
         null=True,
         related_name='enterprise_pipeline',
         description='The pipeline that Enterprise clients will be added to',
     )
 
 
-class PipelineStages(models.Model):
+class Stage(models.Model):
     id = fields.IntField(pk=True)
     pd_stage_id = fields.IntField(unique=True)
     name = fields.CharField(max_length=255)
+    # It would be nice to add pipeline as an FK here, but we need dft_entry_stage on the pipeline, and one of
+    # Tortoise's limitations is that they don't allow cyclic references (even when the feel is nullable :/)
+    # https://github.com/tortoise/tortoise-orm/issues/379
 
-    deals: fields.ReverseRelation['Deals']
+    deals: fields.ReverseRelation['Deal']
 
 
-class Pipelines(models.Model):
+class Pipeline(models.Model):
     id = fields.IntField(pk=True)
     pd_pipeline_id = fields.IntField(unique=True)
     name = fields.CharField(max_length=255)
-    dft_entry_stage = fields.ForeignKeyField('models.PipelineStages', null=True)
+    dft_entry_stage = fields.ForeignKeyField('models.Stage', null=True)
 
-    deals: fields.ReverseRelation['Deals']
+    deals: fields.ReverseRelation['Deal']
 
 
-class Admins(AbstractAdmin):
+class Admin(AbstractAdmin):
     id = fields.IntField(pk=True)
     tc_admin_id = fields.IntField(unique=True, null=True)
     pd_owner_id = fields.IntField(null=True)
@@ -91,7 +94,7 @@ class Admins(AbstractAdmin):
 
     password = fields.CharField(max_length=255, null=True)
 
-    deals: fields.ReverseRelation['Deals']
+    deals: fields.ReverseRelation['Deal']
 
     @property
     def email(self):
@@ -109,7 +112,7 @@ class Admins(AbstractAdmin):
         return f'{settings.tc_call_booker_url}/{self.first_name.lower()}'
 
 
-class Companies(models.Model):
+class Company(models.Model):
     """
     Represents a company.
     In TC this is a mix between a meta Client and an Agency.
@@ -142,9 +145,9 @@ class Companies(models.Model):
     country = fields.CharField(max_length=255, description='Country code, e.g. GB', null=True)
     website = fields.CharField(max_length=255, null=True)
 
-    client_manager = fields.ForeignKeyField('models.Admins', related_name='companies', null=True)
-    sales_person = fields.ForeignKeyField('models.Admins', related_name='sales', null=True)
-    bdr_person = fields.ForeignKeyField('models.Admins', related_name='leads', null=True)
+    client_manager = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
+    sales_person = fields.ForeignKeyField('models.Admin', related_name='sales', null=True)
+    bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
 
     paid_invoice_count = fields.IntField(default=0)
     estimated_income = fields.CharField(max_length=255, null=True)
@@ -153,12 +156,16 @@ class Companies(models.Model):
     has_booked_call = fields.BooleanField(default=False)
     has_signed_up = property(lambda self: bool(self.tc_cligency_id))
 
-    contacts: fields.ReverseRelation['Contacts']
-    deals: fields.ReverseRelation['Deals']
-    meetings: fields.ReverseRelation['Meetings']
+    contacts: fields.ReverseRelation['Contact']
+    deals: fields.ReverseRelation['Deal']
+    meetings: fields.ReverseRelation['Meeting']
 
     def __str__(self):
         return self.name
+
+    @property
+    def pd_org_url(self):
+        return f'{settings.pd_base_url}/organizations/{self.pd_org_id}/'
 
     @property
     def tc_cligency_url(self) -> str:
@@ -168,7 +175,7 @@ class Companies(models.Model):
             return ''
 
 
-class Contacts(models.Model):
+class Contact(models.Model):
     """
     Represents a contact, an individual who works at a company.
     In TC this is a mix between a meta Client and SR.
@@ -186,7 +193,7 @@ class Contacts(models.Model):
     phone = fields.CharField(max_length=255, null=True)
     country = fields.CharField(max_length=255, null=True)
 
-    company = fields.ForeignKeyField('models.Companies', related_name='contacts')
+    company = fields.ForeignKeyField('models.Company', related_name='contacts')
 
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
@@ -198,7 +205,7 @@ class Contacts(models.Model):
         return self.last_name
 
 
-class Deals(models.Model):
+class Deal(models.Model):
     STATUS_OPEN = 'open'
     STATUS_WON = 'won'
     STATUS_LOST = 'lost'
@@ -211,19 +218,19 @@ class Deals(models.Model):
 
     status = fields.CharField(max_length=255, default=STATUS_OPEN)
 
-    admin = fields.ForeignKeyField('models.Admins', related_name='deals')
-    pipeline = fields.ForeignKeyField('models.Pipelines', related_name='deals')
+    admin = fields.ForeignKeyField('models.Admin', related_name='deals')
+    pipeline = fields.ForeignKeyField('models.Pipeline', related_name='deals')
 
     # Is null until we get the webhook from Pipedrive
-    pipeline_stage = fields.ForeignKeyField('models.PipelineStages', related_name='deals', null=True)
-    company = fields.ForeignKeyField('models.Companies', related_name='deals')
-    contact = fields.ForeignKeyField('models.Contacts', related_name='deals')
+    stage = fields.ForeignKeyField('models.Stage', related_name='deals', null=True)
+    company = fields.ForeignKeyField('models.Company', related_name='deals')
+    contact = fields.ForeignKeyField('models.Contact', related_name='deals')
 
     def __str__(self):
         return self.name
 
 
-class Meetings(models.Model):
+class Meeting(models.Model):
     STATUS_PLANNED = 'PLANNED'
     STATUS_CANCELED = 'CANCELED'
     STATUS_NO_SHOW = 'NO_SHOW'
@@ -241,14 +248,14 @@ class Meetings(models.Model):
     status = fields.CharField(max_length=255, default=STATUS_PLANNED)
     meeting_type = fields.CharField(max_length=255)
 
-    admin = fields.ForeignKeyField('models.Admins', related_name='meetings')
-    contact = fields.ForeignKeyField('models.Contacts', related_name='meetings')
-    deal = fields.ForeignKeyField('models.Deals', related_name='meetings', null=True)
+    admin = fields.ForeignKeyField('models.Admin', related_name='meetings')
+    contact = fields.ForeignKeyField('models.Contact', related_name='meetings')
+    deal = fields.ForeignKeyField('models.Deal', related_name='meetings', null=True)
 
     @property
     def name(self):
-        if self.meeting_type == Meetings.TYPE_SALES:
+        if self.meeting_type == Meeting.TYPE_SALES:
             return f'Introductory call with {self.admin.name}'
         else:
-            assert self.meeting_type == Meetings.TYPE_SUPPORT
+            assert self.meeting_type == Meeting.TYPE_SUPPORT
             return f'Support call with {self.admin.name}'
