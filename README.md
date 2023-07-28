@@ -38,15 +38,13 @@ When an Invoice is created/update, or a Client is created/updated in TutorCrunch
 - Hermes - Create/update a new Company
 - Hermes - Create/update a new Contact
 - Hermes - Create/update a new Deal
-- Pipedrive - Create/update a new Organisation `[Task]` **TODO**
-- Pipedrive - Create/update a new Person `[Task]` **TODO**
-- Pipedrive - Create a new Deal `[Task]` **TODO**
+- Pipedrive - Create/update a new Organisation `[Task]`
+- Pipedrive - Create/update a new Person `[Task]`
+- Pipedrive - Create a new Deal `[Task]`
 
 When a Client is deleted in TutorCruncher:
 - Hermes - Delete the Company
 - Hermes - Delete the Contact
-- Pipedrive - Delete the Company **TODO - Do we need to?**
-- Pipedrive - Delete the Person **TODO - Do we need to?**
 
 ### From the website callbooker
 
@@ -78,7 +76,7 @@ Pipelines and Stages. We do logic based off them.
 
 When a new Organisation is created/updated in Pipedrive:
 - Hermes - Create/update a new Company
-- TC2 - Update the Client `[Task]`  **TODO**
+- TC2 - Update the Client `[Task]`
 
 When a new Person is created/updated in Pipedrive:
 - Hermes - Create/update a new Contact
@@ -95,8 +93,5 @@ When a new Stage is created/updated in Pipedrive:
 * [ ] Callbooker dev
 * [ ] TC2 dev
 * [ ] Should marking a customer as a NARC deleted them from Hermes and Pipedrive? Think so.
-* [ ] Check my FK validator and implement everywhere
 * [ ] Check PD callbacks include custom fields
 * [ ] Test live
-* [ ] Logging
-* [ ] Sentry
