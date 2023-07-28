@@ -33,7 +33,7 @@ async def _create_or_update_contact(tc_sr: TCRecipient, company: Company) -> tup
     return created, contact
 
 
-async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
+async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company | None:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
@@ -54,6 +54,9 @@ async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
     else:
         await tc_client.a_validate()
+        if tc_client.meta_agency.paid_invoice_count > 4:
+            # Any company that has more than 4 paid invoices is a long term customer and we don't care.
+            return
         company_created, company = await _create_or_update_company(tc_client)
         contacts_created, contacts_updated = [], []
         for recipient in tc_client.paid_recipients:
@@ -67,7 +70,7 @@ async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
             f'Contacts created: {contacts_created}, '
             f'Contacts updated: {contacts_updated}'
         )
-    return company
+        return company
 
 
 async def update_from_invoice_event(tc_subject: TCSubject):

@@ -16,7 +16,7 @@ pipedrive_router = APIRouter()
 
 
 @pipedrive_router.post('/callback/', name='Pipedrive callback')
-async def callback(event: PipedriveEvent, background_tasks: BackgroundTasks):
+async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     """
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     """
@@ -27,7 +27,7 @@ async def callback(event: PipedriveEvent, background_tasks: BackgroundTasks):
         deal = await _process_pd_deal(event.current, event.previous)
         if deal and (await deal.company).tc_agency_id:
             # We only update the client if the deal has a company with a tc_agency_id
-            background_tasks.add_task(update_client_from_deal, deal)
+            tasks.add_task(update_client_from_deal, deal)
     elif event.meta.object == 'pipeline':
         await _process_pd_pipeline(event.current, event.previous)
     elif event.meta.object == 'stage':

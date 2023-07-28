@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive.tasks import post_sales_call, post_support_call
+from app.pipedrive.tasks import post_process_sales_call, post_process_support_call, post_process_client_event
 from tests._common import HermesTestCase
 
 
@@ -87,7 +87,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await post_sales_call(company, contact, meeting, deal)
+        await post_process_sales_call(company, contact, meeting, deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -187,7 +187,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_support_call(contact, meeting)
+        await post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 10,
@@ -260,7 +260,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_support_call(contact, meeting)
+        await post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {}
         assert self.pipedrive.db['persons'] == {}
         assert self.pipedrive.db['deals'] == {}
@@ -317,7 +317,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -382,7 +382,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=sales_person,
             pd_deal_id=17,
         )
-        await post_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -478,9 +478,54 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_sales_call(company, contact, meeting, deal)
+        await post_process_sales_call(company, contact, meeting, deal)
         call_args = mock_request.call_args_list
         assert not any('PUT' in str(call) for call in call_args)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
+        await Contact.create(first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id)
+        await post_process_client_event(company)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                'estimated_income': '',
+                'status': 'pending_email_conf',
+                'website': 'https://junes.com',
+                'paid_invoice_count': 0,
+                'has_booked_call': False,
+                'has_signed_up': False,
+                'tc_profile_url': '',
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'first_name': 'Brian',
+                'last_name': 'Junes',
+                'owner_id': 99,
+                'email': 'brain@junes.com',
+                'phone': None,
+                'address_country': None,
+                'org_id': 1,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
 
 
 def basic_pd_org_data():

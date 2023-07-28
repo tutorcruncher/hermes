@@ -12,7 +12,7 @@ from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
 from app.models import Admin, Company, Contact, Deal, Meeting
-from app.pipedrive.tasks import post_sales_call, post_support_call
+from app.pipedrive.tasks import post_process_sales_call, post_process_support_call
 from app.utils import get_bearer, get_config, sign_args, settings
 
 cb_router = APIRouter()
@@ -129,11 +129,11 @@ async def _get_or_create_deal(company: Company, contact: Contact) -> Deal:
 
 
 @cb_router.post('/sales/book/')
-async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
+async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
     """
-    # TODO: We need to do authorization here
+    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
     try:
@@ -143,17 +143,16 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
     else:
         meeting.deal = deal
         await meeting.save()
-        background_tasks.add_task(post_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
+        tasks.add_task(post_process_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
         return {'status': 'ok'}
 
 
 @cb_router.post('/support/book/')
-async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
+async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
     """
-    # TODO: We need to do authorization here
-
+    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
     company, contact = await _get_or_create_contact_company(event)
     try:
         meeting = await _book_meeting(company=company, contact=contact, event=event)
@@ -161,7 +160,7 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
         await meeting.save()
-        background_tasks.add_task(post_support_call, contact=contact, meeting=meeting)
+        tasks.add_task(post_process_support_call, contact=contact, meeting=meeting)
         return {'status': 'ok'}
 
 
@@ -180,7 +179,7 @@ async def generate_support_link(admin_id: int, company_id: int, Authorization: O
     """
     Endpoint to generate a support link for a company from within TC2
     """
-    if not get_bearer(Authorization) == settings.tc2_api_key:
+    if get_bearer(Authorization) != settings.tc2_api_key.decode():
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc_admin_id=admin_id)
     company = await Company.get(tc_cligency_id=company_id)

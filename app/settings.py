@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn
+from pydantic import BaseSettings, PostgresDsn, Field, Extra
 
 THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    pg_dsn: PostgresDsn = 'postgres://postgres@localhost:5432/hermes'
+    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
     dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     meeting_max_end: str = '17:30'
 
     #  TC2
-    tc2_api_key: str = 'test-key'
+    tc2_api_key: bytes = b'test-key'
     tc2_api_url: str = 'https://localhost:8000/api'
     tc2_base_url: str = 'https://localhost:8000'
 
@@ -65,9 +65,6 @@ class Settings(BaseSettings):
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
 
-    # @validator('pg_dsn')
-    # def heroku_ready_pg_dsn(cls, v):
-    #     return v.replace('gres://', 'gresql://')
-
     class Config:
         env_file = '.env'
+        extra = Extra.allow
