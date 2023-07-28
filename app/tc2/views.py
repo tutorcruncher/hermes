@@ -25,7 +25,7 @@ async def callback(
     Updates Hermes and other systems based on events in TC2.
     """
     expected_sig = hmac.new(settings.tc2_api_key, (await request.body()), hashlib.sha256).hexdigest()
-    if not compare_digest(webhook_signature, expected_sig):
+    if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
         company = None
@@ -36,5 +36,5 @@ async def callback(
         else:
             app_logger.info('Ignoring event with subject model %s', event.subject.model)
         if company:
-            tasks.add_task(post_process_client_event)
+            tasks.add_task(post_process_client_event, company)
     return {'status': 'ok'}

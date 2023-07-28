@@ -1,4 +1,7 @@
 import copy
+import hashlib
+import hmac
+import json
 import re
 from unittest import mock
 
@@ -6,6 +9,7 @@ from requests import HTTPError
 
 from app.models import Admin, Company, Contact, Deal
 from app.tc2.tasks import update_client_from_deal
+from app.utils import settings
 from tests._common import HermesTestCase
 
 
@@ -18,7 +22,7 @@ def _client_data():
             'name': 'MyTutors',
             'website': 'www.example.com',
             'status': 'active',
-            'paid_invoice_count': 7,
+            'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
         },
         'associated_admin': {
@@ -98,9 +102,12 @@ class TC2CallbackTestCase(HermesTestCase):
         super().setUp()
         self.url = '/tc2/callback/'
 
+    def _tc2_sig(self, payload):
+        return hmac.new(settings.tc2_api_key, json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+
     async def test_callback_invalid_api_key(self):
         r = await self.client.post(
-            self.url, headers={'Authorization': 'Bearer 999'}, json={'_request_time': 123, 'events': []}
+            self.url, headers={'Webhook-Signature': 'Foobar'}, json={'_request_time': 123, 'events': []}
         )
         assert r.status_code == 403, r.json()
 
@@ -116,14 +123,12 @@ class TC2CallbackTestCase(HermesTestCase):
         """
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
-        r = await self.client.post(
-            self.url,
-            json={'_request_time': 123, 'events': {'foo': 'bar'}},
-            headers={'Authorization': 'Bearer test-key'},
-        )
+        data = {'_request_time': 123, 'events': {'foo': 'bar'}}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 422, r.json()
 
-    async def test_cb_client_event_test_1(self):
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_test_1(self, mock_add_task):
         """
         Create a new company
         Create no contacts
@@ -140,9 +145,8 @@ class TC2CallbackTestCase(HermesTestCase):
         modified_data['subject']['paid_recipients'] = []
 
         events = [modified_data]
-        r = await self.client.post(
-            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
-        )
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
         company = await Company.get()
@@ -151,7 +155,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
-        assert company.paid_invoice_count == 7
+        assert company.paid_invoice_count == 2
         assert await company.client_manager == admin
 
         assert not company.estimated_income
@@ -160,7 +164,8 @@ class TC2CallbackTestCase(HermesTestCase):
 
         assert await Contact.all().count() == 0
 
-    async def test_cb_client_event_test_2(self):
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_test_2(self, mock_add_task):
         """
         Create a new company
         Create new contacts
@@ -169,9 +174,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
         events = [client_full_event_data()]
-        r = await self.client.post(
-            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
-        )
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 422
         assert r.json() == {
             'detail': [
@@ -183,7 +187,8 @@ class TC2CallbackTestCase(HermesTestCase):
             ]
         }
 
-    async def test_cb_client_event_test_3(self):
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_test_3(self, mock_add_task):
         """
         Update a current company
         Create no contacts
@@ -202,9 +207,8 @@ class TC2CallbackTestCase(HermesTestCase):
         modified_data['subject']['paid_recipients'] = []
 
         events = [modified_data]
-        r = await self.client.post(
-            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
-        )
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
         company = await Company.get()
@@ -213,7 +217,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
-        assert company.paid_invoice_count == 7
+        assert company.paid_invoice_count == 2
         assert not await company.client_manager
 
         assert not company.estimated_income
@@ -222,7 +226,8 @@ class TC2CallbackTestCase(HermesTestCase):
 
         assert await Contact.all().count() == 0
 
-    async def test_cb_client_event_test_4(self):
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_test_4(self, mock_add_task):
         """
         Update a current company
         Create new contacts & Update contacts
@@ -239,9 +244,8 @@ class TC2CallbackTestCase(HermesTestCase):
         )
         modified_data['subject']['associated_admin'] = None
         events = [modified_data]
-        r = await self.client.post(
-            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
-        )
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
         company = await Company.get()
@@ -250,7 +254,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
-        assert company.paid_invoice_count == 7
+        assert company.paid_invoice_count == 2
         assert not await company.client_manager
 
         assert not company.estimated_income
@@ -268,16 +272,33 @@ class TC2CallbackTestCase(HermesTestCase):
         assert contact_b.first_name == 'Rudy'
         assert contact_b.last_name == 'Jones'
 
+    async def test_cb_over_invoice_threshold(self):
+        """
+        The company has processed over 4 invoices, so we don't care about it.
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        await Admin.create(
+            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 10
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        assert not await Company.all().exists()
+
     async def test_cb_client_deleted_no_linked_data(self):
         """
         Company deleted, has no contacts
         """
         await Company.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB')
-        r = await self.client.post(
-            self.url,
-            json={'_request_time': 123, 'events': [client_deleted_event_data()]},
-            headers={'Authorization': 'Bearer test-key'},
-        )
+        data = {'_request_time': 123, 'events': [client_deleted_event_data()]}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
         assert await Company.all().count() == 0
 
@@ -289,11 +310,8 @@ class TC2CallbackTestCase(HermesTestCase):
             tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB'
         )
         await Contact.create(first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company)
-        r = await self.client.post(
-            self.url,
-            json={'_request_time': 123, 'events': [client_deleted_event_data()]},
-            headers={'Authorization': 'Bearer test-key'},
-        )
+        data = {'_request_time': 123, 'events': [client_deleted_event_data()]}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -304,17 +322,15 @@ class TC2CallbackTestCase(HermesTestCase):
         """
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
-        r = await self.client.post(
-            self.url,
-            json={'_request_time': 123, 'events': [client_deleted_event_data()]},
-            headers={'Authorization': 'Bearer test-key'},
-        )
+        data = {'_request_time': 123, 'events': [client_deleted_event_data()]}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
 
     @mock.patch('app.tc2.api.session.request')
-    async def test_cb_invoice_event_update_client(self, mock_tc2_get):
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_invoice_event_update_client(self, mock_add_task, mock_tc2_get):
         """
         Processing an invoice event means we get the client from TC.
         """
@@ -325,10 +341,11 @@ class TC2CallbackTestCase(HermesTestCase):
         )
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
+        data = {'_request_time': 123, 'events': [invoice_event_data()]}
         r = await self.client.post(
             self.url,
-            json={'_request_time': 123, 'events': [invoice_event_data()]},
-            headers={'Authorization': 'Bearer test-key'},
+            json=data,
+            headers={'Webhook-Signature': self._tc2_sig(data)},
         )
         assert r.status_code == 200, r.json()
 
@@ -338,7 +355,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
-        assert company.paid_invoice_count == 7
+        assert company.paid_invoice_count == 2
         assert await company.client_manager == admin
 
         assert not company.estimated_income

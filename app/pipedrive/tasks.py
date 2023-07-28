@@ -28,3 +28,5 @@ async def post_process_support_call(contact: Contact, meeting: Meeting):
 
 async def post_process_client_event(company: Company):
     await create_or_update_organisation(company)
+    for contact in await company.contacts:
+        await create_or_update_person(contact)

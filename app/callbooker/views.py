@@ -133,7 +133,7 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
     """
-    # TODO: We need to do authorization here
+    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
     try:
@@ -152,8 +152,7 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
     """
-    # TODO: We need to do authorization here
-
+    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
     company, contact = await _get_or_create_contact_company(event)
     try:
         meeting = await _book_meeting(company=company, contact=contact, event=event)
@@ -180,7 +179,7 @@ async def generate_support_link(admin_id: int, company_id: int, Authorization: O
     """
     Endpoint to generate a support link for a company from within TC2
     """
-    if not get_bearer(Authorization) == settings.tc2_api_key:
+    if get_bearer(Authorization) != settings.tc2_api_key.decode():
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc_admin_id=admin_id)
     company = await Company.get(tc_cligency_id=company_id)
