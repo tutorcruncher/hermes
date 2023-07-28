@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn, Field
+from pydantic import BaseSettings, PostgresDsn, Field, Extra
 
 THIS_DIR = Path(__file__).parent.resolve()
 
@@ -67,3 +67,4 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = '.env'
+        extra = Extra.allow
