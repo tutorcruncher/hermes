@@ -17,8 +17,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 _app_settings = Settings()
 
-if settings.sentry_dsn:
-    sentry_sdk.init(dsn=settings.sentry_dsn)
+if _app_settings.sentry_dsn:
+    sentry_sdk.init(dsn=_app_settings.sentry_dsn)
 
 
 app = FastAPI()
