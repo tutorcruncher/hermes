@@ -3,7 +3,7 @@
 Hermes is our sales system that manages the connection between TutorCruncher (the system), the callbooker on our 
 website, and Pipedrive (our current sales CRM).
 
-This system is built using Tortoise ORM and FastAPI.
+This system is built using TortoiseORM and FastAPI.
 
 ## Terms
 
@@ -13,6 +13,14 @@ This system is built using Tortoise ORM and FastAPI.
 - **Stage** - The stages of the pipelines
 - **Deal** - A potential sale with a Company. Called the same in Pipedrive
 - **Meeting** - A meeting with a Contact. Called an `Activity` in Pipedrive
+
+## Project structure
+
+This project consists of 4 apps:
+- `admin`: Used as an admin interface to deal with configuration
+- `callbooker`: Deals with callbacks and availability from the callbooker on the website
+- `pipedrive`: Deals with callbacks and data synch to Pipedrive
+- `tc2`: Deals with callbacks and data synch to Pipedrive
 
 ## Actions
 
