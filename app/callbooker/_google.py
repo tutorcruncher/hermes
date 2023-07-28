@@ -7,9 +7,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
-from ..settings import Settings
-
-settings = Settings()
+from app.utils import settings
 
 logger = logging.getLogger('google')
 

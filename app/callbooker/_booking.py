@@ -18,12 +18,11 @@ async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, 
         _slot_start = _iso_8601_to_datetime(time_slot['start'])
         _slot_end = _iso_8601_to_datetime(time_slot['end'])
         if _slot_start <= meeting_start <= _slot_end or _slot_start <= meeting_end <= _slot_end:
-            app_logger.info('Meeting already booked for this time slot: %s', meeting_start)
+            app_logger.info('Tried to book meeting with %s for slot %s - %s', admin_email, _slot_start, _slot_end)
             return False
     return True
 
 
-# TODO: Make this a job and pass ID through
 async def create_meeting_gcal_event(meeting: Meeting):
     """
     A job to create a meeting event in the admin/contact's Google Calendar.
@@ -31,9 +30,6 @@ async def create_meeting_gcal_event(meeting: Meeting):
     the link to their profile for the Admin.
     If the meeting is a support meeting, then we include a link to their TC meta profile.
     """
-    # meeting: Meetings = (
-    #     await Meetings.filter(id=meeting_id).select_related('contact', 'contact__company', 'admin').get()
-    # )
     contact = await meeting.contact
     company = await contact.company
     admin = await meeting.admin
@@ -47,6 +43,7 @@ async def create_meeting_gcal_event(meeting: Meeting):
     if company.tc_cligency_id:
         meeting_templ_vars.update(tc_cligency_id=company.tc_cligency_id, tc_cligency_url=company.tc_cligency_url)
     if meeting.meeting_type == Meeting.TYPE_SALES:
+        # TODO
         # crm_url = get_pipedrive_url(contact)
         meeting_templ_vars['crm_url'] = ''
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
@@ -58,3 +55,4 @@ async def create_meeting_gcal_event(meeting: Meeting):
         start=meeting.start_time,
         end=meeting.end_time,
     )
+    app_logger.info('Created Google Calendar event for %s', meeting, extra=meeting.__dict__)

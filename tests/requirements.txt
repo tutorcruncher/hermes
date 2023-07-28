@@ -1,5 +1,5 @@
-black==23.3.0
-ruff==0.0.277
+black==23.7.0
+ruff==0.0.278
 
 pytest==7.4.0
 pytest-aiohttp==1.0.4

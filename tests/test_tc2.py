@@ -1,3 +1,4 @@
+import copy
 import re
 from unittest import mock
 
@@ -80,7 +81,7 @@ def invoice_event_data():
 def mock_tc2_request(error=False):
     class MockResponse:
         def __init__(self, *args, **kwargs):
-            pass
+            self.status_code = 200
 
         def json(self):
             return _client_data()
@@ -125,39 +126,6 @@ class TC2CallbackTestCase(HermesTestCase):
     async def test_cb_client_event_test_1(self):
         """
         Create a new company
-        Create new contacts
-        With associated admin that doesn't exist
-        """
-        assert await Company.all().count() == 0
-        assert await Contact.all().count() == 0
-        events = [client_full_event_data()]
-        r = await self.client.post(
-            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
-        )
-        assert r.status_code == 200, r.json()
-
-        company = await Company.get()
-        assert company.name == 'MyTutors'
-        assert company.tc_agency_id == 20
-        assert company.tc_cligency_id == 10
-        assert company.status == 'active'
-        assert company.country == 'GB'
-        assert company.paid_invoice_count == 7
-
-        assert not company.estimated_income
-        assert not company.client_manager
-        assert not company.sales_person
-        assert not company.bdr_person
-
-        contact = await Contact.get()
-        assert contact.tc_sr_id == 40
-        assert contact.first_name == 'Mary'
-        assert contact.last_name == 'Booth'
-        assert contact.email == 'mary@booth.com'
-
-    async def test_cb_client_event_test_2(self):
-        """
-        Create a new company
         Create no contacts
         With associated admin
         """
@@ -191,6 +159,29 @@ class TC2CallbackTestCase(HermesTestCase):
         assert not company.bdr_person
 
         assert await Contact.all().count() == 0
+
+    async def test_cb_client_event_test_2(self):
+        """
+        Create a new company
+        Create new contacts
+        With associated admin that doesn't exist
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        events = [client_full_event_data()]
+        r = await self.client.post(
+            self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
+        )
+        assert r.status_code == 422
+        assert r.json() == {
+            'detail': [
+                {
+                    'loc': ['associated_admin_id'],
+                    'msg': 'Admin with tc_admin_id 30 does not exist',
+                    'type': 'value_error',
+                }
+            ]
+        }
 
     async def test_cb_client_event_test_3(self):
         """
@@ -242,10 +233,11 @@ class TC2CallbackTestCase(HermesTestCase):
         contact_a = await Contact.create(
             first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company
         )
-        modified_data = client_full_event_data()
+        modified_data = copy.deepcopy(client_full_event_data())
         modified_data['subject']['paid_recipients'].append(
             {'first_name': 'Rudy', 'last_name': 'Jones', 'email': 'rudy@jones.com', 'id': '41'}
         )
+        modified_data['subject']['associated_admin'] = None
         events = [modified_data]
         r = await self.client.post(
             self.url, json={'_request_time': 123, 'events': events}, headers={'Authorization': 'Bearer test-key'}
@@ -328,6 +320,9 @@ class TC2CallbackTestCase(HermesTestCase):
         """
         mock_tc2_get.side_effect = mock_tc2_request()
 
+        admin = await Admin.create(
+            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
         r = await self.client.post(
@@ -344,7 +339,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 7
-        assert not await company.client_manager
+        assert await company.client_manager == admin
 
         assert not company.estimated_income
         assert not company.sales_person
