@@ -1,7 +1,7 @@
 from pydantic import ValidationError
 
-from app.models import Admin, Company, Contact
-from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleUser
+from app.models import Company, Contact
+from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 
@@ -10,18 +10,7 @@ async def _create_or_update_company(tc_client: TCClient) -> tuple[bool, Company]
     """
     Creates or updates a Company in our database from a TutorCruncher client/meta_agency.
     """
-    company_data = tc_client.dict()
-    admin_lu = {a.tc_admin_id: a for a in await Admin.all()}
-
-    # TODO: We should do proper validation on these fields.
-    # This checks that, if the one of the fields is set for the company, we have a matching admin in our database.
-    for f in ['client_manager', 'sales_person', 'bdr_person']:
-        if company_data[f] is not None:
-            if company_data[f] in admin_lu:
-                company_data[f] = admin_lu[company_data[f]]
-            else:
-                company_data.pop(f)
-
+    company_data = tc_client.company_dict()
     company_id = company_data.pop('tc_agency_id')
     company, created = await Company.get_or_create(tc_agency_id=company_id, defaults=company_data)
     if not created:
@@ -34,7 +23,7 @@ async def _create_or_update_contact(tc_sr: TCRecipient, company: Company) -> tup
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
-    contact_data = tc_sr.dict()
+    contact_data = tc_sr.contact_dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc_sr_id')
     contact, created = await Contact.get_or_create(tc_sr_id=contact_id, defaults=contact_data)
@@ -55,7 +44,7 @@ async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
         # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
         # we know to delete their details from our database.
         try:
-            tc_client = _TCSimpleUser(**tc_subject.dict())
+            tc_client = _TCSimpleRole(**tc_subject.dict())
         except ValidationError:
             raise e
         else:
@@ -64,6 +53,7 @@ async def update_from_client_event(tc_subject: TCSubject | TCClient) -> Company:
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
     else:
+        await tc_client.a_validate()
         company_created, company = await _create_or_update_company(tc_client)
         contacts_created, contacts_updated = [], []
         for recipient in tc_client.paid_recipients:

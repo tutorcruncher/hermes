@@ -14,12 +14,12 @@ from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-settings = Settings()
+_app_settings = Settings()
 
 app = FastAPI()
 register_tortoise(
     app,
-    db_url=settings.pg_dsn,
+    db_url=_app_settings.pg_dsn,
     modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
@@ -33,7 +33,7 @@ app.mount('/', admin_app)
 
 @app.on_event('startup')
 async def startup():
-    redis = await aioredis.from_url(settings.redis_dsn)
+    redis = await aioredis.from_url(_app_settings.redis_dsn)
     await admin_app.configure(
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
         providers=[AuthProvider()],

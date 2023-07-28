@@ -2,14 +2,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
-from app.settings import Settings
 from app.tc2._process import update_from_client_event, update_from_invoice_event
 from app.tc2._schema import TCWebhook
 from app.tc2._utils import app_logger
-from app.utils import get_bearer
+from app.utils import get_bearer, settings
 
 tc2_router = APIRouter()
-settings = Settings()
 
 
 @tc2_router.post('/callback/', name='TC2 callback')

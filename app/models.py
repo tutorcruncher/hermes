@@ -1,9 +1,7 @@
 from fastapi_admin.models import AbstractAdmin
 from tortoise import fields, models
 
-from app.settings import Settings
-
-settings = Settings()
+from app.utils import settings
 
 
 def _meeting_min_max_validator(value: str):

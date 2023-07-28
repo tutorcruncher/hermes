@@ -1,59 +1,13 @@
 from typing import Optional
 
-from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, Extra, validator
-from tortoise.exceptions import DoesNotExist
+from pydantic import Field, validator
 
+from app.base_schema import fk_field, HermesBaseModel
 from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
 
 
 def _remove_nulls(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not None}
-
-
-def fk_field(model, fk_field_name='pk'):
-    class ForeignKeyField(int):
-        """
-        A custom field type for Pydantic that allows us to validate a foreign key by querying the db using the
-        a_validate method below.
-        """
-
-        @classmethod
-        def model(cls):
-            return model
-
-        @classmethod
-        def fk_field_name(cls):
-            return fk_field_name
-
-    return ForeignKeyField
-
-
-class HermesBaseModel(BaseModel, extra=Extra.allow):
-    async def a_validate(self):
-        """
-        Validates any ForeignKeys on the model by querying the db.
-        Annoyingly, we can't do this in Pydantic's built in validation as it doesn't support async validators.
-        """
-        for field_name, field in self.__fields__.items():
-            if field.type_.__name__ == 'ForeignKeyField':
-                v = self.dict().get(field_name)
-                model = field.type_.model()
-                field_name = field.type_.fk_field_name()
-                try:
-                    related_obj = await model.get(**{field_name: v})
-                except DoesNotExist:
-                    raise RequestValidationError(
-                        [
-                            {
-                                'loc': [field.name],
-                                'msg': f'{model.__name__} with {field_name} {v} does not exist',
-                                'type': 'value_error',
-                            }
-                        ]
-                    )
-                else:
-                    setattr(self, model.__name__.lower(), related_obj)
 
 
 class Organisation(HermesBaseModel):
@@ -143,6 +97,7 @@ class Person(HermesBaseModel):
 
 
 class Activity(HermesBaseModel):
+    id: Optional[int] = None
     due_dt: str
     due_time: str
     subject: str
