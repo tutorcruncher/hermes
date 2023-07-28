@@ -1,2 +1,1 @@
-web: foxglove web
-worker: foxglove worker
+web: uvicorn app.main:app --reload

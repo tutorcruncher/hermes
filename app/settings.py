@@ -65,9 +65,5 @@ class Settings(BaseSettings):
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
 
-    # @validator('pg_dsn')
-    # def heroku_ready_pg_dsn(cls, v):
-    #     return v.replace('gres://', 'gresql://')
-
     class Config:
         env_file = '.env'
