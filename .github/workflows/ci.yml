@@ -50,8 +50,3 @@ jobs:
 
     - name: test
       run: make test
-
-    - name: codecov
-      run: bash <(curl -s https://codecov.io/bash)
-      env:
-        CODECOV_TOKEN: '9459d46a-b838-4b5b-8709-45651311a364'
