@@ -47,6 +47,9 @@ class Settings(BaseSettings):
         'https://www.googleapis.com/robot/v1/metadata/x509/tc-hubspot%40tc-hubspot-314214.iam.gserviceaccount.com'
     )
 
+    # Sentry
+    sentry_dsn: str = ''
+
     @property
     def google_credentials(self):
         return {

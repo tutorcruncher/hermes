@@ -1,6 +1,7 @@
 import os
 
 import aioredis
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
 from tortoise.contrib.fastapi import register_tortoise
@@ -15,6 +16,10 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 settings = Settings()
+
+if settings.sentry_dsn:
+    sentry_sdk.init(dsn=settings.sentry_dsn)
+
 
 app = FastAPI()
 register_tortoise(
