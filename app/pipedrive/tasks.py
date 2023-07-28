@@ -7,7 +7,7 @@ from app.pipedrive.api import (
 )
 
 
-async def post_sales_call(company: Company, contact: Contact, meeting: Meeting, deal: Deal):
+async def post_process_sales_call(company: Company, contact: Contact, meeting: Meeting, deal: Deal):
     """
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
@@ -17,10 +17,14 @@ async def post_sales_call(company: Company, contact: Contact, meeting: Meeting, 
     await create_activity(meeting, pd_deal)
 
 
-async def post_support_call(contact: Contact, meeting: Meeting):
+async def post_process_support_call(contact: Contact, meeting: Meeting):
     """
     Called after a support call is booked. Creates the activity if the contact have a pipedrive id
     """
     if (await contact.company).pd_org_id:
         await create_or_update_person(contact)
         await create_activity(meeting)
+
+
+async def post_process_client_event(company: Company):
+    await create_or_update_organisation(company)

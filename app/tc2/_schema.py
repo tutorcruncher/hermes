@@ -21,7 +21,7 @@ class _TCSimpleRole(HermesBaseModel):
     """
 
     id: int
-    first_name: str
+    first_name: Optional[str] = None
     last_name: str
     email: Optional[str]
 
@@ -30,16 +30,13 @@ class _TCAgency(HermesBaseModel):
     id: int
     name: str
     country: str
-    website: str
+    website: Optional[str] = None
     status: str
     paid_invoice_count: int
 
     @validator('country')
     def country_to_code(cls, v):
         return v.split(' ')[-1].strip('()')
-
-    def company_dict(self, *args, **kwargs):
-        raise RuntimeError('Use the TCClient.dict() method instead.')
 
 
 class TCRecipient(_TCSimpleRole):

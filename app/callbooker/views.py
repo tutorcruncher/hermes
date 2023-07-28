@@ -12,7 +12,7 @@ from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
 from app.models import Admin, Company, Contact, Deal, Meeting
-from app.pipedrive.tasks import post_sales_call, post_support_call
+from app.pipedrive.tasks import post_process_sales_call, post_process_support_call
 from app.utils import get_bearer, get_config, sign_args, settings
 
 cb_router = APIRouter()
@@ -129,7 +129,7 @@ async def _get_or_create_deal(company: Company, contact: Contact) -> Deal:
 
 
 @cb_router.post('/sales/book/')
-async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
+async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
     """
@@ -143,12 +143,12 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks):
     else:
         meeting.deal = deal
         await meeting.save()
-        background_tasks.add_task(post_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
+        tasks.add_task(post_process_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
         return {'status': 'ok'}
 
 
 @cb_router.post('/support/book/')
-async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
+async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
     """
@@ -161,7 +161,7 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks):
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
         await meeting.save()
-        background_tasks.add_task(post_support_call, contact=contact, meeting=meeting)
+        tasks.add_task(post_process_support_call, contact=contact, meeting=meeting)
         return {'status': 'ok'}
 
 

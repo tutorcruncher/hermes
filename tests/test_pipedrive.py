@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive.tasks import post_sales_call, post_support_call
+from app.pipedrive.tasks import post_process_sales_call, post_process_support_call
 from tests._common import HermesTestCase
 
 
@@ -87,7 +87,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await post_sales_call(company, contact, meeting, deal)
+        await post_process_sales_call(company, contact, meeting, deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -187,7 +187,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_support_call(contact, meeting)
+        await post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 10,
@@ -260,7 +260,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_support_call(contact, meeting)
+        await post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {}
         assert self.pipedrive.db['persons'] == {}
         assert self.pipedrive.db['deals'] == {}
@@ -317,7 +317,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -382,7 +382,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=sales_person,
             pd_deal_id=17,
         )
-        await post_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -478,7 +478,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_sales_call(company, contact, meeting, deal)
+        await post_process_sales_call(company, contact, meeting, deal)
         call_args = mock_request.call_args_list
         assert not any('PUT' in str(call) for call in call_args)
 
