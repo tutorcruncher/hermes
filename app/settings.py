@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn
+from pydantic import BaseSettings, PostgresDsn, Field
 
 THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    pg_dsn: PostgresDsn = 'postgres://postgres@localhost:5432/hermes'
+    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
     dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
 
