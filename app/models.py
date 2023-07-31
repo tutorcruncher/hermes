@@ -1,5 +1,6 @@
 from fastapi_admin.models import AbstractAdmin
 from tortoise import fields, models
+from tortoise.contrib.pydantic import pydantic_model_creator
 
 from app.utils import settings
 
@@ -112,6 +113,27 @@ class Admin(AbstractAdmin):
     @property
     def call_booker_url(self):
         return f'{settings.callbooker_base_url}/{self.id}/'
+
+    @classmethod
+    def pydantic_schema(cls):
+        return pydantic_model_creator(
+            cls,
+            include=(
+                'username',
+                'id',
+                'tc2_admin_id',
+                'pd_owner_id',
+                'first_name',
+                'last_name',
+                'timezone',
+                'is_sales_person',
+                'is_client_manager',
+                'is_bdr_person',
+                'sells_payg',
+                'sells_startup',
+                'sells_enterprise',
+            ),
+        )
 
 
 class Company(models.Model):
