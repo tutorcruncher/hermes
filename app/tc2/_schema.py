@@ -42,7 +42,7 @@ class _TCAgency(HermesBaseModel):
 class TCRecipient(_TCSimpleRole):
     def contact_dict(self, *args, **kwargs):
         data = super().dict(*args, **kwargs)
-        data['tc_sr_id'] = data.pop('id')
+        data['tc2_sr_id'] = data.pop('id')
         return data
 
 
@@ -50,9 +50,9 @@ class TCClient(HermesBaseModel):
     id: int
     meta_agency: _TCAgency
     status: str
-    associated_admin_id: Optional[fk_field(Admin, 'tc_admin_id', alias='client_manager')] = None
-    sales_person_id: Optional[fk_field(Admin, 'tc_admin_id', alias='sales_person')] = None
-    bdr_person_id: Optional[fk_field(Admin, 'tc_admin_id', alias='bdr_person')] = None
+    sales_person_id: fk_field(Admin, 'tc2_admin_id', alias='sales_person')
+    associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='client_manager')] = None
+    bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
 
     @root_validator(pre=True)
@@ -70,8 +70,8 @@ class TCClient(HermesBaseModel):
 
     def company_dict(self):
         return dict(
-            tc_agency_id=self.meta_agency.id,
-            tc_cligency_id=self.id,
+            tc2_agency_id=self.meta_agency.id,
+            tc2_cligency_id=self.id,
             status=self.meta_agency.status,
             name=self.meta_agency.name,
             country=self.meta_agency.country,

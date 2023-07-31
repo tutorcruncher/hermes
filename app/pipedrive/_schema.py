@@ -23,7 +23,7 @@ class Organisation(HermesBaseModel):
     paid_invoice_count: int = 0
     has_booked_call: bool = False
     has_signed_up: bool = False
-    tc_profile_url: str = ''
+    tc2_profile_url: str = ''
 
     @classmethod
     async def from_company(cls, company: Company):
@@ -39,7 +39,7 @@ class Organisation(HermesBaseModel):
                 status=company.status,
                 has_booked_call=company.has_booked_call,
                 has_signed_up=company.has_signed_up,
-                tc_profile_url=company.tc_cligency_url,
+                tc2_profile_url=company.tc2_cligency_url,
             )
         )
 

@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 from functools import cached_property
 from typing import Optional
 
-from pydantic import BaseModel, validator
+from pydantic import validator
 
-from app.models import Company
+from app.base_schema import fk_field, HermesBaseModel
+from app.models import Company, Admin
 
 
 def _convert_to_utc(v: datetime) -> datetime:
@@ -29,8 +30,9 @@ def _to_title(v: str) -> str:
     return v.title()
 
 
-class CBSalesCall(BaseModel):
-    tc_cligency_id: Optional[int]
+class CBSalesCall(HermesBaseModel):
+    admin_id: fk_field(Admin)
+    company_id: Optional[fk_field(Company)] = None
     name: str
     website: Optional[str]
     email: str
@@ -40,7 +42,6 @@ class CBSalesCall(BaseModel):
     company_name: str
     estimated_income: str
     currency: str
-    admin_id: int
     meeting_dt: datetime
     price_plan: str
 
@@ -67,9 +68,9 @@ class CBSalesCall(BaseModel):
     def last_name(self):
         return self._name_split[-1]
 
-    def company_dict(self) -> dict:
+    async def company_dict(self) -> dict:
         return {
-            'tc_cligency_id': self.tc_cligency_id,
+            'sales_person_id': (await self.admin).id,
             'estimated_income': self.estimated_income,
             'currency': self.currency,
             'website': self.website,
@@ -78,7 +79,7 @@ class CBSalesCall(BaseModel):
             'price_plan': self.price_plan,
         }
 
-    def contact_dict(self) -> dict:
+    async def contact_dict(self) -> dict:
         return {
             'first_name': self.first_name,
             'last_name': self.last_name,
@@ -88,14 +89,14 @@ class CBSalesCall(BaseModel):
         }
 
 
-class CBSupportCall(BaseModel):
+class CBSupportCall(HermesBaseModel):
     """
     The schema for data submitted when someone books a support call. Similar to the sales call, and possibly we could
     reuse the code if we wanted to, but I think it's better to keep them separate for now.
     """
 
-    tc_cligency_id: int
-    admin_id: int
+    company_id: fk_field(Company)
+    admin_id: fk_field(Admin)
     meeting_dt: datetime
     email: str
     name: str
@@ -120,7 +121,7 @@ class CBSupportCall(BaseModel):
     def last_name(self):
         return self._name_split[-1]
 
-    def contact_dict(self) -> dict:
+    async def contact_dict(self) -> dict:
         return {
             'first_name': self.first_name,
             'last_name': self.last_name,
@@ -128,12 +129,17 @@ class CBSupportCall(BaseModel):
             'country': self.country,
         }
 
-    def company_dict(self) -> dict:
-        return {'tc_cligency_id': self.tc_cligency_id, 'country': self.country, 'name': self.company_name}
+    async def company_dict(self) -> dict:
+        return {
+            'tc2_cligency_id': self.tc2_cligency_id,
+            'country': self.country,
+            'name': self.company_name,
+            'admin_id': (await self.admin).id,
+        }
 
 
-class AvailabilityData(BaseModel):
-    admin_id: int
+class AvailabilityData(HermesBaseModel):
+    admin_id: fk_field(Admin)
     start_dt: datetime
     end_dt: datetime
 

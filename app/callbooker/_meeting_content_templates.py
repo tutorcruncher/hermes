@@ -21,7 +21,7 @@ We also have our user guide for some of our most common questions:
 <a href="https://cdn.tutorcruncher.com/guides/admin-user-guide.pdf" target="_blank">Admin user guide.</a>
 
 If you haven't signed up yet, \
-<a href="https://secure.tutorcruncher.com/start/1/?cli_id={tc_cligency_id}&tc_source=call_booker">click here to start \
+<a href="https://secure.tutorcruncher.com/start/1/?cli_id={tc2_cligency_id}&tc_source=call_booker">click here to start \
 your two week free trial now</a>. You won't have to enter any payment details, and we find our demo is most effective \
 when you have had a chance to play around with the system first.
 
@@ -30,7 +30,7 @@ We look forward to hearing about your business!
 Best,
 The TutorCruncher Team
 
-<a href="{tc_cligency_url}" target="_blank">Link for TC</a>
+<a href="{tc2_cligency_url}" target="_blank">Link for TC</a>
 """,
     },
     Meeting.TYPE_SALES: {
@@ -56,7 +56,7 @@ We also have our user guide for some of our most common questions:
 <a href="https://cdn.tutorcruncher.com/guides/admin-user-guide.pdf" target="_blank">Admin user guide.</a>
 
 If you haven't signed up yet, \
-<a href="https://secure.tutorcruncher.com/start/1/?cli_id={tc_cligency_id}&tc_source=call_booker" target="_blank">\
+<a href="https://secure.tutorcruncher.com/start/1/?cli_id={tc2_cligency_id}&tc_source=call_booker" target="_blank">\
 click here to start your two week free trial now</a>. You won't have to enter any payment details, and we find our \
 demo is most effective when you have had a chance to play around with the system first.
 
@@ -66,7 +66,7 @@ Best,
 The TutorCruncher Team
 
 <a href="{crm_url}" class="smaller" target="_blank">CRM link</a>
-<a href="{tc_cligency_url}" class="smaller" target="_blank">TC link</a>
+<a href="{tc2_cligency_url}" class="smaller" target="_blank">TC link</a>
 """,
     },
 }

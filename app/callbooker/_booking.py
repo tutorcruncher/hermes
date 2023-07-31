@@ -36,12 +36,12 @@ async def create_meeting_gcal_event(meeting: Meeting):
     meeting_templ_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
-        'tc_cligency_id': '',
-        'tc_cligency_url': '',
+        'tc2_cligency_id': '',
+        'tc2_cligency_url': '',
         'admin_name': admin.first_name,
     }
-    if company.tc_cligency_id:
-        meeting_templ_vars.update(tc_cligency_id=company.tc_cligency_id, tc_cligency_url=company.tc_cligency_url)
+    if company.tc2_cligency_id:
+        meeting_templ_vars.update(tc2_cligency_id=company.tc2_cligency_id, tc2_cligency_url=company.tc2_cligency_url)
     if meeting.meeting_type == Meeting.TYPE_SALES:
         # TODO
         # crm_url = get_pipedrive_url(contact)

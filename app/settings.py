@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     redis_dsn: str = 'redis://localhost:6379'
 
     # Call booker
-    tc_call_booker_url: str = 'https://tutorcruncher.com/book-a-call'
+    callbooker_base_url: str = 'https://tutorcruncher.com/book-a-call'
 
     # How long a support link is valid for
     support_ttl_days: int = 4
@@ -26,8 +26,8 @@ class Settings(BaseSettings):
 
     #  TC2
     tc2_api_key: bytes = b'test-key'
-    tc2_api_url: str = 'https://localhost:8000/api'
-    tc2_base_url: str = 'https://localhost:8000'
+    # tc2_base_url: str = 'http://localhost:8000'
+    tc2_base_url: str = 'http://192.168.0.65:8000'
 
     # Pipedrive
     pd_api_key: str = 'test-key'

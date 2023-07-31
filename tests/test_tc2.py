@@ -31,6 +31,12 @@ def _client_data():
             'last_name': 'Johnson',
             'email': 'brian@tc.com',
         },
+        'sales_person': {
+            'id': 30,
+            'first_name': 'Brain',
+            'last_name': 'Johnson',
+            'email': 'brian@tc.com',
+        },
         'paid_recipients': [
             {
                 'id': 40,
@@ -138,7 +144,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await Contact.all().count() == 0
 
         admin = await Admin.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
 
         modified_data = client_full_event_data()
@@ -151,15 +157,14 @@ class TC2CallbackTestCase(HermesTestCase):
 
         company = await Company.get()
         assert company.name == 'MyTutors'
-        assert company.tc_agency_id == 20
-        assert company.tc_cligency_id == 10
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert await company.client_manager == admin
+        assert await company.client_manager == await company.sales_person == admin
 
         assert not company.estimated_income
-        assert not company.sales_person
         assert not company.bdr_person
 
         assert await Contact.all().count() == 0
@@ -180,8 +185,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert r.json() == {
             'detail': [
                 {
-                    'loc': ['associated_admin_id'],
-                    'msg': 'Admin with tc_admin_id 30 does not exist',
+                    'loc': ['sales_person_id'],
+                    'msg': 'Admin with tc2_admin_id 30 does not exist',
                     'type': 'value_error',
                 }
             ]
@@ -195,10 +200,16 @@ class TC2CallbackTestCase(HermesTestCase):
         Setting associated admin to None
         """
         admin = await Admin.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
         await Company.create(
-            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', client_manager=admin, country='GB'
+            tc2_agency_id=20,
+            tc2_cligency_id=10,
+            name='OurTutors',
+            status='inactive',
+            client_manager=admin,
+            country='GB',
+            sales_person=admin,
         )
         assert await Contact.all().count() == 0
 
@@ -213,15 +224,15 @@ class TC2CallbackTestCase(HermesTestCase):
 
         company = await Company.get()
         assert company.name == 'MyTutors'
-        assert company.tc_agency_id == 20
-        assert company.tc_cligency_id == 10
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
+        assert await company.sales_person == admin
         assert not await company.client_manager
 
         assert not company.estimated_income
-        assert not company.sales_person
         assert not company.bdr_person
 
         assert await Contact.all().count() == 0
@@ -232,11 +243,14 @@ class TC2CallbackTestCase(HermesTestCase):
         Update a current company
         Create new contacts & Update contacts
         """
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
         company = await Company.create(
-            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB'
+            tc2_agency_id=20, tc2_cligency_id=10, name='OurTutors', status='inactive', country='GB', sales_person=admin
         )
         contact_a = await Contact.create(
-            first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company
+            first_name='Jim', last_name='Snail', email='mary@booth.com', tc2_sr_id=40, company=company
         )
         modified_data = copy.deepcopy(client_full_event_data())
         modified_data['subject']['paid_recipients'].append(
@@ -250,25 +264,25 @@ class TC2CallbackTestCase(HermesTestCase):
 
         company = await Company.get()
         assert company.name == 'MyTutors'
-        assert company.tc_agency_id == 20
-        assert company.tc_cligency_id == 10
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
         assert not await company.client_manager
 
+        assert await company.sales_person == admin
         assert not company.estimated_income
-        assert not company.sales_person
         assert not company.bdr_person
 
         assert await Contact.all().count() == 2
         contact_a = await Contact.get(id=contact_a.id)
-        assert contact_a.tc_sr_id == 40
+        assert contact_a.tc2_sr_id == 40
         assert contact_a.first_name == 'Mary'
         assert contact_a.last_name == 'Booth'
 
         contact_b = await Contact.exclude(id=contact_a.id).get()
-        assert contact_b.tc_sr_id == 41
+        assert contact_b.tc2_sr_id == 41
         assert contact_b.first_name == 'Rudy'
         assert contact_b.last_name == 'Jones'
 
@@ -280,7 +294,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await Contact.all().count() == 0
 
         await Admin.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
         modified_data = client_full_event_data()
         modified_data['subject']['meta_agency']['paid_invoice_count'] = 10
@@ -296,7 +310,12 @@ class TC2CallbackTestCase(HermesTestCase):
         """
         Company deleted, has no contacts
         """
-        await Company.create(tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB')
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+        await Company.create(
+            tc2_agency_id=20, tc2_cligency_id=10, name='OurTutors', status='inactive', country='GB', sales_person=admin
+        )
         data = {'_request_time': 123, 'events': [client_deleted_event_data()]}
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
@@ -306,10 +325,13 @@ class TC2CallbackTestCase(HermesTestCase):
         """
         Company deleted, has contact
         """
-        company = await Company.create(
-            tc_agency_id=20, tc_cligency_id=10, name='OurTutors', status='inactive', country='GB'
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
-        await Contact.create(first_name='Jim', last_name='Snail', email='mary@booth.com', tc_sr_id=40, company=company)
+        company = await Company.create(
+            tc2_agency_id=20, tc2_cligency_id=10, name='OurTutors', status='inactive', country='GB', sales_person=admin
+        )
+        await Contact.create(first_name='Jim', last_name='Snail', email='mary@booth.com', tc2_sr_id=40, company=company)
         data = {'_request_time': 123, 'events': [client_deleted_event_data()]}
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
@@ -337,33 +359,29 @@ class TC2CallbackTestCase(HermesTestCase):
         mock_tc2_get.side_effect = mock_tc2_request()
 
         admin = await Admin.create(
-            tc_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
         data = {'_request_time': 123, 'events': [invoice_event_data()]}
-        r = await self.client.post(
-            self.url,
-            json=data,
-            headers={'Webhook-Signature': self._tc2_sig(data)},
-        )
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
         company = await Company.get()
         assert company.name == 'MyTutors'
-        assert company.tc_agency_id == 20
-        assert company.tc_cligency_id == 10
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
         assert await company.client_manager == admin
+        assert await company.sales_person == admin
 
         assert not company.estimated_income
-        assert not company.sales_person
         assert not company.bdr_person
 
         contact = await Contact.get()
-        assert contact.tc_sr_id == 40
+        assert contact.tc2_sr_id == 40
         assert contact.first_name == 'Mary'
         assert contact.last_name == 'Booth'
 
@@ -409,7 +427,7 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_deal_no_cligency_id(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         deal = await Deal.create(
             name='Old test deal',
@@ -427,7 +445,7 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_cligency(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
-        company = await Company.create(name='Test company', pd_org_id=20, tc_cligency_id=10)
+        company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         deal = await Deal.create(
             name='Old test deal',

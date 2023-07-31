@@ -66,7 +66,7 @@ class AdminTestCase(HermesTestCase):
         assert admin2.last_name == 'Small'
         assert admin2.timezone == 'America/New_York'
         assert not admin2.is_sales_person
-        assert not admin2.tc_admin_id
+        assert not admin2.tc2_admin_id
         assert not admin2.pd_owner_id
 
     async def test_admins_update(self):

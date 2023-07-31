@@ -52,7 +52,7 @@ class AdminResource(Model):
     fields = [
         Field('username', label='Email', input_=inputs.Email()),
         Field(name='password', label='Password', display=displays.InputOnly(), input_=inputs.Password()),
-        Field('tc_admin_id', label='TC admin id', input_=inputs.Number()),
+        Field('tc2_admin_id', label='TC admin id', input_=inputs.Number()),
         Field('pd_owner_id', label='Pipedrive owner ID', input_=inputs.Number()),
         'first_name',
         'last_name',

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive.tasks import post_process_sales_call, post_process_support_call, post_process_client_event
+from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call, pd_post_process_client_event
 from tests._common import HermesTestCase
 
 
@@ -63,7 +63,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
         company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
@@ -87,7 +87,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await post_process_sales_call(company, contact, meeting, deal)
+        await pd_post_process_sales_call(company, contact, meeting, deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -100,7 +100,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -150,35 +150,37 @@ class PipedriveTasksTestCase(HermesTestCase):
         created for them.
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
 
-        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=10)
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=10, sales_person=admin
+        )
         self.pipedrive.db['organizations'] = {
             1: {
                 'id': 10,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
-                'owner_id': None,
+                'owner_id': 99,
                 'estimated_income': '',
                 'status': 'pending_email_conf',
                 'website': 'https://junes.com',
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
         )
         start = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        admin = await Admin.create(
-            first_name='Steve',
-            last_name='Jobs',
-            username='climan@example.com',
-            is_sales_person=True,
-            tc_admin_id=20,
-            pd_owner_id=99,
-        )
         meeting = await Meeting.create(
             company=company,
             contact=contact,
@@ -187,20 +189,20 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_process_support_call(contact, meeting)
+        await pd_post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 10,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
-                'owner_id': None,
+                'owner_id': 99,
                 'estimated_income': '',
                 'status': 'pending_email_conf',
                 'website': 'https://junes.com',
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         assert (await Company.get()).pd_org_id == 10
@@ -209,7 +211,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'first_name': 'Brian',
                 'last_name': 'Junes',
-                'owner_id': None,
+                'owner_id': 99,
                 'email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
@@ -238,20 +240,20 @@ class PipedriveTasksTestCase(HermesTestCase):
         Test that the support call workflow works. The company doesn't exist in Pipedrive so no activity created
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
-
-        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB')
-        contact = await Contact.create(
-            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
-        )
-        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
         admin = await Admin.create(
             first_name='Steve',
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
+
+        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
         meeting = await Meeting.create(
             company=company,
             contact=contact,
@@ -260,7 +262,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             end_time=start + timedelta(hours=1),
             admin=admin,
         )
-        await post_process_support_call(contact, meeting)
+        await pd_post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {}
         assert self.pipedrive.db['persons'] == {}
         assert self.pipedrive.db['deals'] == {}
@@ -275,7 +277,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
         company = await Company.create(
@@ -293,7 +295,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         contact = await Contact.create(
@@ -317,7 +319,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -330,7 +332,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         assert self.pipedrive.db['persons'] == {
@@ -355,7 +357,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
         company = await Company.create(
@@ -382,7 +384,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=sales_person,
             pd_deal_id=17,
         )
-        await post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -395,7 +397,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -424,7 +426,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
         company = await Company.create(
@@ -442,7 +444,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         contact = await Contact.create(
@@ -478,7 +480,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
-        await post_process_sales_call(company, contact, meeting, deal)
+        await pd_post_process_sales_call(company, contact, meeting, deal)
         call_args = mock_request.call_args_list
         assert not any('PUT' in str(call) for call in call_args)
 
@@ -491,12 +493,12 @@ class PipedriveTasksTestCase(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_sales_person=True,
-            tc_admin_id=20,
+            tc2_admin_id=20,
             pd_owner_id=99,
         )
         company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
         await Contact.create(first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id)
-        await post_process_client_event(company)
+        await pd_post_process_client_event(company)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -509,7 +511,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'paid_invoice_count': 0,
                 'has_booked_call': False,
                 'has_signed_up': False,
-                'tc_profile_url': '',
+                'tc2_profile_url': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -625,7 +627,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         }
 
     async def test_org_delete(self):
-        await Company.create(name='Test company', pd_org_id=20)
+        await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = data.pop('current')
@@ -634,7 +636,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Company.exists()
 
     async def test_org_update(self):
-        await Company.create(name='Old test company', pd_org_id=20)
+        await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='New test company')
@@ -644,7 +646,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.name == 'New test company'
 
     async def test_org_update_no_changes(self):
-        await Company.create(name='Old test company', pd_org_id=20)
+        await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
         r = await self.client.post(self.url, json=data)
@@ -660,7 +662,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 404, r.json()
 
     async def test_person_create(self):
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert not await Contact.exists()
         r = await self.client.post(self.url, json=basic_pd_person_data())
         assert r.status_code == 200, r.json()
@@ -679,7 +681,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         }
 
     async def test_person_delete(self):
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         assert await Contact.exists()
         data = copy.deepcopy(basic_pd_person_data())
@@ -689,7 +691,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Contact.exists()
 
     async def test_person_update(self):
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
@@ -700,7 +702,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert contact.name == 'Jessica Jones'
 
     async def test_person_update_no_changes(self):
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
@@ -710,7 +712,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert contact.name == 'John Smith'
 
     async def test_person_update_doesnt_exist(self):
-        await Company.create(name='Test company', pd_org_id=20)
+        await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(last_name='Brimstone')
@@ -721,7 +723,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_create(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         assert not await Deal.exists()
         r = await self.client.post(self.url, json=basic_pd_deal_data())
@@ -737,7 +739,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_create_owner_doesnt_exist(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
         data['current']['user_id'] = 999
@@ -751,7 +753,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_create_stage_doesnt_exist(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
         data['current']['stage_id'] = 999
@@ -765,7 +767,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_create_pipeline_doesnt_exist(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
         data['current']['pipeline_id'] = 999
@@ -785,7 +787,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_create_contact_doesnt_exist(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
         data['current']['person_id'] = 999
@@ -801,7 +803,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_delete(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Test deal',
@@ -823,7 +825,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_update(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',
@@ -847,7 +849,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_update_no_changes(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',
@@ -870,7 +872,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_deal_update_doesnt_exist(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
         data['previous'] = copy.deepcopy(data['current'])

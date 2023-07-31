@@ -75,7 +75,7 @@ class Pipeline(models.Model):
 
 class Admin(AbstractAdmin):
     id = fields.IntField(pk=True)
-    tc_admin_id = fields.IntField(unique=True, null=True)
+    tc2_admin_id = fields.IntField(unique=True, null=True)
     pd_owner_id = fields.IntField(null=True)
 
     first_name = fields.CharField(max_length=255, default='')
@@ -89,6 +89,10 @@ class Admin(AbstractAdmin):
     is_sales_person = fields.BooleanField(default=False)
     is_client_manager = fields.BooleanField(default=False)
     is_bdr_person = fields.BooleanField(default=False)
+
+    sells_payg = fields.BooleanField(default=False)
+    sells_startup = fields.BooleanField(default=False)
+    sells_enterprise = fields.BooleanField(default=False)
 
     password = fields.CharField(max_length=255, null=True)
 
@@ -107,7 +111,7 @@ class Admin(AbstractAdmin):
 
     @property
     def call_booker_url(self):
-        return f'{settings.tc_call_booker_url}/{self.first_name.lower()}'
+        return f'{settings.callbooker_base_url}/{self.id}/'
 
 
 class Company(models.Model):
@@ -130,8 +134,8 @@ class Company(models.Model):
     PP_ENTERPRISE = 'enterprise'
 
     id = fields.IntField(pk=True)
-    tc_agency_id = fields.IntField(unique=True, null=True)
-    tc_cligency_id = fields.IntField(unique=True, null=True)
+    tc2_agency_id = fields.IntField(unique=True, null=True)
+    tc2_cligency_id = fields.IntField(unique=True, null=True)
 
     pd_org_id = fields.IntField(unique=True, null=True)
 
@@ -143,8 +147,8 @@ class Company(models.Model):
     country = fields.CharField(max_length=255, description='Country code, e.g. GB', null=True)
     website = fields.CharField(max_length=255, null=True)
 
+    sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     client_manager = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
-    sales_person = fields.ForeignKeyField('models.Admin', related_name='sales', null=True)
     bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
 
     paid_invoice_count = fields.IntField(default=0)
@@ -152,7 +156,7 @@ class Company(models.Model):
     currency = fields.CharField(max_length=255, null=True)
 
     has_booked_call = fields.BooleanField(default=False)
-    has_signed_up = property(lambda self: bool(self.tc_cligency_id))
+    has_signed_up = property(lambda self: bool(self.tc2_cligency_id))
 
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']
@@ -166,9 +170,9 @@ class Company(models.Model):
         return f'{settings.pd_base_url}/organizations/{self.pd_org_id}/'
 
     @property
-    def tc_cligency_url(self) -> str:
-        if self.tc_cligency_id:
-            return f'{settings.tc2_base_url}/clients/{self.tc_cligency_id}/'
+    def tc2_cligency_url(self) -> str:
+        if self.tc2_cligency_id:
+            return f'{settings.tc2_base_url}/clients/{self.tc2_cligency_id}/'
         else:
             return ''
 
@@ -181,7 +185,7 @@ class Contact(models.Model):
     """
 
     id = fields.IntField(pk=True)
-    tc_sr_id = fields.IntField(unique=True, null=True)
+    tc2_sr_id = fields.IntField(unique=True, null=True)
     pd_person_id = fields.IntField(unique=True, null=True)
     created = fields.DatetimeField(auto_now_add=True)
 

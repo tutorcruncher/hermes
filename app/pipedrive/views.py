@@ -25,8 +25,8 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     app_logger.info(f'Callback: event received for {event.meta.object}')
     if event.meta.object == 'deal':
         deal = await _process_pd_deal(event.current, event.previous)
-        if deal and (await deal.company).tc_agency_id:
-            # We only update the client if the deal has a company with a tc_agency_id
+        if deal and (await deal.company).tc2_agency_id:
+            # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_deal, deal)
     elif event.meta.object == 'pipeline':
         await _process_pd_pipeline(event.current, event.previous)
