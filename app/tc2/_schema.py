@@ -50,7 +50,7 @@ class TCClient(HermesBaseModel):
     id: int
     meta_agency: _TCAgency
     status: str
-    sales_person_id: fk_field(Admin, 'tc2_admin_id', alias='sales_person')
+    sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='client_manager')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]

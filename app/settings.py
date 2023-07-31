@@ -7,8 +7,12 @@ THIS_DIR = Path(__file__).parent.resolve()
 
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
+    dev_mode: bool = False
+
     dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
+    host: str = '0.0.0.0'
+    port: int = 8000
 
     # Redis
     redis_dsn: str = 'redis://localhost:6379'
@@ -26,12 +30,10 @@ class Settings(BaseSettings):
 
     #  TC2
     tc2_api_key: bytes = b'test-key'
-    # tc2_base_url: str = 'http://localhost:8000'
-    tc2_base_url: str = 'http://192.168.0.65:8000'
+    tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive
     pd_api_key: str = 'test-key'
-    pd_api_url: str = 'https://api.pipedrive.com/v1'
     pd_base_url: str = 'https://tutorcruncher-sandbox.pipedrive.com'
 
     # Google

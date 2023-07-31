@@ -31,10 +31,20 @@ async def get_config() -> 'Config':
     """
     We always want to have one Config object.
     """
-    from app.models import Config
+    from app.models import Config, Admin
 
     try:
         config = await Config.get()
     except DoesNotExist:
         config = await Config.create()
+
+    if settings.dev_mode:
+        if not await Admin.exists():
+            await Admin.create(
+                email='testing@tutorcruncher.com',
+                username='testing@tutorcruncher.com',
+                password='testing',
+                last_name='testing',
+            )
+            debug('Created admin with username testing@tutorcruncher.com and password testing')
     return config

@@ -11,9 +11,6 @@ class AuthProvider(UsernamePasswordProvider):
     login_logo_url = ''
     admin_model = Admin
 
-    def __init__(self):
-        pass
-
     async def create_user(self, username: str, password: str, **kwargs):
         return await self.admin_model.create(email=username, username=username, password=password, **kwargs)
 

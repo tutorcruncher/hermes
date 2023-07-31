@@ -23,9 +23,22 @@ session = requests.Session()
 
 
 async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    headers = {'Authorization': f'token {settings.pd_api_key}'}
-    r = session.request(method=method, url=f'{settings.pd_api_url}/api/{url}', data=data, headers=headers)
-    app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
+    r = session.request(
+        method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
+    )
+    try:
+        r.raise_for_status()
+    except requests.HTTPError:
+        app_logger.error(
+            'Request method=%s url=%s status_code=%s',
+            method,
+            url,
+            r.status_code,
+            extra={'data': data, 'response': r.text},
+        )
+        raise
+    else:
+        app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
     r.raise_for_status()
     return r.json()
 
