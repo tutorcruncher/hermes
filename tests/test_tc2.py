@@ -162,7 +162,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert await company.client_manager == await company.sales_person == admin
+        assert await company.support_person == await company.sales_person == admin
 
         assert not company.estimated_income
         assert not company.bdr_person
@@ -207,7 +207,7 @@ class TC2CallbackTestCase(HermesTestCase):
             tc2_cligency_id=10,
             name='OurTutors',
             status='inactive',
-            client_manager=admin,
+            support_person=admin,
             country='GB',
             sales_person=admin,
         )
@@ -230,7 +230,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
         assert await company.sales_person == admin
-        assert not await company.client_manager
+        assert not await company.support_person
 
         assert not company.estimated_income
         assert not company.bdr_person
@@ -269,7 +269,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert not await company.client_manager
+        assert not await company.support_person
 
         assert await company.sales_person == admin
         assert not company.estimated_income
@@ -374,7 +374,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert await company.client_manager == admin
+        assert await company.support_person == admin
         assert await company.sales_person == admin
 
         assert not company.estimated_income

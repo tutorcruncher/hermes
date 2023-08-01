@@ -26,19 +26,10 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     r = session.request(
         method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
     )
-    try:
-        r.raise_for_status()
-    except requests.HTTPError:
-        app_logger.error(
-            'Request method=%s url=%s status_code=%s',
-            method,
-            url,
-            r.status_code,
-            extra={'data': data, 'response': r.text},
-        )
-        raise
-    else:
-        app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
+    app_logger.debug('Request to url %s: %r', url, data)
+    app_logger.debug('Response: %r', r.json())
+    r.raise_for_status()
+    app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
     r.raise_for_status()
     return r.json()
 
@@ -48,14 +39,16 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     Create or update an organisation within Pipedrive.
     """
     hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.dict(exclude={'id'})
+    hermes_org_data = hermes_org.dict()
+    debug(hermes_org_data)
     if company.pd_org_id:
-        pipedrive_org = Organisation(**await pipedrive_request(f'organizations/{company.pd_org_id}'))
+        pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
         if hermes_org_data != pipedrive_org.dict(exclude={'id'}):
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
-        pipedrive_org = Organisation(**await pipedrive_request('organizations', method='POST', data=hermes_org_data))
+        created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
+        pipedrive_org = Organisation(**created_org)
         company.pd_org_id = pipedrive_org.id
         await company.save()
         app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
@@ -69,12 +62,13 @@ async def create_or_update_person(contact: Contact) -> Person:
     hermes_person = await Person.from_contact(contact)
     hermes_person_data = hermes_person.dict(exclude={'id'})
     if contact.pd_person_id:
-        pipedrive_person = Person(**await pipedrive_request(f'persons/{contact.pd_person_id}'))
+        pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
         if hermes_person_data != pipedrive_person.dict(exclude={'id'}):
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
-        pipedrive_person = Person(**await pipedrive_request('persons', method='POST', data=hermes_person_data))
+        created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
+        pipedrive_person = Person(**created_person)
         contact.pd_person_id = pipedrive_person.id
         await contact.save()
         app_logger.info('Created person %s from contact %s', contact.pd_person_id, contact.id)

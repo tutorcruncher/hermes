@@ -6,7 +6,7 @@ from app.models import Company, Admin
 main_router = APIRouter()
 
 
-@main_router.get('/choose-sales-person/', name='Decide which sales person to assign to a new sale')
+@main_router.get('/choose-roundrobin/sales/', name='Decide which sales person to assign to a new signup')
 async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     """
     Chooses which sales person should be assigned to a new company if it were on a certain price plan. Uses simple
@@ -24,12 +24,33 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     admin_ids = list(admins.keys())
     latest_company = await Company.filter(price_plan=plan, sales_person_id__isnull=False).order_by('-created').first()
     if latest_company:
-        latest_salesperson = latest_company.sales_person_id
+        latest_sales_person = latest_company.sales_person_id
         try:
-            next_sales_person = admin_ids[admin_ids.index(latest_salesperson) + 1]
+            next_sales_person = admin_ids[admin_ids.index(latest_sales_person) + 1]
         except (IndexError, ValueError):
             next_sales_person = admin_ids[0]
     else:
         next_sales_person = admin_ids[0]
     schema = Admin.pydantic_schema()
     return await schema.from_tortoise_orm(admins[next_sales_person])
+
+
+@main_router.get('/choose-roundrobin/support/', name='Decide which support person to assign to a new signup')
+async def choose_support_person() -> Admin.pydantic_schema():
+    """
+    Chooses which support person should be assigned to a new company. Uses simple round robin logic where the order of
+    admins is decided by their ID.
+    """
+    admins = {a.id: a async for a in Admin.filter(is_support_person=True).order_by('id')}
+    admin_ids = list(admins.keys())
+    latest_company = await Company.filter(support_person_id__isnull=False).order_by('-created').first()
+    if latest_company:
+        latest_support_person = latest_company.support_person_id
+        try:
+            next_support_person = admin_ids[admin_ids.index(latest_support_person) + 1]
+        except (IndexError, ValueError):
+            next_support_person = admin_ids[0]
+    else:
+        next_support_person = admin_ids[0]
+    schema = Admin.pydantic_schema()
+    return await schema.from_tortoise_orm(admins[next_support_person])

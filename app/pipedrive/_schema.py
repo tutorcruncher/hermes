@@ -1,7 +1,6 @@
 from typing import Optional
 
 from pydantic import Field, validator
-
 from app.base_schema import fk_field, HermesBaseModel
 from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
 
@@ -17,29 +16,31 @@ class Organisation(HermesBaseModel):
     owner_id: fk_field(Admin, 'pd_owner_id')
 
     # These are all custom fields
-    estimated_income: str = ''
-    status: str = ''
-    website: str = ''
-    paid_invoice_count: int = 0
-    has_booked_call: bool = False
-    has_signed_up: bool = False
-    tc2_profile_url: str = ''
+    website: str = Field('', exclude=True)
+    paid_invoice_count: int = Field(0, exclude=True)
+    has_booked_call: bool = Field(False, exclude=True)
+    has_signed_up: bool = Field(False, exclude=True)
+    tc2_status: str = Field('', exclude=True)
+    tc2_cligency_url: str = Field('', exclude=True)
+
+    @validator('owner_id', pre=True)
+    def get_owner_id(cls, v):
+        if isinstance(v, dict):
+            return v['id']
+        return v
 
     @classmethod
     async def from_company(cls, company: Company):
+        from app.pipedrive._fields import parse_extra_field_values, get_org_custom_fields
+
+        custom_org_fields = await get_org_custom_fields()
+        extra_field_data = await parse_extra_field_values(custom_org_fields, company)
         return cls(
             **_remove_nulls(
                 name=company.name,
                 owner_id=(await company.sales_person).pd_owner_id,
                 address_country=company.country,
-                paid_invoice_count=company.paid_invoice_count,
-                estimated_income=company.estimated_income,
-                currency=company.currency,
-                website=company.website,
-                status=company.status,
-                has_booked_call=company.has_booked_call,
-                has_signed_up=company.has_signed_up,
-                tc2_profile_url=company.tc2_cligency_url,
+                **extra_field_data,
             )
         )
 
@@ -47,7 +48,7 @@ class Organisation(HermesBaseModel):
         return {
             'pd_org_id': self.id,
             'name': self.name,
-            'status': self.status,
+            'tc2_status': self.tc2_status,
             'website': self.website,
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in validation
         }
@@ -55,8 +56,8 @@ class Organisation(HermesBaseModel):
 
 class Person(HermesBaseModel):
     id: Optional[int] = None
-    first_name: str
-    last_name: str
+    first_name: str = Field(exclude=True)
+    last_name: str = Field(exclude=True)
     email: Optional[str] = Field(alias='primary_email', default=None)
     phone: Optional[str] = None
     address_country: Optional[str] = None
@@ -66,8 +67,7 @@ class Person(HermesBaseModel):
     async def from_contact(cls, contact: Contact):
         company: Company = await contact.company
         return cls(
-            first_name=contact.first_name,
-            last_name=contact.last_name,
+            name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
             email=contact.email,
             phone=contact.phone,

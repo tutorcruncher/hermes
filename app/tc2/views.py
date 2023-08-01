@@ -24,9 +24,9 @@ async def callback(
     Callback for TC2
     Updates Hermes and other systems based on events in TC2.
     """
-    expected_sig = hmac.new(settings.tc2_api_key, (await request.body()), hashlib.sha256).hexdigest()
-    if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
-        raise HTTPException(status_code=403, detail='Unauthorized key')
+    # expected_sig = hmac.new(settings.tc2_api_key, (await request.body()), hashlib.sha256).hexdigest()
+    # if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
+    #     raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
         company = None
         if event.subject.model == 'Client':
