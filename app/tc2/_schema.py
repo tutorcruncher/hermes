@@ -14,6 +14,9 @@ class TCSubject(HermesBaseModel):
     model: str
     id: int
 
+    class Config:
+        extra = 'allow'
+
 
 class _TCSimpleRole(HermesBaseModel):
     """
@@ -72,7 +75,7 @@ class TCClient(HermesBaseModel):
         return dict(
             tc2_agency_id=self.meta_agency.id,
             tc2_cligency_id=self.id,
-            status=self.meta_agency.status,
+            tc2_status=self.meta_agency.status,
             name=self.meta_agency.name,
             country=self.meta_agency.country,
             support_person=self.support_person,  # noqa: F821 - Added in validation

@@ -40,10 +40,9 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     """
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.dict()
-    debug(hermes_org_data)
     if company.pd_org_id:
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
-        if hermes_org_data != pipedrive_org.dict(exclude={'id'}):
+        if hermes_org_data != pipedrive_org.dict():
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
@@ -60,10 +59,10 @@ async def create_or_update_person(contact: Contact) -> Person:
     Create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.dict(exclude={'id'})
+    hermes_person_data = hermes_person.dict()
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.dict(exclude={'id'}):
+        if hermes_person_data != pipedrive_person.dict():
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
@@ -81,7 +80,7 @@ async def get_or_create_deal(deal: Deal) -> PDDeal:
     """
     pd_deal = await PDDeal.from_deal(deal)
     if not deal.pd_deal_id:
-        pd_deal = PDDeal(**await pipedrive_request('deals', method='POST', data=pd_deal.dict(exclude={'id'})))
+        pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal.dict()))['data'])
         deal.pd_deal_id = pd_deal.id
         await deal.save()
     return pd_deal
@@ -92,9 +91,10 @@ async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Ac
     Creates a new activity within Pipedrive.
     """
     hermes_activity = await Activity.from_meeting(meeting)
-    hermes_activity_data = hermes_activity.dict(exclude={'id'})
+    hermes_activity_data = hermes_activity.dict()
     if pipedrive_deal:
         hermes_activity_data['deal_id'] = pipedrive_deal.id
-    activity = Activity(**await pipedrive_request('activities/', method='POST', data=hermes_activity_data))
+    created_activity = (await pipedrive_request('activities/', method='POST', data=hermes_activity_data))['data']
+    activity = Activity(**created_activity)
     app_logger.info('Created activity for deal %s from meeting %s', activity.id, meeting.id)
     return activity

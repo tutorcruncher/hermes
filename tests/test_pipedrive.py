@@ -5,12 +5,26 @@ from unittest import mock
 
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
 from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call, pd_post_process_client_event
+from app.utils import get_redis_client
 from tests._common import HermesTestCase
 
 
 class FakePipedrive:
     def __init__(self):
-        self.db = {'organizations': {}, 'persons': {}, 'deals': {}, 'activities': {}}
+        self.db = {
+            'organizations': {},
+            'persons': {},
+            'deals': {},
+            'activities': {},
+            'organizationFields': {
+                'website': {'name': 'website', 'key': '123_website_456'},
+                'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
+                'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
+                'has_signed_up': {'name': 'Has signed up', 'key': '123_has_signed_up_456'},
+                'tc2_cligency_url': {'name': 'TC2 cligency URL', 'key': '123_tc2_cligency_url_456'},
+                'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
+            },
+        }
 
 
 class MockResponse:
@@ -26,21 +40,24 @@ class MockResponse:
 
 
 def fake_pd_request(fake_pipedrive: FakePipedrive):
-    def _pd_request(*, url: str, method: str, data: dict, headers: dict):
-        obj_type = re.search(r'/api/(.*?)(?:/|$)', url).group(1)
+    def _pd_request(*, url: str, method: str, data: dict):
+        obj_type = re.search(r'/api/v1/(.*?)(?:/|\?api_token=)', url).group(1)
+        obj_id = re.search(rf'/api/v1/{obj_type}/(\d+)', url)
+        obj_id = obj_id and int(obj_id.group(1))
         if method == 'GET':
-            obj_id = int(url.split(f'/{obj_type}/')[1])
-            return MockResponse(200, fake_pipedrive.db[obj_type][obj_id])
+            if obj_id:
+                return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
+            else:
+                return MockResponse(200, {'data': list(fake_pipedrive.db[obj_type].values())})
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1
             data['id'] = obj_id
             fake_pipedrive.db[obj_type][obj_id] = data
-            return MockResponse(200, fake_pipedrive.db[obj_type][obj_id])
+            return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         else:
             assert method == 'PUT'
-            obj_id = int(url.split(f'/{obj_type}/')[1])
             fake_pipedrive.db[obj_type][obj_id].update(**data)
-            return MockResponse(200, fake_pipedrive.db[obj_type][obj_id])
+            return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
 
     return _pd_request
 
@@ -49,6 +66,10 @@ class PipedriveTasksTestCase(HermesTestCase):
     def setUp(self):
         super().setUp()
         self.pipedrive = FakePipedrive()
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await (await get_redis_client()).delete('organizationFields-custom-fields')
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_sales_call_booked(self, mock_request):
@@ -90,27 +111,25 @@ class PipedriveTasksTestCase(HermesTestCase):
         await pd_post_process_sales_call(company, contact, meeting, deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
-                'id': 1,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                'id': 1,
+                '123_website_456': 'https://junes.com',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
+                '123_paid_invoice_count_456': 0,
             },
         }
         assert (await Company.get()).pd_org_id == 1
         assert self.pipedrive.db['persons'] == {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 1,
@@ -168,13 +187,12 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         contact = await Contact.create(
@@ -196,23 +214,21 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 10
         assert self.pipedrive.db['persons'] == {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 10,
@@ -289,13 +305,12 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Junes Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         contact = await Contact.create(
@@ -326,22 +341,20 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         assert self.pipedrive.db['persons'] == {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 1,
@@ -391,23 +404,21 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
         assert self.pipedrive.db['persons'] == {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 1,
@@ -438,13 +449,12 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         contact = await Contact.create(
@@ -453,10 +463,9 @@ class PipedriveTasksTestCase(HermesTestCase):
         self.pipedrive.db['persons'] = {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 1,
@@ -505,23 +514,21 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'estimated_income': '',
-                'status': 'pending_email_conf',
-                'website': 'https://junes.com',
-                'paid_invoice_count': 0,
-                'has_booked_call': False,
-                'has_signed_up': False,
-                'tc2_profile_url': '',
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
         assert self.pipedrive.db['persons'] == {
             1: {
                 'id': 1,
-                'first_name': 'Brian',
-                'last_name': 'Junes',
+                'name': 'Brian Junes',
                 'owner_id': 99,
-                'email': 'brain@junes.com',
+                'primary_email': 'brain@junes.com',
                 'phone': None,
                 'address_country': None,
                 'org_id': 1,
@@ -549,9 +556,8 @@ def basic_pd_person_data():
         'current': {
             'owner_id': 10,
             'id': 30,
-            'first_name': 'Brian',
-            'email': [{'value': '', 'primary': True}],
-            'last_name': 'Blessed',
+            'name': 'Brian Blessed',
+            'primary_email': '',
             'phone': [{'value': '0208112555', 'primary': True}],
             'org_id': 20,
         },
@@ -608,6 +614,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await super().asyncSetUp()
         self.admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         self.url = '/pipedrive/callback/'
+        await (await get_redis_client()).delete('organizationFields-custom-fields')
 
     async def test_org_create(self):
         assert not await Company.exists()
@@ -695,7 +702,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['current'].update(last_name='Jones', first_name='Jessica')
+        data['current'].update(name='Jessica Jones')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()

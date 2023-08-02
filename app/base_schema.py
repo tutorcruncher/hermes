@@ -1,5 +1,6 @@
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Extra
+from pydantic import BaseModel
+from pydantic.main import object_setattr
 from tortoise.exceptions import DoesNotExist
 
 
@@ -44,7 +45,7 @@ def fk_field(model, fk_field_name='pk', alias=None):
     return ForeignKeyField
 
 
-class HermesBaseModel(BaseModel, extra=Extra.allow):
+class HermesBaseModel(BaseModel):
     async def a_validate(self):
         """
         Validates any ForeignKeys on the model by querying the db.
@@ -69,8 +70,8 @@ class HermesBaseModel(BaseModel, extra=Extra.allow):
                             ]
                         )
                     else:
-                        setattr(self, field.type_.alias(), related_obj)
+                        object_setattr(self, field.type_.alias(), related_obj)
                 else:
-                    setattr(self, field.type_.alias(), None)
+                    object_setattr(self, field.type_.alias(), None)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()

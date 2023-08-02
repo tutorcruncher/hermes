@@ -178,7 +178,7 @@ class Company(models.Model):
     currency = fields.CharField(max_length=255, null=True)
 
     has_booked_call = fields.BooleanField(default=False)
-    has_signed_up = property(lambda self: bool(self.tc2_cligency_id))
+    has_signed_up = fields.BooleanField(default=False)
 
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']

@@ -1,4 +1,4 @@
-import logging
+import logging.config
 import os
 
 import aioredis
@@ -11,6 +11,7 @@ from app.admin import resources, views  # noqa: F401
 from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
+from app.logging import config
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
@@ -24,6 +25,7 @@ if _app_settings.sentry_dsn:
 
 
 app = FastAPI()
+logging.config.dictConfig(config)
 register_tortoise(
     app,
     db_url=_app_settings.pg_dsn,
@@ -54,24 +56,3 @@ async def startup():
     from app.utils import get_config
 
     await get_config()
-
-
-if __name__ == '__main__':
-    import uvicorn
-
-    log_config = uvicorn.config.LOGGING_CONFIG
-
-    # log_config['formatters']['access']['fmt'] = '%(name)20s: %(levelname)9s - %(message)s'
-    # log_config['formatters']['default']['fmt'] = '%(name)20s: %(levelname)9s - %(message)s'
-    log_config['loggers']['hermes'] = {
-        'handlers': ['default'],
-        'level': 'DEBUG' if _app_settings else 'INFO',
-        'propagate': False,
-    }
-    uvicorn.run(
-        app,
-        host=_app_settings.host,
-        port=_app_settings.port,
-        log_level=logging.DEBUG if _app_settings.dev_mode else logging.INFO,
-        log_config=log_config,
-    )

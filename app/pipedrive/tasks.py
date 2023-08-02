@@ -30,6 +30,3 @@ async def pd_post_process_client_event(company: Company):
     await create_or_update_organisation(company)
     for contact in await company.contacts:
         await create_or_update_person(contact)
-
-
-# https://1f36-195-224-18-3.ngrok-free.app/pipedrive/callback/
