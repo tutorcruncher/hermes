@@ -117,7 +117,7 @@ class Organisation(PipedriveBaseModel):
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
-    obj_type: Literal['organization']
+    obj_type: Literal['organization'] = Field('organization', exclude=True)
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
@@ -151,7 +151,7 @@ class Person(PipedriveBaseModel):
     org_id: Optional[fk_field(Company, 'pd_org_id')] = None
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
-    obj_type: Literal['person']
+    obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
     async def from_contact(cls, contact: Contact):
@@ -200,7 +200,7 @@ class Activity(PipedriveBaseModel):
     deal_id: Optional[int] = None
     person_id: Optional[int] = None
     org_id: Optional[int] = None
-    obj_type: Literal['activity']
+    obj_type: Literal['activity'] = Field('activity', exclude=True)
 
     @classmethod
     async def from_meeting(cls, meeting: Meeting):
@@ -230,7 +230,7 @@ class PDDeal(PipedriveBaseModel):
     pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
     stage_id: fk_field(Stage, 'pd_stage_id')
     status: str
-    obj_type: Literal['deal']
+    obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
     async def from_deal(cls, deal: Deal):
@@ -267,7 +267,7 @@ class PDPipeline(PipedriveBaseModel):
     id: int
     name: str
     active: bool
-    obj_type: Literal['pipeline']
+    obj_type: Literal['pipeline'] = Field('pipeline', exclude=True)
 
     async def pipeline_dict(self):
         return {'pd_pipeline_id': self.id, 'name': self.name}
@@ -277,14 +277,14 @@ class PDStage(PipedriveBaseModel):
     id: int
     name: str
     pipeline_id: int
-    obj_type: Literal['stage']
+    obj_type: Literal['stage'] = Field('stage', exclude=True)
 
     async def stage_dict(self):
         return {'pd_stage_id': self.id, 'name': self.name}
 
 
 class PDGeneric(BaseModel):
-    obj_type: Literal['generic']
+    obj_type: Literal['generic'] = Field('generic', exclude=True)
 
     def __bool__(self):
         return False

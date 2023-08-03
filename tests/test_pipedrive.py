@@ -722,7 +722,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['current'].update(last_name='Brimstone')
+        data['current'].update(name='Brimstone')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 404, r.json()
 
