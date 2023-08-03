@@ -5,7 +5,7 @@ from tests._common import HermesTestCase
 class SalesPersonDeciderTestCase(HermesTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        self.url = '/choose-sales-person/'
+        self.url = '/choose-roundrobin/sales/'
         sp_kwargs = {'is_sales_person': True, 'sells_payg': True, 'sells_startup': True}
         self.admin_1 = await Admin.create(last_name='1', username='admin_1@example.com', tc2_admin_id=10, **sp_kwargs)
         self.admin_2 = await Admin.create(last_name='2', username='admin_2@example.com', tc2_admin_id=20, **sp_kwargs)
@@ -30,7 +30,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '1',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -52,7 +52,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '2',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -70,7 +70,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '3',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -88,7 +88,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '1',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -110,7 +110,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '2',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -128,7 +128,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '3',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -146,7 +146,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': '1',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': True,
             'sells_startup': True,
@@ -172,7 +172,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': 'enterprise',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': False,
             'sells_startup': False,
@@ -190,7 +190,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'last_name': 'enterprise',
             'timezone': 'Europe/London',
             'is_sales_person': True,
-            'is_client_manager': False,
+            'is_support_person': False,
             'is_bdr_person': False,
             'sells_payg': False,
             'sells_startup': False,
@@ -201,3 +201,99 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         r = await self.client.get(self.url + '?plan=foobar')
         assert r.status_code == 422
         assert r.json() == {'detail': 'Price plan must be one of "payg,startup,enterprise"'}
+
+
+class SupportPersonDeciderTestCase(HermesTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.url = '/choose-roundrobin/support/'
+        self.admin_1 = await Admin.create(
+            last_name='1', username='admin_1@example.com', tc2_admin_id=10, is_support_person=True
+        )
+        self.admin_2 = await Admin.create(
+            last_name='2', username='admin_2@example.com', tc2_admin_id=20, is_support_person=True
+        )
+        self.admin_3 = await Admin.create(
+            last_name='3', username='admin_3@example.com', tc2_admin_id=30, is_support_person=True
+        )
+
+    async def test_no_companies(self):
+        r = await self.client.get(self.url)
+        assert r.status_code == 200
+        assert r.json() == {
+            'username': 'admin_1@example.com',
+            'id': self.admin_1.id,
+            'tc2_admin_id': 10,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': '1',
+            'timezone': 'Europe/London',
+            'is_sales_person': False,
+            'is_support_person': True,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': False,
+            'sells_enterprise': False,
+        }
+
+    async def test_support_round_robin(self):
+        company = await Company.create(
+            name='Junes Ltd',
+            website='https://junes.com',
+            country='GB',
+            sales_person=self.admin_1,
+            support_person=self.admin_1,
+        )
+        r = await self.client.get(self.url)
+        assert r.status_code == 200, r.json()
+        assert r.json() == {
+            'username': 'admin_2@example.com',
+            'id': self.admin_2.id,
+            'tc2_admin_id': 20,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': '2',
+            'timezone': 'Europe/London',
+            'is_sales_person': False,
+            'is_support_person': True,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': False,
+            'sells_enterprise': False,
+        }
+        company.support_person = self.admin_2
+        await company.save()
+        r = await self.client.get(self.url)
+        assert r.json() == {
+            'username': 'admin_3@example.com',
+            'id': self.admin_3.id,
+            'tc2_admin_id': 30,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': '3',
+            'timezone': 'Europe/London',
+            'is_sales_person': False,
+            'is_support_person': True,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': False,
+            'sells_enterprise': False,
+        }
+        company.support_person = self.admin_3
+        await company.save()
+        r = await self.client.get(self.url)
+        assert r.json() == {
+            'username': 'admin_1@example.com',
+            'id': self.admin_1.id,
+            'tc2_admin_id': 10,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': '1',
+            'timezone': 'Europe/London',
+            'is_sales_person': False,
+            'is_support_person': True,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': False,
+            'sells_enterprise': False,
+        }

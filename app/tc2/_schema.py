@@ -14,6 +14,9 @@ class TCSubject(HermesBaseModel):
     model: str
     id: int
 
+    class Config:
+        extra = 'allow'
+
 
 class _TCSimpleRole(HermesBaseModel):
     """
@@ -50,8 +53,8 @@ class TCClient(HermesBaseModel):
     id: int
     meta_agency: _TCAgency
     status: str
-    sales_person_id: fk_field(Admin, 'tc2_admin_id', alias='sales_person')
-    associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='client_manager')] = None
+    sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
+    associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
 
@@ -72,10 +75,10 @@ class TCClient(HermesBaseModel):
         return dict(
             tc2_agency_id=self.meta_agency.id,
             tc2_cligency_id=self.id,
-            status=self.meta_agency.status,
+            tc2_status=self.meta_agency.status,
             name=self.meta_agency.name,
             country=self.meta_agency.country,
-            client_manager=self.client_manager,  # noqa: F821 - Added in validation
+            support_person=self.support_person,  # noqa: F821 - Added in validation
             sales_person=self.sales_person,  # noqa: F821 - Added in validation
             bdr_person=self.bdr_person,  # noqa: F821 - Added in validation
             paid_invoice_count=self.meta_agency.paid_invoice_count,

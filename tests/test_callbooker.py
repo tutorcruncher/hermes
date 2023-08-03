@@ -97,7 +97,7 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve',
             last_name='Jobs',
             username='climan@example.com',
-            is_client_manager=True,
+            is_support_person=True,
         )
         meeting_data.update(meeting_dt='2026-01-03T07:08', admin_id=admin.id)
         r = await self.client.post(self.url, json=meeting_data)
@@ -112,7 +112,7 @@ class MeetingBookingTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         admin = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         meeting_data.update(meeting_dt='2026-01-03T07:08:00+00:00', admin_id=admin.id)
         r = await self.client.post(self.url, json=meeting_data)
@@ -126,7 +126,7 @@ class MeetingBookingTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         admin = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         meeting_data.update(meeting_dt='2026-01-03T02:08:00-05:00', admin_id=admin.id)
         r = await self.client.post(self.url, json=meeting_data)
@@ -145,7 +145,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -158,7 +158,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert company.estimated_income == '1000'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
@@ -185,7 +185,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         meeting_data = CB_MEETING_DATA.copy()
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(
             name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person
@@ -203,7 +203,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert await company.sales_person == sales_person
         assert not company.bdr_person_id
 
@@ -250,7 +250,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
@@ -278,7 +278,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(
             tc2_cligency_id=10, name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person
@@ -298,7 +298,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
@@ -326,7 +326,7 @@ class MeetingBookingTestCase(HermesTestCase):
         """
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person
@@ -344,7 +344,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Junes Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
 
         contact = await Contact.get()
@@ -391,7 +391,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
 
         contact = await Contact.get()
@@ -409,7 +409,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
     async def test_meeting_already_exists(self):
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person
@@ -451,7 +451,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.client_manager_id
+        assert not company.support_person_id
         assert not company.bdr_person_id
 
         contact = await Contact.get()
@@ -536,7 +536,7 @@ class MeetingBookingTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
         admin = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_client_manager=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
         meeting_data.update(company_id=company.id, admin_id=admin.id)

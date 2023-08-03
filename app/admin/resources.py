@@ -58,8 +58,11 @@ class AdminResource(Model):
         'last_name',
         Field('timezone', input_=TimezoneSelect()),
         Field('is_sales_person', label='Sales repr', input_=inputs.Switch()),
-        Field('is_client_manager', label='Support repr (client manager)', input_=inputs.Switch()),
+        Field('is_support_person', label='Support repr (client manager)', input_=inputs.Switch()),
         Field('is_bdr_person', label='BDR', input_=inputs.Switch()),
+        Field('sells_payg', label='Sells PAYG', input_=inputs.Switch()),
+        Field('sells_startup', label='Sells startup', input_=inputs.Switch()),
+        Field('sells_enterprise', label='Sells enterprise', input_=inputs.Switch()),
     ]
 
     async def get_actions(self, request: Request) -> list[Action]:

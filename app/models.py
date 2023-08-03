@@ -88,7 +88,7 @@ class Admin(AbstractAdmin):
     timezone = fields.CharField(max_length=255, default=settings.dft_timezone)
 
     is_sales_person = fields.BooleanField(default=False)
-    is_client_manager = fields.BooleanField(default=False)
+    is_support_person = fields.BooleanField(default=False)
     is_bdr_person = fields.BooleanField(default=False)
 
     sells_payg = fields.BooleanField(default=False)
@@ -127,7 +127,7 @@ class Admin(AbstractAdmin):
                 'last_name',
                 'timezone',
                 'is_sales_person',
-                'is_client_manager',
+                'is_support_person',
                 'is_bdr_person',
                 'sells_payg',
                 'sells_startup',
@@ -162,7 +162,7 @@ class Company(models.Model):
     pd_org_id = fields.IntField(unique=True, null=True)
 
     created = fields.DatetimeField(auto_now_add=True)
-    status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
+    tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
 
     name = fields.CharField(max_length=255)
     price_plan = fields.CharField(max_length=255, default=PP_PAYG)
@@ -170,7 +170,7 @@ class Company(models.Model):
     website = fields.CharField(max_length=255, null=True)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
-    client_manager = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
+    support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
     bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
 
     paid_invoice_count = fields.IntField(default=0)
@@ -178,7 +178,7 @@ class Company(models.Model):
     currency = fields.CharField(max_length=255, null=True)
 
     has_booked_call = fields.BooleanField(default=False)
-    has_signed_up = property(lambda self: bool(self.tc2_cligency_id))
+    has_signed_up = fields.BooleanField(default=False)
 
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']

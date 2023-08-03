@@ -1,3 +1,4 @@
+import logging.config
 import os
 
 import aioredis
@@ -10,6 +11,7 @@ from app.admin import resources, views  # noqa: F401
 from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
+from app.logging import config
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
@@ -23,6 +25,7 @@ if _app_settings.sentry_dsn:
 
 
 app = FastAPI()
+logging.config.dictConfig(config)
 register_tortoise(
     app,
     db_url=_app_settings.pg_dsn,
@@ -41,9 +44,11 @@ app.mount('/', admin_app)
 @app.on_event('startup')
 async def startup():
     redis = await aioredis.from_url(_app_settings.redis_dsn)
+    from app.models import Admin
+
     await admin_app.configure(
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
-        providers=[AuthProvider()],
+        providers=[AuthProvider(Admin)],
         language_switch=False,
         redis=redis,
         admin_path='',

@@ -24,7 +24,8 @@ def get_bearer(auth: str):
         return
 
 
-redis_client = aioredis.from_url(settings.redis_dsn)
+async def get_redis_client() -> 'aioredis.Redis':
+    return await aioredis.from_url(settings.redis_dsn)
 
 
 async def get_config() -> 'Config':
@@ -37,4 +38,5 @@ async def get_config() -> 'Config':
         config = await Config.get()
     except DoesNotExist:
         config = await Config.create()
+
     return config
