@@ -39,10 +39,10 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     Create or update an organisation within Pipedrive.
     """
     hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.dict()
+    hermes_org_data = hermes_org.dict(by_alias=True)
     if company.pd_org_id:
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
-        if hermes_org_data != pipedrive_org.dict():
+        if hermes_org_data != pipedrive_org.dict(by_alias=True):
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:

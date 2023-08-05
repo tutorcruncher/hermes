@@ -1,10 +1,9 @@
 import json
-from dataclasses import dataclass
 from typing import Optional, ClassVar, Literal
 
-from pydantic import Field, validator, Extra, root_validator
-from pydantic.main import BaseModel, object_setattr
-from tortoise.fields import BooleanField
+from pydantic import Field, validator, root_validator
+from pydantic.fields import ModelField
+from pydantic.main import BaseModel, validate_model
 
 from app.base_schema import fk_field, HermesBaseModel
 from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
@@ -25,8 +24,7 @@ def _get_obj_id(v) -> str | int:
     return v
 
 
-@dataclass
-class PDFieldOption:
+class PDFieldOption(BaseModel):
     id: int
     label: str
 
@@ -41,18 +39,18 @@ class PDExtraField(BaseModel):
         return _slugify(self.name)
 
 
-class PipedriveBaseModel(HermesBaseModel, extra=Extra.allow):
+class PipedriveBaseModel(HermesBaseModel):
     """
     All of this logic is basically here to deal with Pipedrive's horrible custom fields.
     """
 
     @classmethod
-    async def _custom_field_names(cls) -> list[str]:
+    async def _custom_fields(cls) -> dict[str, ModelField]:
         """Get all fields that have the 'custom' attribute"""
-        return [f for f in cls.__fields__.keys() if cls.__fields__[f].field_info.extra.get('custom')]
+        return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
 
     @classmethod
-    async def _get_pd_custom_fields(cls) -> list[PDExtraField]:
+    async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
         """
         Gets the custom fields from Pipedrive that match to the custom fields on the model. This is cached for 5 minutes
         """
@@ -60,45 +58,33 @@ class PipedriveBaseModel(HermesBaseModel, extra=Extra.allow):
 
         cache_key = f'{cls.custom_fields_pd_name}-custom-fields'
         redis = await get_redis_client()
-        if fields_data := await redis.get(cache_key):
-            return [PDExtraField(**field) for field in json.loads(fields_data)]
+        if cached_pd_fields_data := await redis.get(cache_key):
+            pd_fields_data = json.loads(cached_pd_fields_data)
         else:
-            pd_fields = (await pipedrive_request(cls.custom_fields_pd_name))['data']
-            fields = []
-            custom_field_names = await cls._custom_field_names()
-            for pd_field in pd_fields:
-                if _slugify(pd_field['name']) in custom_field_names:
-                    field = PDExtraField(**pd_field)
-                    fields.append(field)
-            await redis.set(cache_key, json.dumps([f.dict() for f in fields]), ex=300)
-            return fields
+            pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
+            await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
+        field_lu = {}
+        custom_fields = await cls._custom_fields()
+        for pd_field in pd_fields_data:
+            if custom_field := custom_fields.get(_slugify(pd_field['name'])):
+                field_lu[custom_field.name] = PDExtraField(**pd_field)
+        return field_lu
 
     @classmethod
-    async def _parse_pd_custom_field_vals(cls, hermes_obj: Company) -> dict:
-        """
-        Generates the key/values for pushing custom field data to Pipedrive. The 'key' is got from doing a request to
-        get extra fields and is usually a random number/letter string. Pipedrive doesn't use BooleanFields, so we have
-        to parse them to Yes or blank values.
-        """
-        pd_custom_fields = await cls._get_pd_custom_fields()
-        extra_field_data = {}
-        hermes_obj_fields = hermes_obj._meta.fields_map
-        for field in pd_custom_fields:
-            if field.machine_name in await cls._custom_field_names():
-                val = getattr(hermes_obj, field.machine_name)
-                if field.options:
-                    # If the field in Hermes is a BooleanField, we have to match it to the correct option in Pipedrive
-                    if isinstance(hermes_obj_fields[field.machine_name], BooleanField) and val is True:
-                        val = 'Yes'
-                extra_field_data[field.key] = val
-        return extra_field_data
+    async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
+        # TODO: Move to post_model_init in v2
+        custom_field_lu = await cls._get_pd_custom_fields()
+        for field_name, pd_field in custom_field_lu.items():
+            field = cls.__fields__[field_name]
+            field.alias = pd_field.key
 
-    @classmethod
-    async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel', company: Company = None) -> 'PipedriveBaseModel':
-        custom_field_vals = _remove_nulls(**await cls._parse_pd_custom_field_vals(company))
-        for field, val in custom_field_vals.items():
-            object_setattr(obj, field, val)
+        # Since we've set the field aliases, we can just re-validate the model to add the values
+        validate_model(obj.__class__, obj.__dict__)
+
         return obj
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class Organisation(PipedriveBaseModel):
@@ -108,12 +94,12 @@ class Organisation(PipedriveBaseModel):
     owner_id: fk_field(Admin, 'pd_owner_id')
 
     # These are all custom fields
-    website: str = Field('', exclude=True, custom=True)
-    paid_invoice_count: int = Field(0, exclude=True, custom=True)
-    has_booked_call: bool = Field(False, exclude=True, custom=True)
-    has_signed_up: bool = Field(False, exclude=True, custom=True)
-    tc2_status: str = Field('', exclude=True, custom=True)
-    tc2_cligency_url: str = Field('', exclude=True, custom=True)
+    website: Optional[str] = Field('', custom=True)
+    paid_invoice_count: Optional[int] = Field(0, custom=True)
+    has_booked_call: Optional[bool] = Field(False, custom=True)
+    has_signed_up: Optional[bool] = Field(False, custom=True)
+    tc2_status: Optional[str] = Field('', custom=True)
+    tc2_cligency_url: Optional[str] = Field('', custom=True)
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
@@ -126,9 +112,15 @@ class Organisation(PipedriveBaseModel):
                 name=company.name,
                 owner_id=(await company.sales_person).pd_owner_id,
                 address_country=company.country,
+                website=company.website,
+                paid_invoice_count=company.paid_invoice_count,
+                has_booked_call=company.has_booked_call,
+                has_signed_up=company.has_signed_up,
+                tc2_status=company.tc2_status,
+                tc2_cligency_url=company.tc2_cligency_url,
             )
         )
-        obj = await cls.set_custom_field_vals(obj, company)
+        obj = await cls.set_custom_field_vals(obj)
         return obj
 
     async def company_dict(self) -> dict:

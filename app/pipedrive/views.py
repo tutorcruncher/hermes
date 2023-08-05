@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from starlette.background import BackgroundTasks
+from starlette.requests import Request
 
 from app.pipedrive._process import (
     _process_pd_deal,
@@ -16,10 +17,15 @@ pipedrive_router = APIRouter()
 
 
 @pipedrive_router.post('/callback/', name='Pipedrive callback')
-async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
+async def callback(request: Request, tasks: BackgroundTasks):
     """
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     """
+    try:
+        event = PipedriveEvent(**await request.json())
+    except Exception as e:
+        app_logger.exception(e)
+        raise
     event.current and await event.current.a_validate()
     event.previous and await event.previous.a_validate()
     app_logger.info(f'Callback: event received for {event.meta.object}')
