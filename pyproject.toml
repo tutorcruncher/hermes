@@ -28,3 +28,13 @@
         'raise NotImplementedError',
         'raise NotImplemented',
     ]
+
+[tool.mypy]
+    plugins = ['pydantic.mypy']
+    follow_imports = 'silent'
+    ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+    init_forbid_extra = true
+    init_typed = true
+    warn_required_dynamic_aliases = true

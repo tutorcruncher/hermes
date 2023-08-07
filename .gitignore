@@ -8,6 +8,7 @@ __pycache__
 
 # Lint files
 .ruff_cache
+.mypy_cache
 
 # Coverage
 .coverage

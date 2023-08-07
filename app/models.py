@@ -46,7 +46,7 @@ class Config(models.Model):
         related_name='startup_pipeline',
         description='The pipeline that Startup clients will be added to',
     )
-    enterprise_pipeline = fields.ForeignKeyField(
+    enterprise_pipeline: fields.ForeignKeyField = fields.ForeignKeyField(
         'models.Pipeline',
         null=True,
         related_name='enterprise_pipeline',
