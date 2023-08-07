@@ -1,17 +1,18 @@
 tortoise-orm[asyncpg]==0.19.3
-fastapi==0.100.1
-pydantic==1.10.10
-uvicorn==0.23.1
+fastapi==0.101.0
+pydantic==2.1.1
+pydantic-settings==2.0.2
+uvicorn==0.23.2
 requests==2.31.0
 aioredis==2.0.1
 fastapi-admin==1.0.4
-sentry-sdk[fastapi]==1.28.1
+sentry-sdk[fastapi]==1.29.2
 httpx==0.24.1
 
-# Look at all the Google libraries we need to install.
+# Look at all the Google libraries we need to install just to access the calenda API
 google==3.0.0
 google-api-core==2.11.1
 google-api-python-client==2.95.0
 google-auth==2.22.0
 google-auth-httplib2==0.1.0
-googleapis-common-protos==1.59.1
+googleapis-common-protos==1.60.0

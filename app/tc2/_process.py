@@ -53,7 +53,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
     else:
-        await tc2_client.a_validate()
+        # await tc2_client.a_validate()
         if not tc2_client.sales_person or tc2_client.meta_agency.paid_invoice_count > 4:
             # Any company that has more than 4 paid invoices is a long term customer and we don't care.
             return

@@ -26,8 +26,8 @@ async def callback(request: Request, tasks: BackgroundTasks):
     except Exception as e:
         app_logger.exception(e)
         raise
-    event.current and await event.current.a_validate()
-    event.previous and await event.previous.a_validate()
+    # event.current and await event.current.a_validate()
+    # event.previous and await event.previous.a_validate()
     app_logger.info(f'Callback: event received for {event.meta.object}')
     if event.meta.object == 'deal':
         deal = await _process_pd_deal(event.current, event.previous)

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import validator, root_validator
+from pydantic import field_validator, model_validator, ConfigDict
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin
@@ -13,9 +13,7 @@ class TCSubject(HermesBaseModel):
 
     model: str
     id: int
-
-    class Config:
-        extra = 'allow'
+    model_config = ConfigDict(extra='allow')
 
 
 class _TCSimpleRole(HermesBaseModel):
@@ -26,7 +24,7 @@ class _TCSimpleRole(HermesBaseModel):
     id: int
     first_name: Optional[str] = None
     last_name: str
-    email: Optional[str]
+    email: Optional[str] = None
 
 
 class _TCAgency(HermesBaseModel):
@@ -37,7 +35,7 @@ class _TCAgency(HermesBaseModel):
     status: str
     paid_invoice_count: int
 
-    @validator('country')
+    @field_validator('country')
     def country_to_code(cls, v):
         return v.split(' ')[-1].strip('()')
 
@@ -58,7 +56,7 @@ class TCClient(HermesBaseModel):
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
     def parse_admins(cls, values):
         """
         Since we don't care about the other details on the admin, we can just get the nested IDs and set attributes.

@@ -1,6 +1,6 @@
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
-from pydantic.main import object_setattr
+from pydantic import BaseModel, ConfigDict
+
 from tortoise.exceptions import DoesNotExist
 
 
@@ -46,16 +46,18 @@ def fk_field(model, fk_field_name='pk', alias=None):
 
 
 class HermesBaseModel(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     async def a_validate(self):
         """
         Validates any ForeignKeys on the model by querying the db.
         Annoyingly, we can't do this in Pydantic's built in validation as it doesn't support async validators.
         """
-        for field_name, field in self.__fields__.items():
+        for field_name, field in self.model_fields.items():
             v = getattr(self, field_name)
-            if field.type_.__name__ == 'ForeignKeyField':
-                model = field.type_.model()
-                field_name = field.type_.fk_field_name()
+            if field.annotation.__name__ == 'ForeignKeyField':
+                model = field.annotation.model()
+                field_name = field.annotation.fk_field_name()
                 if v:
                     try:
                         related_obj = await model.get(**{field_name: v})
@@ -70,8 +72,8 @@ class HermesBaseModel(BaseModel):
                             ]
                         )
                     else:
-                        object_setattr(self, field.type_.alias(), related_obj)
+                        _object_setattr(self, field.type_.alias(), related_obj)
                 else:
-                    object_setattr(self, field.type_.alias(), None)
+                    _object_setattr(self, field.type_.alias(), None)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()

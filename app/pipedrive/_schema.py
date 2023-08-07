@@ -1,9 +1,10 @@
-import json
+# import json
 from typing import Optional, ClassVar, Literal
 
-from pydantic import Field, validator, root_validator
-from pydantic.fields import ModelField
-from pydantic.main import BaseModel, validate_model
+from pydantic import field_validator, model_validator, ConfigDict, Field, validator
+
+# from pydantic.fields import ModelField
+from pydantic.main import BaseModel  # , validate_model
 
 from app.base_schema import fk_field, HermesBaseModel
 from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
@@ -44,47 +45,46 @@ class PipedriveBaseModel(HermesBaseModel):
     All of this logic is basically here to deal with Pipedrive's horrible custom fields.
     """
 
-    @classmethod
-    async def _custom_fields(cls) -> dict[str, ModelField]:
-        """Get all fields that have the 'custom' attribute"""
-        return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
+    model_config = ConfigDict(populate_by_name=True)
 
-    @classmethod
-    async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
-        """
-        Gets the custom fields from Pipedrive that match to the custom fields on the model. This is cached for 5 minutes
-        """
-        from app.pipedrive.api import pipedrive_request
-
-        cache_key = f'{cls.custom_fields_pd_name}-custom-fields'
-        redis = await get_redis_client()
-        if cached_pd_fields_data := await redis.get(cache_key):
-            pd_fields_data = json.loads(cached_pd_fields_data)
-        else:
-            pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
-            await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
-        field_lu = {}
-        custom_fields = await cls._custom_fields()
-        for pd_field in pd_fields_data:
-            if custom_field := custom_fields.get(_slugify(pd_field['name'])):
-                field_lu[custom_field.name] = PDExtraField(**pd_field)
-        return field_lu
-
-    @classmethod
-    async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
-        # TODO: Move to post_model_init in v2
-        custom_field_lu = await cls._get_pd_custom_fields()
-        for field_name, pd_field in custom_field_lu.items():
-            field = cls.__fields__[field_name]
-            field.alias = pd_field.key
-
-        # Since we've set the field aliases, we can just re-validate the model to add the values
-        validate_model(obj.__class__, obj.__dict__)
-
-        return obj
-
-    class Config:
-        allow_population_by_field_name = True
+    # @classmethod
+    # async def _custom_fields(cls) -> dict[str, ModelField]:
+    #     """Get all fields that have the 'custom' attribute"""
+    #     return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
+    #
+    # @classmethod
+    # async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
+    #     """
+    #     Gets the custom fields from Pipedrive that match to the custom fields on the model. This is cached for 5 minutes
+    #     """
+    #     from app.pipedrive.api import pipedrive_request
+    #
+    #     cache_key = f'{cls.custom_fields_pd_name}-custom-fields'
+    #     redis = await get_redis_client()
+    #     if cached_pd_fields_data := await redis.get(cache_key):
+    #         pd_fields_data = json.loads(cached_pd_fields_data)
+    #     else:
+    #         pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
+    #         await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
+    #     field_lu = {}
+    #     custom_fields = await cls._custom_fields()
+    #     for pd_field in pd_fields_data:
+    #         if custom_field := custom_fields.get(_slugify(pd_field['name'])):
+    #             field_lu[custom_field.name] = PDExtraField(**pd_field)
+    #     return field_lu
+    #
+    # @classmethod
+    # async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
+    #     # TODO: Move to post_model_init in v2
+    #     custom_field_lu = await cls._get_pd_custom_fields()
+    #     for field_name, pd_field in custom_field_lu.items():
+    #         field = cls.__fields__[field_name]
+    #         field.alias = pd_field.key
+    #
+    #     # Since we've set the field aliases, we can just re-validate the model to add the values
+    #     validate_model(obj.__class__, obj.__dict__)
+    #
+    #     return obj
 
 
 class Organisation(PipedriveBaseModel):
@@ -101,7 +101,7 @@ class Organisation(PipedriveBaseModel):
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
 
-    _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
     obj_type: Literal['organization'] = Field('organization', exclude=True)
 
@@ -120,7 +120,7 @@ class Organisation(PipedriveBaseModel):
                 tc2_cligency_url=company.tc2_cligency_url,
             )
         )
-        obj = await cls.set_custom_field_vals(obj)
+        # obj = await cls.set_custom_field_vals(obj)
         return obj
 
     async def company_dict(self) -> dict:
@@ -142,7 +142,7 @@ class Person(PipedriveBaseModel):
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id')] = None
 
-    _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
@@ -157,7 +157,7 @@ class Person(PipedriveBaseModel):
             org_id=company.pd_org_id,
         )
 
-    @validator('phone', pre=True)
+    @field_validator('phone', mode='before')
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
@@ -297,7 +297,7 @@ class PipedriveEvent(HermesBaseModel):
         None, discriminator='obj_type'
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
         for f in ['current', 'previous']:

@@ -28,7 +28,7 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     Endpoint for someone booking a Sales call from the website.
     """
     # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
-    await event.a_validate()
+    # await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
     try:
@@ -48,7 +48,7 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     Endpoint for someone booking a Support call from the website.
     """
     # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
-    await event.a_validate()
+    # await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     try:
         meeting = await _book_meeting(company=company, contact=contact, event=event)
@@ -65,7 +65,7 @@ async def availability(avail_data: AvailabilityData):
     """
     Endpoint to return timeslots that an admin is available between 2 datetimes.
     """
-    await avail_data.a_validate()
+    # await avail_data.a_validate()
     slots = get_admin_available_slots(avail_data.start_dt, avail_data.end_dt, await avail_data.admin)
     return {'status': 'ok', 'slots': [slot async for slot in slots]}
 

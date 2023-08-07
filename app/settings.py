@@ -1,12 +1,17 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn, Field, Extra
+from pydantic import PostgresDsn, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
+    model_config = SettingsConfigDict(env_file='.env', extra="allow")
+
+    pg_dsn: PostgresDsn = Field(
+        'postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL', alias='database_url'
+    )
 
     # Redis
     redis_dsn: str = 'redis://localhost:6379'
@@ -14,7 +19,7 @@ class Settings(BaseSettings):
     # Sentry
     sentry_dsn: str = ''
 
-    dft_timezone = 'Europe/London'
+    dft_timezone: str = 'Europe/London'
     signing_key: str = 'test-key'
     host: str = '0.0.0.0'
     port: int = 8000
@@ -68,7 +73,3 @@ class Settings(BaseSettings):
             'auth_provider_x509_cert_url': self.g_auth_provider_x509_cert_url,
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
-
-    class Config:
-        env_file = '.env'
-        extra = Extra.allow

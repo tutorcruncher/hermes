@@ -13,6 +13,10 @@
 
 [tool.pytest.ini_options]
     addopts = '--tb=native'
+    filterwarnings = [
+        'ignore::pydantic.PydanticDeprecatedSince20',
+        'ignore:There is no current event loop'
+    ]
 
 [tool.coverage.run]
     source = ['app']
