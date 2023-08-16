@@ -95,3 +95,5 @@ When a new Stage is created/updated in Pipedrive:
 * [ ] Should marking a customer as a NARC deleted them from Hermes and Pipedrive? Think so.
 * [ ] Check PD callbacks include custom fields
 * [ ] Test live
+
+# Manual testing

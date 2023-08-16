@@ -156,29 +156,28 @@ class Company(models.Model):
     PP_ENTERPRISE = 'enterprise'
 
     id = fields.IntField(pk=True)
+    name = fields.CharField(max_length=255)
+
     tc2_agency_id = fields.IntField(unique=True, null=True)
     tc2_cligency_id = fields.IntField(unique=True, null=True)
+    tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
 
     pd_org_id = fields.IntField(unique=True, null=True)
 
     created = fields.DatetimeField(auto_now_add=True)
-    tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
 
-    name = fields.CharField(max_length=255)
     price_plan = fields.CharField(max_length=255, default=PP_PAYG)
     country = fields.CharField(max_length=255, description='Country code, e.g. GB', null=True)
     website = fields.CharField(max_length=255, null=True)
+    paid_invoice_count = fields.IntField(default=0)
+    estimated_income = fields.CharField(max_length=255, null=True)
+    currency = fields.CharField(max_length=255, null=True)
+    has_booked_call = fields.BooleanField(default=False)
+    has_signed_up = fields.BooleanField(default=False)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
     bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
-
-    paid_invoice_count = fields.IntField(default=0)
-    estimated_income = fields.CharField(max_length=255, null=True)
-    currency = fields.CharField(max_length=255, null=True)
-
-    has_booked_call = fields.BooleanField(default=False)
-    has_signed_up = fields.BooleanField(default=False)
 
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']
@@ -248,7 +247,7 @@ class Deal(models.Model):
     # Is null until we get the webhook from Pipedrive
     stage = fields.ForeignKeyField('models.Stage', related_name='deals', null=True)
     company = fields.ForeignKeyField('models.Company', related_name='deals')
-    contact = fields.ForeignKeyField('models.Contact', related_name='deals')
+    contact = fields.ForeignKeyField('models.Contact', related_name='deals', null=True)
 
     def __str__(self):
         return self.name

@@ -129,7 +129,7 @@ class Organisation(PipedriveBaseModel):
             'name': self.name,
             'tc2_status': self.tc2_status,
             'website': self.website,
-            'sales_person_id': self.admin.id,  # noqa: F821 - Added in validation
+            'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
         }
 
 
@@ -179,7 +179,7 @@ class Person(PipedriveBaseModel):
             'last_name': last_name,
             'email': self.primary_email,
             'phone': self.phone,
-            'company_id': self.company.id,  # noqa: F821 - Added in validation
+            'company_id': self.company and self.company.id,  # noqa: F821 - Added in a_validate
         }
 
 
@@ -216,7 +216,7 @@ class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     title: str
     org_id: int
-    person_id: Optional[fk_field(Contact, 'pd_person_id')] = None
+    person_id: Optional[fk_field(Contact, 'pd_person_id', null_if_invalid=True)] = None
     org_id: fk_field(Company, 'pd_org_id')
     user_id: fk_field(Admin, 'pd_owner_id')
     pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
@@ -247,11 +247,11 @@ class PDDeal(PipedriveBaseModel):
             'pd_deal_id': self.id,
             'name': self.title,
             'status': self.status,
-            'admin_id': self.admin.id,  # noqa: F821 - Added in validation
-            'company_id': self.company.id,  # noqa: F821 - Added in validation
-            'contact_id': self.contact and self.company.id,  # noqa: F821 - Added in validation
-            'pipeline_id': self.pipeline.id,  # noqa: F821 - Added in validation
-            'stage_id': self.stage.id,  # noqa: F821 - Added in validation
+            'admin_id': self.admin.id,  # noqa: F821 - Added in a_validate
+            'company_id': self.company.id,  # noqa: F821 - Added in a_validate
+            'contact_id': self.contact and self.contact.id,  # noqa: F821 - Added in a_validate
+            'pipeline_id': self.pipeline.id,  # noqa: F821 - Added in a_validate
+            'stage_id': self.stage.id,  # noqa: F821 - Added in a_validate
         }
 
 
@@ -275,13 +275,6 @@ class PDStage(PipedriveBaseModel):
         return {'pd_stage_id': self.id, 'name': self.name}
 
 
-class PDGeneric(BaseModel):
-    obj_type: Literal['generic'] = Field('generic', exclude=True)
-
-    def __bool__(self):
-        return False
-
-
 class WebhookMeta(HermesBaseModel):
     action: str
     object: str
@@ -290,12 +283,8 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | PDGeneric] = Field(
-        None, discriminator='obj_type'
-    )
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | PDGeneric] = Field(
-        None, discriminator='obj_type'
-    )
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
 
     @root_validator(pre=True)
     def validate_object_type(cls, values):
@@ -304,5 +293,5 @@ class PipedriveEvent(HermesBaseModel):
             if v := values.get(f):
                 v['obj_type'] = obj_type
             else:
-                values[f] = {'obj_type': 'generic'}
+                values.pop(f)
         return values

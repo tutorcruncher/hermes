@@ -14,6 +14,7 @@ async def update_client_from_deal(deal: Deal):
             pipedrive_deal_stage=(await deal.stage).name,
             pipedrive_pipeline=(await deal.pipeline).name,
             pipedrive_url=company.pd_org_url,
+            pipedrive_id=company.pd_org_id,
         )
         client_data['extra_attrs'] = extra_attrs
         await tc2_request(f'clients/{cligency_id}/', method='POST', data=client_data)
