@@ -68,6 +68,12 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
         if contact_data['company_id']:
             contact = await Contact.create(**contact_data)
             app_logger.info('Callback: creating Contact %s from Person %s', contact.id, current_pd_person.id)
+        else:
+            app_logger.info(
+                'Callback: not creating Contact from Person %s as Org %s not in DB',
+                current_pd_person.id,
+                current_pd_person.org_id,
+            )
     return contact
 
 

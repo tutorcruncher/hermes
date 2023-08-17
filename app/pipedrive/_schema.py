@@ -140,7 +140,7 @@ class Person(PipedriveBaseModel):
     phone: Optional[str] = ''
     address_country: Optional[str] = None
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
-    org_id: Optional[fk_field(Company, 'pd_org_id')] = None
+    org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     obj_type: Literal['person'] = Field('person', exclude=True)

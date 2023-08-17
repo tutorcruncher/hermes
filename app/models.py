@@ -273,7 +273,7 @@ class Meeting(models.Model):
 
     admin = fields.ForeignKeyField('models.Admin', related_name='meetings')
     contact = fields.ForeignKeyField('models.Contact', related_name='meetings')
-    deal = fields.ForeignKeyField('models.Deal', related_name='meetings', null=True)
+    deal = fields.ForeignKeyField('models.Deal', related_name='meetings', null=True, on_delete=fields.SET_NULL)
 
     @property
     def name(self):

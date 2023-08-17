@@ -692,10 +692,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_person_create_company_doesnt_exist(self):
         data = copy.deepcopy(basic_pd_person_data())
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 422, r.json()
-        assert r.json() == {
-            'detail': [{'loc': ['org_id'], 'msg': 'Company with pd_org_id 20 does not exist', 'type': 'value_error'}]
-        }
+        assert r.status_code == 200, r.json()
+        assert not await Contact.exists()
+        assert not await Company.exists()
 
     async def test_person_delete(self):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
