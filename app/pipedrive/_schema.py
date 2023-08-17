@@ -293,5 +293,5 @@ class PipedriveEvent(HermesBaseModel):
             if v := values.get(f):
                 v['obj_type'] = obj_type
             else:
-                values.pop(f)
+                values.pop(f, None)
         return values

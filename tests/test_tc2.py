@@ -8,7 +8,7 @@ from unittest import mock
 from requests import HTTPError
 
 from app.models import Admin, Company, Contact, Deal
-from app.tc2.tasks import update_client_from_deal
+from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
 
@@ -429,7 +429,7 @@ class TC2TasksTestCase(HermesTestCase):
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
+        await Deal.create(
             name='Old test deal',
             pd_deal_id=40,
             company=company,
@@ -438,7 +438,7 @@ class TC2TasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await update_client_from_deal(deal)
+        await update_client_from_company(company)
         assert self.tc2.db['clients'] == {10: _client_data()}
 
     @mock.patch('app.tc2.api.session.request')
@@ -447,7 +447,7 @@ class TC2TasksTestCase(HermesTestCase):
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
+        await Deal.create(
             name='Old test deal',
             pd_deal_id=40,
             company=company,
@@ -456,7 +456,7 @@ class TC2TasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await update_client_from_deal(deal)
+        await update_client_from_company(company)
         assert self.tc2.db['clients'] == {
             10: {
                 **_client_data(),

@@ -287,6 +287,10 @@ class PipedriveTasksTestCase(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_update_org_create_person_deal_exists(self, mock_request):
+        """
+        The org should be updated, the person should be created and since the
+        deal is already in the db with a pd_deal_id, it shouldn't be created in PD.
+        """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         admin = await Admin.create(
             first_name='Steve',
@@ -364,6 +368,10 @@ class PipedriveTasksTestCase(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_create_org_create_person_with_owner_admin(self, mock_request):
+        """
+        The org should be created, the person should be created and since the
+        deal is already in the db with a pd_deal_id, it shouldn't be created in PD.
+        """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         sales_person = await Admin.create(
             first_name='Steve',
@@ -666,7 +674,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 404, r.json()
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
 
     async def test_person_create(self):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
@@ -724,7 +734,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='Brimstone')
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 404, r.json()
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.name == 'Brimstone'
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_deal_create(self, mock_add_task):
@@ -799,12 +811,13 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data = copy.deepcopy(basic_pd_deal_data())
         data['current']['person_id'] = 999
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 422, r.json()
-        assert r.json() == {
-            'detail': [
-                {'loc': ['person_id'], 'msg': 'Contact with pd_person_id 999 does not exist', 'type': 'value_error'}
-            ]
-        }
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert deal.name == 'Deal 1'
+        assert await deal.company == company
+        assert not await deal.contact
+        assert await deal.stage == stage
+        assert await deal.admin == self.admin
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_deal_delete(self, mock_add_task):
@@ -885,7 +898,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 404, r.json()
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert deal.name == 'New test deal'
 
     async def test_pipeline_create(self):
         # They are created in the test setup
@@ -944,9 +959,11 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         data = copy.deepcopy(basic_pd_pipeline_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['current'].update(name='New test contact')
+        data['current'].update(name='New test pipeline')
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 404, r.json()
+        assert r.status_code == 200, r.json()
+        pipeline = await Pipeline.get()
+        assert pipeline.name == 'New test pipeline'
 
     async def test_stage_create(self):
         # They are created in the test setup
@@ -1007,4 +1024,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='New test stage')
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 404, r.json()
+        assert r.status_code == 200, r.json()
+        stage = await Stage.get()
+        assert stage.name == 'New test stage'
