@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import validator, root_validator
+from pydantic import validator, root_validator, Field
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin
@@ -23,14 +23,14 @@ class _TCSimpleRole(HermesBaseModel):
     Used to parse a role that's used a SimpleRoleSerializer
     """
 
-    id: int
+    id: int = Field(exclude=True)
     first_name: Optional[str] = None
     last_name: str
     email: Optional[str]
 
 
 class _TCAgency(HermesBaseModel):
-    id: int
+    id: int = Field(exclude=True)
     name: str
     country: str
     website: Optional[str] = None
@@ -45,18 +45,26 @@ class _TCAgency(HermesBaseModel):
 class TCRecipient(_TCSimpleRole):
     def contact_dict(self, *args, **kwargs):
         data = super().dict(*args, **kwargs)
-        data['tc2_sr_id'] = data.pop('id')
+        data['tc2_sr_id'] = self.id
         return data
 
 
+class _TCUser(HermesBaseModel):
+    email: str
+    first_name: Optional[str] = None
+    last_name: str
+
+
 class TCClient(HermesBaseModel):
-    id: int
-    meta_agency: _TCAgency
+    id: int = Field(exclude=True)
+    meta_agency: _TCAgency = Field(exclude=True)
+    user: _TCUser
     status: str
     sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
+    extra_attrs: list[dict] = Field(default_factory=list)
 
     @root_validator(pre=True)
     def parse_admins(cls, values):
@@ -86,7 +94,7 @@ class TCClient(HermesBaseModel):
 
 
 class TCInvoice(HermesBaseModel):
-    id: int
+    id: int = Field(exclude=True)
     client: _TCSimpleRole
 
 

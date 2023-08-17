@@ -27,7 +27,7 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
+    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
@@ -47,7 +47,7 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else I guess.
+    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     try:

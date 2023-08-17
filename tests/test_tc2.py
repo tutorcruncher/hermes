@@ -8,7 +8,7 @@ from unittest import mock
 from requests import HTTPError
 
 from app.models import Admin, Company, Contact, Deal
-from app.tc2.tasks import update_client_from_deal
+from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
 
@@ -46,7 +46,14 @@ def _client_data():
             }
         ],
         'status': 'live',
-        'extra_attrs': [],
+        'extra_attrs': [
+            {'machine_name': 'pipedrive_url', 'value': 'https://example.pipedrive.com/organization/10'},
+        ],
+        'user': {
+            'email': 'mary@booth.com',
+            'first_name': 'Mary',
+            'last_name': 'Booth',
+        },
     }
 
 
@@ -406,12 +413,16 @@ class MockResponse:
 def fake_tc2_request(fake_tc2: FakeTC2):
     def _tc2_request(*, url: str, method: str, data: dict, headers: dict):
         obj_type = re.search(r'/api/(.*?)(?:/|$)', url).group(1)
-        obj_id = int(url.split(f'/{obj_type}/')[1].rstrip('/'))
         if method == 'GET':
+            obj_id = int(url.split(f'/{obj_type}/')[1].rstrip('/'))
             return MockResponse(200, fake_tc2.db[obj_type][obj_id])
         else:
             assert method == 'POST'
-            data['id'] = obj_id
+            obj_id = next(
+                id
+                for id, obj_data in fake_tc2.db[obj_type].items()
+                if obj_data['user']['email'] == data['user']['email']
+            )
             fake_tc2.db[obj_type][obj_id] = data
             return MockResponse(200, fake_tc2.db[obj_type][obj_id])
 
@@ -429,7 +440,7 @@ class TC2TasksTestCase(HermesTestCase):
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
+        await Deal.create(
             name='Old test deal',
             pd_deal_id=40,
             company=company,
@@ -438,7 +449,7 @@ class TC2TasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await update_client_from_deal(deal)
+        await update_client_from_company(company)
         assert self.tc2.db['clients'] == {10: _client_data()}
 
     @mock.patch('app.tc2.api.session.request')
@@ -447,7 +458,7 @@ class TC2TasksTestCase(HermesTestCase):
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
+        await Deal.create(
             name='Old test deal',
             pd_deal_id=40,
             company=company,
@@ -456,14 +467,30 @@ class TC2TasksTestCase(HermesTestCase):
             stage=self.stage,
             admin=admin,
         )
-        await update_client_from_deal(deal)
+        await update_client_from_company(company)
         assert self.tc2.db['clients'] == {
             10: {
-                **_client_data(),
+                'user': {
+                    'email': 'mary@booth.com',
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person_id': 30,
+                'associated_admin_id': 30,
+                'bdr_person_id': None,
+                'paid_recipients': [
+                    {
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                        'email': 'mary@booth.com',
+                    },
+                ],
                 'extra_attrs': {
                     'pipedrive_deal_stage': 'New',
                     'pipedrive_pipeline': 'payg',
                     'pipedrive_url': 'https://tutorcruncher-sandbox.pipedrive.com/organizations/20/',
+                    'pipedrive_id': 20,
                 },
             }
         }

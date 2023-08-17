@@ -39,8 +39,9 @@ async def get_config() -> 'Config':
     except DoesNotExist:
         config = await Config.create()
 
-    # from app.models import Admin
+    # When testing locally, you can add your own admin user here. Set the pd_owner_id to your own Pipedrive user ID.
 
+    # from app.models import Admin
     # if not await Admin.exists():
     #     await Admin.create(
     #         email='testing@tutorcruncher.com',

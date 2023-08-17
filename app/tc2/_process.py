@@ -9,6 +9,8 @@ from app.tc2.api import tc2_request
 async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company]:
     """
     Creates or updates a Company in our database from a TutorCruncher client/meta_agency.
+
+    TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
     company_data = tc2_client.company_dict()
     company_id = company_data.pop('tc2_agency_id')

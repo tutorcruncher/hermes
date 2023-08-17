@@ -5,7 +5,7 @@ from fastapi_admin.resources import Action, Field, Link, Model
 from fastapi_admin.widgets import displays, inputs
 from httpx import Request
 
-from app.models import Admin, Config, Pipeline, Stage
+from app.models import Admin, Config, Pipeline, Stage, Company, Contact, Deal, Meeting
 
 
 @admin_app.register
@@ -104,4 +104,103 @@ class StagesResource(Model):
         return []
 
     async def get_actions(self, request: Request):
+        return []
+
+
+@admin_app.register
+class CompanyResource(Model):
+    model = Company
+    icon = 'fas fa-building'
+    page_pre_title = page_title = label = 'Companies'
+    fields = [
+        'id',
+        'name',
+        'tc2_agency_id',
+        'tc2_cligency_id',
+        'tc2_status',
+        'pd_org_id',
+        'created',
+        'price_plan',
+        'country',
+        'website',
+        'paid_invoice_count',
+        'estimated_income',
+        'currency',
+        'has_booked_call',
+        'has_signed_up',
+        Field('sales_person_id', input_=inputs.ForeignKey(model=Admin)),
+        Field('bdr_person_id', input_=inputs.ForeignKey(model=Admin)),
+        Field('support_person_id', input_=inputs.ForeignKey(model=Admin)),
+    ]
+
+
+@admin_app.register
+class ContactResource(Model):
+    model = Contact
+    icon = 'fas fa-user'
+    page_pre_title = page_title = label = 'Contacts'
+    fields = [
+        'id',
+        'tc2_sr_id',
+        'pd_person_id',
+        'first_name',
+        'last_name',
+        'email',
+        'phone',
+        'country',
+        Field('company_id', input_=inputs.ForeignKey(model=Company)),
+    ]
+
+    async def get_toolbar_actions(self, request: Request):
+        return []
+
+    async def get_actions(self, request: Request) -> list[Action]:
+        return []
+
+
+@admin_app.register
+class DealResource(Model):
+    model = Deal
+    icon = 'fas fa-handshake'
+    page_pre_title = page_title = label = 'Deals'
+    fields = [
+        'id',
+        'pd_deal_id',
+        'name',
+        'status',
+        Field('admin_id', input_=inputs.ForeignKey(model=Admin)),
+        Field('pipeline_id', input_=inputs.ForeignKey(model=Pipeline)),
+        Field('stage_id', input_=inputs.ForeignKey(model=Stage)),
+        Field('company_id', input_=inputs.ForeignKey(model=Company)),
+        Field('contact_id', input_=inputs.ForeignKey(model=Contact)),
+    ]
+
+    async def get_toolbar_actions(self, request: Request):
+        return []
+
+    async def get_actions(self, request: Request) -> list[Action]:
+        return []
+
+
+@admin_app.register
+class MeetingResource(Model):
+    model = Meeting
+    icon = 'fas fa-calendar-check'
+    page_pre_title = page_title = label = 'Meetings'
+    fields = [
+        'id',
+        'created',
+        'start_time',
+        'end_time',
+        'status',
+        'meeting_type',
+        Field('admin_id', input_=inputs.ForeignKey(model=Admin)),
+        Field('deal_id', input_=inputs.ForeignKey(model=Deal)),
+        Field('contact_id', input_=inputs.ForeignKey(model=Contact)),
+    ]
+
+    async def get_toolbar_actions(self, request: Request):
+        return []
+
+    async def get_actions(self, request: Request) -> list[Action]:
         return []
