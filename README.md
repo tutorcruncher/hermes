@@ -33,6 +33,11 @@ The list of all workflows is in the workflows.md file. They need to all be teste
 ### Running locally
 
 Install the dependencies with `make install`. You may need to create the database with `make reset-db`.
+Then run the server with `python -m uvicorn app.main:app --reload`
+
+You'll be able to view the admin interface at http://localhost:8000/. To login, go to /login. You need to have an admin
+already created; if you look in `utils.py` you'll see some code you can uncomment so that the admin is created when the
+server starts.
 
 ## TODOs:
 
