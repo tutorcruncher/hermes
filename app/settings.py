@@ -54,6 +54,12 @@ class Settings(BaseSettings):
         'https://www.googleapis.com/robot/v1/metadata/x509/tc-hubspot%40tc-hubspot-314214.iam.gserviceaccount.com'
     )
 
+    # Testing
+    # Admin user to create when testing locally
+    TESTING: bool = False
+    tc2_admin_id: int = 66
+    pd_owner_id: int = 15708604
+
     @property
     def google_credentials(self):
         return {

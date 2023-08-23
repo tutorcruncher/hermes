@@ -18,6 +18,8 @@ Objects are named different things depending on which system you use:
 | Deal     |               | Deal         | A potential sale with a Company.                                  |
 | Meeting  |               | Activity     | A meeting with a Contact.                                         |
 
+Client?
+
 ## Project structure
 
 This project consists of 4 apps:
@@ -46,3 +48,4 @@ server starts.
 * [ ] Should marking a customer as a NARC deleted them from Hermes and Pipedrive? Think so.
 * [ ] If a company is changed in TC to have it's PD org ID set, then it should be linked to the company in PD
 * [ ] Deal with merging Orgs/Persons.
+* [ ] If Companies are made in Pipedrive, they should be created in TC ? 
