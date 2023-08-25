@@ -17,9 +17,8 @@ reset-db:
 	psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS hermes"
 	psql -h localhost -U postgres -c "CREATE DATABASE hermes"
 
-
 .PHONY: install-dev
 install-dev:
-    pip install -r requirements.txt
-    pip install -r tests/requirements.txt
-    pip install devtools
+	pip install -r requirements.txt
+	pip install -r tests/requirements.txt
+	pip install devtools

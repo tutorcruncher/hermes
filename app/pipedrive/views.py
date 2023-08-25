@@ -19,8 +19,8 @@ pipedrive_router = APIRouter()
 async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     try:
         debug('pipedrive callback')
-        debug(event)
-        debug(event.meta)
+        # debug(event)
+        # debug(event.meta)
         event.current and await event.current.a_validate()
         event.previous and await event.previous.a_validate()
 
@@ -39,7 +39,7 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
             await _process_pd_person(event.current, event.previous)
         elif event.meta.object == 'organization':
             company = await _process_pd_organisation(event.current, event.previous)
-            debug(company.__dict__)
+            # debug(company.__dict__)
             if company and company.tc2_agency_id:
                 # We only update the client if the deal has a company with a tc2_agency_id
                 tasks.add_task(update_client_from_company, company)

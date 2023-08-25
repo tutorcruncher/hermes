@@ -24,12 +24,10 @@ session = requests.Session()
 
 async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
     debug('pipedrive_request')
-    debug(url, method, data)
+    # debug(url, method, data)
     r = session.request(
         method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
     )
-    debug(r)
-    debug(r.json())
     app_logger.debug('Request to url %s: %r', url, data)
     app_logger.debug('Response: %r', r.json())
     r.raise_for_status()
@@ -43,6 +41,7 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     Create or update an organisation within Pipedrive.
     """
     debug('create_or_update_organisation')
+    debug(company.__dict__)
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.dict(by_alias=True)
     if company.pd_org_id:

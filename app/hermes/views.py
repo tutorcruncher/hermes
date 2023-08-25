@@ -12,10 +12,9 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     Chooses which sales person should be assigned to a new company if it were on a certain price plan. Uses simple
     round robin logic where the order of admins is decided by their ID.
     """
-    debug(Admin.all())
     if plan == Company.PP_PAYG:
         admins = Admin.filter(sells_payg=True)
-        debug(admins)
+        # debug(admins)
     elif plan == Company.PP_STARTUP:
         admins = Admin.filter(sells_startup=True)
     elif plan == Company.PP_ENTERPRISE:

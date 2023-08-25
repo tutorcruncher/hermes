@@ -1,7 +1,7 @@
+from app import settings
 from app.main import app, startup
 from app.models import Admin, Config, Pipeline, Stage
 from tests._common import HermesTestCase
-
 
 class AdminTestCase(HermesTestCase):
     async def asyncSetUp(self) -> None:
@@ -47,6 +47,7 @@ class AdminTestCase(HermesTestCase):
 
     async def test_admins_create(self):
         await self._login()
+        debug(await Admin.all().count())
         assert await Admin.all().count() == 1
         r = await self.client.get('/admin/create')
         assert r.status_code == 200

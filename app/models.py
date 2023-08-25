@@ -188,7 +188,7 @@ class Company(models.Model):
 
     @property
     def pd_org_url(self):
-        return f'{settings.pd_base_url}/organizations/{self.pd_org_id}/'
+        return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
 
     @property
     def tc2_cligency_url(self) -> str:

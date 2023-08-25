@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     meeting_max_end: str = '17:30'
 
     #  TC2
-    tc2_api_key: bytes = b'test-key'
+    tc2_api_key: bytes = b'972ef2b88846a37bda0f95236886cdd2db54336e'
     tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # Testing
     # Admin user to create when testing locally
-    TESTING: bool = False
+    CREATE_TESTING_ADMIN: bool = False
     tc2_admin_id: int = 66
     pd_owner_id: int = 15708604
 

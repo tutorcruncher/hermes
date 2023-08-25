@@ -489,7 +489,7 @@ class TC2TasksTestCase(HermesTestCase):
                 'extra_attrs': {
                     'pipedrive_deal_stage': 'New',
                     'pipedrive_pipeline': 'payg',
-                    'pipedrive_url': 'https://tutorcruncher-sandbox.pipedrive.com/organizations/20/',
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
                     'pipedrive_id': 20,
                 },
             }

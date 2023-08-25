@@ -7,9 +7,11 @@ session = requests.Session()
 
 
 async def tc2_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    headers = {'Authorization': f'token {settings.tc2_api_key}'}
-    debug(headers)
-    r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', data=data, headers=headers)
+    api_key = settings.tc2_api_key.decode('utf-8')
+    headers = {'Authorization': f'token {api_key}'}
+    # debug(headers)
+    # debug(data)
+    r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', json=data, headers=headers)
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
     r.raise_for_status()
     return r.json()

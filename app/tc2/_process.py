@@ -27,7 +27,7 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     debug('_create_or_update_contact')
-    debug(tc2_sr.dict())
+    # debug(tc2_sr.dict())
     contact_data = tc2_sr.contact_dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc2_sr_id')
@@ -61,13 +61,14 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
     else:
-        debug('test')
-        debug(tc2_client.dict())
+        # debug('test')
+        # debug(tc2_client.dict())
         await tc2_client.a_validate()
         debug('1')
         if not tc2_client.sales_person_id or tc2_client.meta_agency.paid_invoice_count > 4:
             # Any company that has more than 4 paid invoices is a long term customer and we don't care.
             return
+        debug(tc2_client.dict())
         company_created, company = await _create_or_update_company(tc2_client)
         debug('2')
         contacts_created, contacts_updated = [], []
@@ -79,9 +80,9 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 contacts_updated.append(contact)
         debug('3')
         debug(company)
-        debug(company_created)
-        debug(contacts_created)
-        debug(contacts_updated)
+        # debug(company_created)
+        # debug(contacts_created)
+        # debug(contacts_updated)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
             f'Contacts created: {contacts_created}, '
