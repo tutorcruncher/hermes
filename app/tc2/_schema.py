@@ -60,6 +60,7 @@ class TCClient(HermesBaseModel):
     meta_agency: _TCAgency = Field(exclude=True)
     user: _TCUser
     status: str
+    website: Optional[str] = None
     sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
@@ -86,6 +87,7 @@ class TCClient(HermesBaseModel):
             tc2_status=self.meta_agency.status,
             name=self.meta_agency.name,
             country=self.meta_agency.country,
+            website=self.meta_agency.website,
             support_person=self.support_person,  # noqa: F821 - Added in validation
             sales_person=self.sales_person,  # noqa: F821 - Added in validation
             bdr_person=self.bdr_person,  # noqa: F821 - Added in validation

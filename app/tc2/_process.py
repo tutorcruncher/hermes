@@ -13,9 +13,11 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
     debug('_create_or_update_company')
+    debug(tc2_client.dict())
     company_data = tc2_client.company_dict()
     company_id = company_data.pop('tc2_agency_id')
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
+    debug(company.__dict__)
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
@@ -46,6 +48,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
     debug('update_from_client_event')
     try:
         debug('user exists')
+        debug(tc2_subject.dict())
         tc2_client = TCClient(**tc2_subject.dict())
     except ValidationError as e:
         # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
@@ -79,7 +82,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
             else:
                 contacts_updated.append(contact)
         debug('3')
-        debug(company)
+        debug(company.__dict__)
         # debug(company_created)
         # debug(contacts_created)
         # debug(contacts_updated)
