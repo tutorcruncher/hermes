@@ -34,12 +34,88 @@ The list of all workflows is in the workflows.md file. They need to all be teste
 
 ### Running locally
 
+#### Ngrok:
+
+HINT: if you create a account with ngrok, it will give you a static url that you can use for the webhooks, that will never expire ;)
+
+run ngrok on port 8000
+
+`ngrok http --${your ngrok domain} 8000`
+
+#### Hermes:
+
 Install the dependencies with `make install`. You may need to create the database with `make reset-db`.
 Then run the server with `python -m uvicorn app.main:app --reload`
 
 You'll be able to view the admin interface at http://localhost:8000/. To login, go to /login. You need to have an admin
 already created; if you look in `utils.py` you'll see some code you can uncomment so that the admin is created when the
 server starts.
+
+set `.env` vars:
+```
+# First Run
+# tests will fail if this is set to True, make sure to make reset-db before running tests
+CREATE_TESTING_ADMIN=False
+tc2_admin_id=66
+pd_owner_id=15708604
+
+
+# TC2
+tc2_api_key=
+tc2_base_url='http://localhost:5000'
+
+# Pipedrive
+pd_api_key=
+pd_base_url='https://seb-sandbox2.pipedrive.com'
+
+
+```
+
+Create Admin
+
+#### TC2:
+
+Run TC2 (`hermesv2` branch) on port 5000
+
+Add these custom fields to meta Cligency:
+```
+pipedrive_url
+pipedrive_id
+```
+
+Add API Integration to META:
+- Name: `Hermes`
+- URL: `https://${your ngrok domain}/tc2/callback`
+
+Create a Meta Admin:
+check `Account Managers` and `is support person`, `is sales person`
+
+#### Pipedrive:
+
+Create a pipedrive sandbox account.
+Navigate to Profile > Tools and apps > Webhooks > Create new webhook:
+
+- Event action: `*`
+
+- Event object: `*`
+
+- Endpoint URL: `https://${your ngrok domain}/pipedrive/callback`
+
+- HTTP Auth: `None`
+
+Add these Custom Fields to the Organisation:
+```
+website
+paid_invoice_count
+has_booked_call
+has_signed_up
+tc2_status
+tc2_cligency_url
+```
+
+Get your Pipedrive Owner ID:
+- Navigate to ... > User Overview > select your user
+- Copy the number at the end of the URL
 
 ## TODOs:
 

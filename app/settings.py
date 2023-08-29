@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     meeting_max_end: str = '17:30'
 
     #  TC2
-    tc2_api_key: bytes = b'972ef2b88846a37bda0f95236886cdd2db54336e'
+    tc2_api_key: bytes = b'50056a7e6401de40aa2dd9c11e5cbe272722ba1b'
     tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive

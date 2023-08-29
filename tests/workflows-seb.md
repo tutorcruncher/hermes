@@ -15,6 +15,7 @@ The solution I'm recommending for the moment is that we make sure the team creat
     * Company object:
       * [x] If it exists, update it with the `pd_org_id` and any other details (`salesperson` etc). **TODO: Currently we're only matching on `pd_org_id` so a new Company will always be created. See TODO in `_process_pd_organisation`.**
       * [x] If it doesn't exist, create it. Assign the `owner` as `salesperson`.
+        * When creating the company in pipedrive it must have a tc2_status
   * In TC2 (only valid if the Company exists in Hermes):
     * Cligency object:
       * [ ] If it exists in TC2 (we know this if the Company has a `tc2_cligency_id`), then update it with the `pipedrive_url` and `pipedrive_id`.
@@ -26,8 +27,9 @@ The solution I'm recommending for the moment is that we make sure the team creat
       * [ ] If it doesn't exist, create it. Assign the `owner` as `salesperson`.
   * In TC2 (only valid if the Company exists in Hermes):
     * Cligency object:
-      * [ ] If it exists in TC2 (we know this if the Company has a `tc2_cligency_id`), then update it with the `pipedrive_url` and `pipedrive_id`.
-      * [ ] If it doesn't exist, do nothing.
+      * [x] If it exists in TC2 (we know this if the Company has a `tc2_cligency_id`), then update it with the `pipedrive_url` and `pipedrive_id`.
+      * [x] If it doesn't exist, do nothing.
+        * 404 Client Error
 * Org deleted [`_process_pd_organisation`](https://github.com/tutorcruncher/hermes_v2/blob/main/app/pipedrive/_process.py#:~:text=_process_pd_organisation)
   * In Hermes:
     * Company object:

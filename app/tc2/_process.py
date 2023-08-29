@@ -13,14 +13,14 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
     debug('_create_or_update_company')
-    debug(tc2_client.dict())
     company_data = tc2_client.company_dict()
     company_id = company_data.pop('tc2_agency_id')
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
-    debug(company.__dict__)
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
+
+    debug(company)
     return created, company
 
 
@@ -29,7 +29,6 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     debug('_create_or_update_contact')
-    # debug(tc2_sr.dict())
     contact_data = tc2_sr.contact_dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc2_sr_id')
@@ -47,14 +46,11 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
     """
     debug('update_from_client_event')
     try:
-        debug('user exists')
-        debug(tc2_subject.dict())
         tc2_client = TCClient(**tc2_subject.dict())
     except ValidationError as e:
         # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
         # we know to delete their details from our database.
         try:
-            debug('user does not exist')
             tc2_client = _TCSimpleRole(**tc2_subject.dict())
         except ValidationError:
             raise e
@@ -64,16 +60,11 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
     else:
-        # debug('test')
-        # debug(tc2_client.dict())
         await tc2_client.a_validate()
-        debug('1')
         if not tc2_client.sales_person_id or tc2_client.meta_agency.paid_invoice_count > 4:
             # Any company that has more than 4 paid invoices is a long term customer and we don't care.
             return
-        debug(tc2_client.dict())
         company_created, company = await _create_or_update_company(tc2_client)
-        debug('2')
         contacts_created, contacts_updated = [], []
         for recipient in tc2_client.paid_recipients:
             contact_created, contact = await _create_or_update_contact(recipient, company=company)
@@ -81,17 +72,11 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 contacts_created.append(contact)
             else:
                 contacts_updated.append(contact)
-        debug('3')
-        debug(company.__dict__)
-        # debug(company_created)
-        # debug(contacts_created)
-        # debug(contacts_updated)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
             f'Contacts created: {contacts_created}, '
             f'Contacts updated: {contacts_updated}'
         )
-        debug('4')
         return company
 
 

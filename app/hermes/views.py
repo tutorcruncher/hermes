@@ -14,7 +14,6 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     """
     if plan == Company.PP_PAYG:
         admins = Admin.filter(sells_payg=True)
-        # debug(admins)
     elif plan == Company.PP_STARTUP:
         admins = Admin.filter(sells_startup=True)
     elif plan == Company.PP_ENTERPRISE:

@@ -17,6 +17,7 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
+    debug(company)
     if company:
         if current_pd_org:
             # The org has been updated
@@ -34,6 +35,7 @@ async def _process_pd_organisation(
     elif current_pd_org:
         # The org has just been created
         company = await Company.create(**await current_pd_org.company_dict())
+        debug(company)
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
     return company
 

@@ -43,6 +43,4 @@ async def callback(
 @tc2_router.post('/debug_log/', name='debug log')
 async def debug_log(event_data: dict):
     app_logger.info("Captured event data for debugging:")
-    debug(event_data)
-    # app_logger.info(event_data)
     return {'status': 'ok'}
