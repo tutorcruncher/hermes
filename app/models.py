@@ -34,19 +34,19 @@ class Config(models.Model):
         description='The earliest time a meeting can be booked for an admin in their timezone.',
     )
 
-    payg_pipeline = fields.ForeignKeyField(
+    payg_pipeline: fields.ForeignKeyRelation['Pipeline'] = fields.ForeignKeyField(
         'models.Pipeline',
         null=True,
         related_name='payg_pipeline',
         description='The pipeline that PAYG clients will be added to',
     )
-    startup_pipeline = fields.ForeignKeyField(
+    startup_pipeline: fields.ForeignKeyRelation['Pipeline'] = fields.ForeignKeyField(
         'models.Pipeline',
         null=True,
         related_name='startup_pipeline',
         description='The pipeline that Startup clients will be added to',
     )
-    enterprise_pipeline = fields.ForeignKeyField(
+    enterprise_pipeline: fields.ForeignKeyRelation['Pipeline'] = fields.ForeignKeyField(
         'models.Pipeline',
         null=True,
         related_name='enterprise_pipeline',
@@ -143,6 +143,7 @@ class Company(models.Model):
     In Pipedrive this is an Organization.
     """
 
+    # These are taken directly from TC2
     STATUS_PENDING_EMAIL_CONF = 'pending_email_conf'
     STATUS_TRIAL = 'trial'
     STATUS_PAYING = 'active'
@@ -244,8 +245,7 @@ class Deal(models.Model):
     admin = fields.ForeignKeyField('models.Admin', related_name='deals')
     pipeline = fields.ForeignKeyField('models.Pipeline', related_name='deals')
 
-    # Is null until we get the webhook from Pipedrive
-    stage = fields.ForeignKeyField('models.Stage', related_name='deals', null=True)
+    stage = fields.ForeignKeyField('models.Stage', related_name='deals')
     company = fields.ForeignKeyField('models.Company', related_name='deals')
     contact = fields.ForeignKeyField('models.Contact', related_name='deals', null=True)
 

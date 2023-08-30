@@ -194,7 +194,7 @@ There are two types of call here, a sales call or a support call.
     * Activity object:
       * [ ] If the Meeting was created in Hermes, create it
 
-## Cligency actions
+## Actions from TC2
 
 * Cligency created [`update_from_client_event`](https://github.com/tutorcruncher/hermes_v2/blob/main/app/tc2/_process_.py#:~:text=update_from_client_event)
   * In Hermes:
@@ -204,6 +204,9 @@ There are two types of call here, a sales call or a support call.
     * Contact object:
       * [ ] If exists, update them with the various `tc2_` fields. **TODO: Currently we're only matching on `tc2_sr_id` so a new Contact will always be created. See TODO in `_create_or_update_contact`.**
       * [ ] If it doesn't exist, create them.
+    * Deal object:
+      * [ ] If it exists, do nothing.
+      * [ ] If the company doesn't exist, has 0 paid invoices, has a status of `trial` or `pending_email_conf`, and was created in the past 3 months, create it and set it's pipeline/stage correctly.
   * In Pipedrive:
     * Org object:
       * [ ] If it exists, update with the `tc2_` fields.
@@ -211,6 +214,8 @@ There are two types of call here, a sales call or a support call.
     * Person object:
       * [ ] If it exists, update it with the `tc2_fields`.
       * [ ] If it doesn't exist, create it.
+    * PDDeal object:
+      * [ ] If the Deal object was created above, create it.
 * Cligency updated [`update_from_client_event`](https://github.com/tutorcruncher/hermes_v2/blob/main/app/tc2/_process_.py#:~:text=update_from_client_event)
   * In Hermes:
     * Company object:

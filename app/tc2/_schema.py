@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import validator, root_validator, Field
@@ -36,6 +37,7 @@ class _TCAgency(HermesBaseModel):
     website: Optional[str] = None
     status: str
     paid_invoice_count: int
+    created: datetime = Field(exclude=True)
 
     @validator('country')
     def country_to_code(cls, v):

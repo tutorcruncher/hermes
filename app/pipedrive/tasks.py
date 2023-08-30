@@ -3,7 +3,7 @@ from app.pipedrive.api import (
     create_activity,
     create_or_update_organisation,
     create_or_update_person,
-    get_or_create_deal,
+    get_or_create_pd_deal,
 )
 
 
@@ -13,7 +13,7 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     """
     await create_or_update_organisation(company)
     await create_or_update_person(contact)
-    pd_deal = await get_or_create_deal(deal)
+    pd_deal = await get_or_create_pd_deal(deal)
     await create_activity(meeting, pd_deal)
 
 
@@ -26,7 +26,9 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
         await create_activity(meeting)
 
 
-async def pd_post_process_client_event(company: Company):
+async def pd_post_process_client_event(company: Company, deal: Deal = None):
     await create_or_update_organisation(company)
     for contact in await company.contacts:
         await create_or_update_person(contact)
+    if deal:
+        await get_or_create_pd_deal(deal)

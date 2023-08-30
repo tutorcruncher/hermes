@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import re
+from datetime import datetime, timedelta
 from unittest import mock
 
 from requests import HTTPError
@@ -24,6 +25,7 @@ def _client_data():
             'status': 'active',
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
+            'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },
         'associated_admin': {
             'id': 30,
@@ -146,6 +148,7 @@ class TC2CallbackTestCase(HermesTestCase):
         Create a new company
         Create no contacts
         With associated admin
+        Create a deal
         """
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -156,6 +159,8 @@ class TC2CallbackTestCase(HermesTestCase):
 
         modified_data = client_full_event_data()
         modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
 
         events = [modified_data]
         data = {'_request_time': 123, 'events': events}
@@ -166,15 +171,20 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.name == 'MyTutors'
         assert company.tc2_agency_id == 20
         assert company.tc2_cligency_id == 10
-        assert company.tc2_status == 'active'
+        assert company.tc2_status == 'trial'
         assert company.country == 'GB'
-        assert company.paid_invoice_count == 2
+        assert company.paid_invoice_count == 0
         assert await company.support_person == await company.sales_person == admin
 
         assert not company.estimated_income
         assert not company.bdr_person
 
         assert await Contact.all().count() == 0
+        deal = await Deal.get()
+        assert deal.name == 'MyTutors'
+        assert await deal.pipeline == self.pipeline
+        assert not deal.contact
+        assert await deal.stage == self.stage
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_cb_client_event_test_2(self, mock_add_task):
