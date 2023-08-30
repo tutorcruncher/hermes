@@ -25,6 +25,9 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     event.current and await event.current.a_validate()
     event.previous and await event.previous.a_validate()
 
+    debug(event)
+    debug(event.meta.object)
+
     app_logger.info(f'Callback: event received for {event.meta.object}')
     if event.meta.object == 'deal':
         deal = await _process_pd_deal(event.current, event.previous)
@@ -49,7 +52,8 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
 @pipedrive_router.post('/callback/debug/', name='Pipedrive debug callback')
 async def debug_callback(body: Request):
     data = await body.json()
-    app_logger.info(f'Debug: event received for {data}')
-    r = requests.post('/pipedrive/callback/', json=data)
+    debug(data)
+    # app_logger.info(f'Debug: event received for {data}')
+    r = requests.post('http://localhost:8000/pipedrive/callback/', json=data)
     debug(r.json())
     return r.json

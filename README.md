@@ -81,6 +81,8 @@ Add these custom fields to meta Cligency:
 ```
 pipedrive_url
 pipedrive_id
+pipedrive_deal_stage
+pipedrive_pipeline
 ```
 
 Add API Integration to META:
