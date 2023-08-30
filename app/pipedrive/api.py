@@ -79,7 +79,7 @@ async def create_or_update_person(contact: Contact) -> Person:
     return pipedrive_person
 
 
-async def get_or_create_deal(deal: Deal) -> PDDeal:
+async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     """
     Creates a new deal if none exists within Pipedrive.
     """

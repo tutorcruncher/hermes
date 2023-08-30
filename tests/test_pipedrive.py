@@ -543,6 +543,89 @@ class PipedriveTasksTestCase(HermesTestCase):
             },
         }
         assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_with_deal(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian',
+            last_name='Junes',
+            email='brain@junes.com',
+            company_id=company.id,
+            pd_person_id=1,
+        )
+        self.pipedrive.db['persons'] = {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'primary_email': 'brain@junes.com',
+                'phone': None,
+                'address_country': None,
+                'org_id': 1,
+            },
+        }
+        deal = await Deal.create(
+            name='Julies Ltd',
+            status=Deal.STATUS_OPEN,
+            admin=admin,
+            company=company,
+            contact=contact,
+            stage=self.stage,
+            pipeline=self.pipeline,
+        )
+        await pd_post_process_client_event(company, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_tc2_status_456': 'pending_email_conf',
+                '123_website_456': 'https://junes.com',
+                '123_paid_invoice_count_456': 0,
+                '123_has_booked_call_456': False,
+                '123_has_signed_up_456': False,
+                '123_tc2_cligency_url_456': '',
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'primary_email': 'brain@junes.com',
+                'phone': None,
+                'address_country': None,
+                'org_id': 1,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+            },
+        }
+        assert (await Deal.get()).pd_deal_id == 1
 
 
 def basic_pd_org_data():

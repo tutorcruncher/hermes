@@ -1,9 +1,13 @@
-from pydantic import ValidationError
+from datetime import timedelta, datetime
 
-from app.models import Company, Contact
+from pydantic import ValidationError
+from pytz import utc
+
+from app.models import Company, Contact, Deal
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
+from app.utils import get_config
 
 
 async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company]:
@@ -39,7 +43,34 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
     return created, contact
 
 
-async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company | None:
+async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
+    """
+    Get or create an Open deal.
+    """
+    deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
+    config = await get_config()
+    if not deal:
+        match company.price_plan:
+            case Company.PP_PAYG:
+                pipeline = await config.payg_pipeline
+            case Company.PP_STARTUP:
+                pipeline = await config.startup_pipeline
+            case Company.PP_ENTERPRISE:
+                pipeline = await config.enterprise_pipeline
+            case _:
+                raise ValueError(f'Unknown price plan {company.price_plan}')
+        deal = await Deal.create(
+            company_id=company.id,
+            contact_id=contact and contact.id,
+            name=company.name,
+            pipeline_id=pipeline.id,
+            admin_id=company.sales_person_id,
+            stage_id=pipeline.dft_entry_stage_id,
+        )
+    return deal
+
+
+async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(Company | None), (Deal | None)]:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
@@ -59,11 +90,13 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
             if company:
                 await company.delete()
                 app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
+            return None, None
     else:
+        deal, contact = None, None
         await tc2_client.a_validate()
         if not tc2_client.sales_person_id or tc2_client.meta_agency.paid_invoice_count > 4:
             # Any company that has more than 4 paid invoices is a long term customer and we don't care.
-            return
+            return None, None
         company_created, company = await _create_or_update_company(tc2_client)
         contacts_created, contacts_updated = [], []
         for recipient in tc2_client.paid_recipients:
@@ -72,12 +105,24 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> Company
                 contacts_created.append(contact)
             else:
                 contacts_updated.append(contact)
+        tc2_agency = tc2_client.meta_agency
+        if (
+            tc2_agency
+            and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
+            and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
+            and tc2_agency.paid_invoice_count == 0
+            and tc2_client.sales_person
+        ):
+            # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
+            # be created.
+            deal = await _get_or_create_deal(company, contact)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
             f'Contacts created: {contacts_created}, '
             f'Contacts updated: {contacts_updated}'
+            f'Deal created: {deal}'
         )
-        return company
+        return company, deal
 
 
 async def update_from_invoice_event(tc2_subject: TCSubject):
@@ -86,4 +131,4 @@ async def update_from_invoice_event(tc2_subject: TCSubject):
     """
     tc2_invoice = TCInvoice(**tc2_subject.dict())
     tc2_client_subject = TCSubject(**await tc2_request(f'clients/{tc2_invoice.client.id}'))
-    await update_from_client_event(tc2_client_subject)
+    return await update_from_client_event(tc2_client_subject)

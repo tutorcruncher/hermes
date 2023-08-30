@@ -108,6 +108,7 @@ async def _get_or_create_deal(company: Company, contact: Contact) -> Deal:
             name=company.name,
             pipeline_id=pipeline.id,
             admin_id=company.sales_person_id,
+            stage_id=pipeline.dft_entry_stage_id,
         )
     return deal
 
