@@ -64,6 +64,9 @@ class Stage(models.Model):
 
     deals: fields.ReverseRelation['Deal']
 
+    def __str__(self):
+        return self.name
+
 
 class Pipeline(models.Model):
     id = fields.IntField(pk=True)
@@ -72,6 +75,9 @@ class Pipeline(models.Model):
     dft_entry_stage = fields.ForeignKeyField('models.Stage', null=True)
 
     deals: fields.ReverseRelation['Deal']
+
+    def __str__(self):
+        return self.name
 
 
 class Admin(AbstractAdmin):

@@ -59,6 +59,12 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')
+        debug(company.id)
+        debug(contact, contact.id)
+        debug(company.name)
+        debug(pipeline.id)
+        debug(company.sales_person_id)
+        debug(pipeline.dft_entry_stage_id)
         deal = await Deal.create(
             company_id=company.id,
             contact_id=contact and contact.id,
@@ -86,6 +92,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
         except ValidationError:
             raise e
         else:
+            debug('process to delete')
             company = await Company.get_or_none(tc2_cligency_id=tc2_client.id)
             if company:
                 await company.delete()
@@ -115,7 +122,12 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
         ):
             # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
             # be created.
+
+            debug(contact)
+            debug(company)
+
             deal = await _get_or_create_deal(company, contact)
+            debug(deal)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
             f'Contacts created: {contacts_created}, '

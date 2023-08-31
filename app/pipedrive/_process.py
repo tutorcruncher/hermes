@@ -16,9 +16,11 @@ async def _process_pd_organisation(
     now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
+    # add hermes company id to pipedrive Org, that way filter by company_id
     company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
-    debug(company)
     if company:
+        debug('company exists')
+        debug(company)
         if current_pd_org:
             # The org has been updated
             old_data = old_pd_org and await old_pd_org.company_dict()
@@ -34,6 +36,7 @@ async def _process_pd_organisation(
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
+        debug('create company')
         company = await Company.create(**await current_pd_org.company_dict())
         debug(company)
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)

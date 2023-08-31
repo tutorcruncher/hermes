@@ -71,6 +71,11 @@ pd_base_url='https://seb-sandbox2.pipedrive.com'
 
 ```
 
+##### Config
+
+Edit Hermes config in the admin interface:
+- Set Price Plan Pipelines to their associated Hermes Pipeline ID
+- Set Pipeline `dft_entry_pipeline_state` (warning, dropdown is not filtered by pipeline)
 Create Admin
 
 #### TC2:
@@ -118,6 +123,13 @@ tc2_cligency_url
 Get your Pipedrive Owner ID:
 - Navigate to ... > User Overview > select your user
 - Copy the number at the end of the URL
+
+##### Setup Pipelines
+
+Create a pipeline for each of the following:
+- `PAYG`
+- `STARTUP`
+- `ENTERPRISE`
 
 ## TODOs:
 
