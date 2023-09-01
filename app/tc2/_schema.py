@@ -38,6 +38,7 @@ class _TCAgency(HermesBaseModel):
     status: str
     paid_invoice_count: int
     created: datetime = Field(exclude=True)
+    price_plan: str
 
     @validator('country')
     def country_to_code(cls, v):
@@ -94,6 +95,7 @@ class TCClient(HermesBaseModel):
             sales_person=self.sales_person,  # noqa: F821 - Added in validation
             bdr_person=self.bdr_person,  # noqa: F821 - Added in validation
             paid_invoice_count=self.meta_agency.paid_invoice_count,
+            price_plan=self.meta_agency.price_plan,
         )
 
 

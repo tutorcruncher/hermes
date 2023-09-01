@@ -26,7 +26,6 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     event.previous and await event.previous.a_validate()
 
     debug(event)
-    debug(event.meta.object)
 
     app_logger.info(f'Callback: event received for {event.meta.object}')
     if event.meta.object == 'deal':

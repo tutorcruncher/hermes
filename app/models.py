@@ -158,9 +158,9 @@ class Company(models.Model):
     STATUS_TERMINATED = 'terminated'
     STATUS_IN_ARREARS = 'in-arrears'
 
-    PP_PAYG = 'payg'
-    PP_STARTUP = 'startup'
-    PP_ENTERPRISE = 'enterprise'
+    PP_PAYG: str = 'payg'
+    PP_STARTUP: str = 'startup'
+    PP_ENTERPRISE: str = 'enterprise'
 
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)

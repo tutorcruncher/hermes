@@ -97,10 +97,10 @@ class Organisation(PipedriveBaseModel):
     website: Optional[str] = Field('', custom=True)
     paid_invoice_count: Optional[int] = Field(0, custom=True)
     has_booked_call: Optional[bool] = Field(False, custom=True)
-    has_signed_up: Optional[bool] = Field(False, custom=True)
+    has_signed_up: Optional[bool] = Field(False, custo_get_or_create_dealm=True)
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
-    company_id: Optional[fk_field(Company, 'id', null_if_invalid=True)] = Field('', custom=True)
+    company_id: fk_field(Company, 'id') = Field(0, custom=True)
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
@@ -119,6 +119,7 @@ class Organisation(PipedriveBaseModel):
                 has_signed_up=company.has_signed_up,
                 tc2_status=company.tc2_status,
                 tc2_cligency_url=company.tc2_cligency_url,
+                company_id=company.id,
             )
         )
         obj = await cls.set_custom_field_vals(obj)
@@ -224,6 +225,9 @@ class PDDeal(PipedriveBaseModel):
     stage_id: fk_field(Stage, 'pd_stage_id')
     status: str
     obj_type: Literal['deal'] = Field('deal', exclude=True)
+
+    # These are all custom fields
+    hermes_deal_id: Optional[fk_field(Deal, 'id', null_if_invalid=True)] = Field('', custom=True)
 
     @classmethod
     async def from_deal(cls, deal: Deal):

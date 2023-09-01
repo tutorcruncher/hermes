@@ -24,7 +24,6 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
         company = await company.update_from_dict(company_data)
         await company.save()
 
-    debug(company)
     return created, company
 
 
@@ -51,20 +50,16 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
     config = await get_config()
     if not deal:
         match company.price_plan:
-            case Company.PP_PAYG:
+            case plan if Company.PP_PAYG in plan:
                 pipeline = await config.payg_pipeline
-            case Company.PP_STARTUP:
+            case plan if Company.PP_STARTUP in plan:
                 pipeline = await config.startup_pipeline
-            case Company.PP_ENTERPRISE:
+            case plan if Company.PP_ENTERPRISE in plan:
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')
-        debug(company.id)
-        debug(contact, contact.id)
-        debug(company.name)
-        debug(pipeline.id)
-        debug(company.sales_person_id)
-        debug(pipeline.dft_entry_stage_id)
+
+
         deal = await Deal.create(
             company_id=company.id,
             contact_id=contact and contact.id,
@@ -73,6 +68,7 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             admin_id=company.sales_person_id,
             stage_id=pipeline.dft_entry_stage_id,
         )
+        debug(deal)
     return deal
 
 
@@ -123,11 +119,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
             # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
             # be created.
 
-            debug(contact)
-            debug(company)
-
             deal = await _get_or_create_deal(company, contact)
-            debug(deal)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
             f'Contacts created: {contacts_created}, '
