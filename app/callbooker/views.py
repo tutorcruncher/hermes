@@ -15,7 +15,7 @@ from app.callbooker._process import (
     _get_or_create_deal,
     MeetingBookingError,
 )
-from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
+from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
 from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
 from app.utils import get_bearer, sign_args, settings
@@ -62,11 +62,7 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
 
 
 @cb_router.get('/availability/')
-<<<<<<< Updated upstream
 async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
-=======
-async def availability(avail_data: AvailabilityData):
->>>>>>> Stashed changes
     """
     Endpoint to return timeslots that an admin is available between 2 datetimes.
     """

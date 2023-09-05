@@ -136,11 +136,3 @@ class CBSupportCall(HermesBaseModel):
             'name': self.company_name,
             'admin_id': (await self.admin).id,
         }
-
-
-class AvailabilityData(HermesBaseModel):
-    admin_id: fk_field(Admin)
-    start_dt: datetime
-    end_dt: datetime
-
-    _convert_to_utc = validator('start_dt', 'end_dt', allow_reuse=True)(_convert_to_utc)
