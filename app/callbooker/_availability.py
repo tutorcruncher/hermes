@@ -40,10 +40,16 @@ async def _get_day_start_ends(
 
     while start < end:
         admin_local_dt = start.astimezone(admin_tz)
-        admin_local_start = admin_local_dt.replace(hour=min_start_hours, minute=min_start_mins, second=0, microsecond=0)
-        admin_local_end = admin_local_dt.replace(hour=max_end_hours, minute=max_end_mins, second=0, microsecond=0)
-        date_start_ends.append((admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)))
-        yield admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)
+        if admin_local_dt.weekday() in (5, 6):
+            # Skip weekends
+            pass
+        else:
+            admin_local_start = admin_local_dt.replace(
+                hour=min_start_hours, minute=min_start_mins, second=0, microsecond=0
+            )
+            admin_local_end = admin_local_dt.replace(hour=max_end_hours, minute=max_end_mins, second=0, microsecond=0)
+            date_start_ends.append((admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)))
+            yield admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)
         start = start + timedelta(days=1)
 
 

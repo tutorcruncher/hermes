@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 
+from app.base_schema import fk_field
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
     _book_meeting,
@@ -26,8 +27,8 @@ cb_router = APIRouter()
 async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
+    We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     deal = await _get_or_create_deal(company, contact)
@@ -46,8 +47,8 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
 async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
+    We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
     company, contact = await _get_or_create_contact_company(event)
     try:
@@ -60,13 +61,18 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
         return {'status': 'ok'}
 
 
-@cb_router.post('/availability/')
+@cb_router.get('/availability/')
+<<<<<<< Updated upstream
+async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
+=======
 async def availability(avail_data: AvailabilityData):
+>>>>>>> Stashed changes
     """
     Endpoint to return timeslots that an admin is available between 2 datetimes.
     """
-    await avail_data.a_validate()
-    slots = get_admin_available_slots(avail_data.start_dt, avail_data.end_dt, await avail_data.admin)
+    field = fk_field(Admin)()
+    admin = await field.get_object('admin_id', admin_id)
+    slots = get_admin_available_slots(start_dt, end_dt, admin)
     return {'status': 'ok', 'slots': [slot async for slot in slots]}
 
 

@@ -574,7 +574,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         start = datetime(2026, 7, 2, 2, tzinfo=utc)
         end = datetime(2026, 7, 4, 23, tzinfo=utc)
-        r = await self.client.post(
+        r = await self.client.get(
             self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
@@ -610,7 +610,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         start = datetime(2026, 7, 2, 2, tzinfo=utc)
         end = datetime(2026, 7, 4, 23, tzinfo=utc)
-        r = await self.client.post(
+        r = await self.client.get(
             self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
@@ -648,7 +648,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         start = datetime(2026, 3, 28, 2, tzinfo=utc)
         end = datetime(2026, 3, 30, 23, tzinfo=utc)
-        r = await self.client.post(
+        r = await self.client.get(
             self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
@@ -679,7 +679,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         start = datetime(2026, 7, 3, 11, tzinfo=utc)
         end = datetime(2026, 7, 3, 12, tzinfo=utc)
-        r = await self.client.post(
+        r = await self.client.get(
             self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         assert r.json() == {'slots': [], 'status': 'ok'}
