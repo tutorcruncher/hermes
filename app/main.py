@@ -5,6 +5,7 @@ import aioredis
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
+from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
 from app.admin import resources, views  # noqa: F401
@@ -25,6 +26,10 @@ if _app_settings.sentry_dsn:
 
 
 app = FastAPI()
+allowed_origins = ['https://tutorcruncher.com/']
+if _app_settings.dev_mode:
+    allowed_origins = ['*']
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
 logging.config.dictConfig(config)
 register_tortoise(
     app,

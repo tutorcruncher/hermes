@@ -9,12 +9,13 @@ from starlette.responses import JSONResponse
 
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
-    _book_meeting,
-    _get_or_create_contact_company,
-    _get_or_create_deal,
+    book_meeting,
+    get_or_create_contact_company,
+    get_or_create_deal,
     MeetingBookingError,
+    get_or_create_contact,
 )
-from app.callbooker._schema import AvailabilityData, CBSalesCall, CBSupportCall
+from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
 from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
 from app.utils import get_bearer, sign_args, settings
@@ -26,13 +27,13 @@ cb_router = APIRouter()
 async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Sales call from the website.
+    We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
-    company, contact = await _get_or_create_contact_company(event)
-    deal = await _get_or_create_deal(company, contact)
+    company, contact = await get_or_create_contact_company(event)
+    deal = await get_or_create_deal(company, contact)
     try:
-        meeting = await _book_meeting(company=company, contact=contact, event=event)
+        meeting = await book_meeting(company=company, contact=contact, event=event)
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
@@ -46,12 +47,13 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
 async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     """
     Endpoint for someone booking a Support call from the website.
+    We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
-    # TODO: We can't do standard auth as this comes from the website. We should do something else.
     await event.a_validate()
-    company, contact = await _get_or_create_contact_company(event)
+    company = await event.company
+    contact = await get_or_create_contact(company, event)
     try:
-        meeting = await _book_meeting(company=company, contact=contact, event=event)
+        meeting = await book_meeting(company=company, contact=contact, event=event)
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
@@ -60,13 +62,13 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
         return {'status': 'ok'}
 
 
-@cb_router.post('/availability/')
-async def availability(avail_data: AvailabilityData):
+@cb_router.get('/availability/')
+async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
     """
     Endpoint to return timeslots that an admin is available between 2 datetimes.
     """
-    await avail_data.a_validate()
-    slots = get_admin_available_slots(avail_data.start_dt, avail_data.end_dt, await avail_data.admin)
+    admin = await Admin.get(id=admin_id)
+    slots = get_admin_available_slots(start_dt, end_dt, admin)
     return {'status': 'ok', 'slots': [slot async for slot in slots]}
 
 
@@ -98,4 +100,4 @@ async def validate_support_link(admin_id: int, company_id: int, e: int, s: str):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
     elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)
-    return {'status': 'ok'}
+    return {'status': 'ok', 'company_name': company.name}

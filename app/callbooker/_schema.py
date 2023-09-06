@@ -37,7 +37,6 @@ class CBSalesCall(HermesBaseModel):
     website: Optional[str]
     email: str
     country: str
-    phone_ext: Optional[str]
     phone: Optional[str]
     company_name: str
     estimated_income: str
@@ -84,7 +83,7 @@ class CBSalesCall(HermesBaseModel):
             'first_name': self.first_name,
             'last_name': self.last_name,
             'email': self.email,
-            'phone': (self.phone_ext or '' + self.phone) if self.phone else None,
+            'phone': self.phone,
             'country': self.country,
         }
 
@@ -100,8 +99,6 @@ class CBSupportCall(HermesBaseModel):
     meeting_dt: datetime
     email: str
     name: str
-    country: str
-    company_name: str
 
     _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
     _strip = validator('name', allow_reuse=True)(_strip)
@@ -122,25 +119,4 @@ class CBSupportCall(HermesBaseModel):
         return self._name_split[-1]
 
     async def contact_dict(self) -> dict:
-        return {
-            'first_name': self.first_name,
-            'last_name': self.last_name,
-            'email': self.email,
-            'country': self.country,
-        }
-
-    async def company_dict(self) -> dict:
-        return {
-            'tc2_cligency_id': self.tc2_cligency_id,
-            'country': self.country,
-            'name': self.company_name,
-            'admin_id': (await self.admin).id,
-        }
-
-
-class AvailabilityData(HermesBaseModel):
-    admin_id: fk_field(Admin)
-    start_dt: datetime
-    end_dt: datetime
-
-    _convert_to_utc = validator('start_dt', 'end_dt', allow_reuse=True)(_convert_to_utc)
+        return {'first_name': self.first_name, 'last_name': self.last_name, 'email': self.email}

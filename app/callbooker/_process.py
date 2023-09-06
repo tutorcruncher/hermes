@@ -8,7 +8,7 @@ from app.models import Company, Contact, Meeting, Deal
 from app.utils import settings, get_config
 
 
-async def _get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall) -> Contact:
+async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall) -> Contact:
     contact = (
         await Contact.filter(company_id=company.id)
         .filter(Q(email=event.email) | Q(last_name__iexact=event.last_name))
@@ -20,7 +20,7 @@ async def _get_or_create_contact(company: Company, event: CBSalesCall | CBSuppor
     return contact
 
 
-async def _book_meeting(company: Company, contact: Contact, event: CBSalesCall | CBSupportCall) -> Meeting:
+async def book_meeting(company: Company, contact: Contact, event: CBSalesCall | CBSupportCall) -> Meeting:
     """
     Check that:
     A) There isn't already a meeting booked for this contact within 2 hours
@@ -57,7 +57,7 @@ async def _book_meeting(company: Company, contact: Contact, event: CBSalesCall |
     return meeting
 
 
-async def _get_or_create_contact_company(event: CBSalesCall | CBSupportCall) -> tuple[Company, Contact]:
+async def get_or_create_contact_company(event: CBSalesCall) -> tuple[Company, Contact]:
     """
     Gets or creates a contact and company based on the CBSalesCall data. The logic is a bit complex:
     The company is got by:
@@ -79,14 +79,14 @@ async def _get_or_create_contact_company(event: CBSalesCall | CBSupportCall) -> 
             if not company:
                 company_data = await event.company_dict()
                 company = await Company.create(**company_data)
-    if isinstance(event, CBSalesCall) and not company.sales_person_id:
+    if not company.sales_person_id:
         company.sales_person = event.admin
         await company.save()
-    contact = contact or await _get_or_create_contact(company, event)
+    contact = contact or await get_or_create_contact(company, event)
     return company, contact
 
 
-async def _get_or_create_deal(company: Company, contact: Contact) -> Deal:
+async def get_or_create_deal(company: Company, contact: Contact) -> Deal:
     """
     Get or create an Open deal.
     """
