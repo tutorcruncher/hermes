@@ -99,8 +99,6 @@ class CBSupportCall(HermesBaseModel):
     meeting_dt: datetime
     email: str
     name: str
-    country: str
-    company_name: str
 
     _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
     _strip = validator('name', allow_reuse=True)(_strip)
@@ -121,17 +119,4 @@ class CBSupportCall(HermesBaseModel):
         return self._name_split[-1]
 
     async def contact_dict(self) -> dict:
-        return {
-            'first_name': self.first_name,
-            'last_name': self.last_name,
-            'email': self.email,
-            'country': self.country,
-        }
-
-    async def company_dict(self) -> dict:
-        return {
-            'tc2_cligency_id': self.tc2_cligency_id,
-            'country': self.country,
-            'name': self.company_name,
-            'admin_id': (await self.admin).id,
-        }
+        return {'first_name': self.first_name, 'last_name': self.last_name, 'email': self.email}

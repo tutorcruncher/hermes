@@ -9,10 +9,11 @@ from starlette.responses import JSONResponse
 
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
-    _book_meeting,
-    _get_or_create_contact_company,
-    _get_or_create_deal,
+    book_meeting,
+    get_or_create_contact_company,
+    get_or_create_deal,
     MeetingBookingError,
+    get_or_create_contact,
 )
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
@@ -29,10 +30,10 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
     await event.a_validate()
-    company, contact = await _get_or_create_contact_company(event)
-    deal = await _get_or_create_deal(company, contact)
+    company, contact = await get_or_create_contact_company(event)
+    deal = await get_or_create_deal(company, contact)
     try:
-        meeting = await _book_meeting(company=company, contact=contact, event=event)
+        meeting = await book_meeting(company=company, contact=contact, event=event)
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
@@ -49,9 +50,10 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
     We can't do standard auth as this comes from the website. We use a CORS policy instead.
     """
     await event.a_validate()
-    company, contact = await _get_or_create_contact_company(event)
+    company = await event.company
+    contact = await get_or_create_contact(company, event)
     try:
-        meeting = await _book_meeting(company=company, contact=contact, event=event)
+        meeting = await book_meeting(company=company, contact=contact, event=event)
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
@@ -98,4 +100,4 @@ async def validate_support_link(admin_id: int, company_id: int, e: int, s: str):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
     elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)
-    return {'status': 'ok'}
+    return {'status': 'ok', 'company_name': company.name}

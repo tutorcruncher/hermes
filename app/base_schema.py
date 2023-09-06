@@ -66,5 +66,7 @@ class HermesBaseModel(BaseModel):
                             )
                     else:
                         object_setattr(self, field.type_.alias, related_obj)
+                else:
+                    object_setattr(self, field.type_.alias, None)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()

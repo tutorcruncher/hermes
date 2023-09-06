@@ -9,6 +9,10 @@ from app.models import Admin
 from app.utils import get_config
 
 
+def is_weekday(dt: datetime) -> bool:
+    return dt.weekday() in (5, 6)
+
+
 async def _get_day_start_ends(
     start: datetime, end: datetime, admin_tz: str
 ) -> AsyncIterable[tuple[datetime, datetime]]:
@@ -40,7 +44,7 @@ async def _get_day_start_ends(
 
     while start < end:
         admin_local_dt = start.astimezone(admin_tz)
-        if admin_local_dt.weekday() in (5, 6):
+        if is_weekday(admin_local_dt):
             # Skip weekends
             pass
         else:
