@@ -7,7 +7,6 @@ from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 
-from app.base_schema import fk_field
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
     _book_meeting,
@@ -66,8 +65,7 @@ async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
     """
     Endpoint to return timeslots that an admin is available between 2 datetimes.
     """
-    field = fk_field(Admin)()
-    admin = await field.get_object('admin_id', admin_id)
+    admin = await Admin.get(id=admin_id)
     slots = get_admin_available_slots(start_dt, end_dt, admin)
     return {'status': 'ok', 'slots': [slot async for slot in slots]}
 

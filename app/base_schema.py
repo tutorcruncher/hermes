@@ -20,27 +20,7 @@ def fk_field(model, fk_field_name='pk', alias=None, null_if_invalid=False):
     """
 
     class ForeignKeyField(int):
-        async def get_object(self, k: str, v: str):
-            """
-            Get the object for the related field. This is used to validate the field.
-            """
-            try:
-                related_obj = await model.get(**{self.fk_field_name: v})
-            except DoesNotExist:
-                if self.null_if_invalid:
-                    return
-                else:
-                    raise RequestValidationError(
-                        [
-                            {
-                                'loc': [k],
-                                'msg': f'{model.__name__} with {self.fk_field_name} {v} does not exist',
-                                'type': 'value_error',
-                            }
-                        ]
-                    )
-            else:
-                return related_obj
+        pass
 
     # The attribute name that will be used to store the related object on the model. By default it uses the model name
     setattr(ForeignKeyField, 'alias', alias or model.__name__.lower())
@@ -66,13 +46,25 @@ class HermesBaseModel(BaseModel):
         for field_name, field in self.__fields__.items():
             v = getattr(self, field_name)
             if field.type_.__name__ == 'ForeignKeyField':
+                model = field.type_.model
+                field_name = field.type_.fk_field_name
                 if v:
-                    related_obj = await field.type_.get_object(field_name, v)
-                    if related_obj:
-                        object_setattr(self, field.type_.alias, related_obj)
+                    try:
+                        related_obj = await model.get(**{field_name: v})
+                    except DoesNotExist:
+                        if field.type_.null_if_invalid:
+                            object_setattr(self, field.type_.alias, None)
+                        else:
+                            raise RequestValidationError(
+                                [
+                                    {
+                                        'loc': [field.name],
+                                        'msg': f'{model.__name__} with {field_name} {v} does not exist',
+                                        'type': 'value_error',
+                                    }
+                                ]
+                            )
                     else:
-                        object_setattr(self, field.type_.alias, None)
-                else:
-                    object_setattr(self, field.type_.alias, None)
+                        object_setattr(self, field.type_.alias, related_obj)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()

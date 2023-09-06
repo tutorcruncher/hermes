@@ -37,7 +37,6 @@ class CBSalesCall(HermesBaseModel):
     website: Optional[str]
     email: str
     country: str
-    phone_ext: Optional[str]
     phone: Optional[str]
     company_name: str
     estimated_income: str
@@ -84,7 +83,7 @@ class CBSalesCall(HermesBaseModel):
             'first_name': self.first_name,
             'last_name': self.last_name,
             'email': self.email,
-            'phone': (self.phone_ext or '' + self.phone) if self.phone else None,
+            'phone': self.phone,
             'country': self.country,
         }
 
