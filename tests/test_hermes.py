@@ -297,3 +297,17 @@ class SupportPersonDeciderTestCase(HermesTestCase):
             'sells_startup': False,
             'sells_enterprise': False,
         }
+
+
+class CountryTestCase(HermesTestCase):
+    def setUp(self) -> None:
+        self.url = '/loc/'
+
+    async def test_country(self):
+        r = await self.client.get(self.url, headers={'CF-IPCountry': 'US'})
+        assert r.status_code == 200
+        assert r.json() == {'country_code': 'US'}
+
+        r = await self.client.get(self.url)
+        assert r.status_code == 200
+        assert r.json() == {'country_code': 'GB'}
