@@ -307,9 +307,7 @@ The user cannot navigate to this page thorugh the website. Instead the support a
 * [ ] We only show the fields for Name, Company Name and Email
 * [ ] Company Name is prefilled
 
-
 # TODO: 
 
 * [ ] If a company is changed in TC to have it's PD org ID set, then it should be linked to the company in PD
 * [ ] Deal with merging Orgs/Persons.
-
