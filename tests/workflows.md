@@ -264,6 +264,7 @@ This consists of an index page and a page per salesperson. Salespersons are adde
         * [ ] User is asked their revenue bracket
         * [ ] The user's country is got based on a request to /loc/. We get the country's main currency and if it is not one of our supported currencies then USD is chosen.
         * [ ] The revenue brackets are chosen from the currency
+        * [ ] Depending on the revenue bracket (see `call_booker_index.js`) the price plan is calculated and we do a request to Hermes to the next salesperson that should be assigned to them.
         * [ ] The user clicks the CTA to Book a call and is directed to the admin's callbooker
         * **Callbooker calendar start**
         * [ ] The calendar loads
