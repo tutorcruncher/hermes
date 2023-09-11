@@ -97,9 +97,6 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
     else:
         deal, contact = None, None
         await tc2_client.a_validate()
-        if not tc2_client.sales_person_id or tc2_client.meta_agency.paid_invoice_count > 4:
-            # Any company that has more than 4 paid invoices is a long term customer and we don't care.
-            return None, None
         company_created, company = await _create_or_update_company(tc2_client)
         contacts_created, contacts_updated = [], []
         for recipient in tc2_client.paid_recipients:

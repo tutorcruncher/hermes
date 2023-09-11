@@ -9,6 +9,10 @@ from app.models import Admin
 from app.utils import get_config
 
 
+def is_weekday(dt: datetime) -> bool:
+    return dt.weekday() in (5, 6)
+
+
 async def _get_day_start_ends(
     start: datetime, end: datetime, admin_tz: str
 ) -> AsyncIterable[tuple[datetime, datetime]]:
@@ -40,10 +44,16 @@ async def _get_day_start_ends(
 
     while start < end:
         admin_local_dt = start.astimezone(admin_tz)
-        admin_local_start = admin_local_dt.replace(hour=min_start_hours, minute=min_start_mins, second=0, microsecond=0)
-        admin_local_end = admin_local_dt.replace(hour=max_end_hours, minute=max_end_mins, second=0, microsecond=0)
-        date_start_ends.append((admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)))
-        yield admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)
+        if is_weekday(admin_local_dt):
+            # Skip weekends
+            pass
+        else:
+            admin_local_start = admin_local_dt.replace(
+                hour=min_start_hours, minute=min_start_mins, second=0, microsecond=0
+            )
+            admin_local_end = admin_local_dt.replace(hour=max_end_hours, minute=max_end_mins, second=0, microsecond=0)
+            date_start_ends.append((admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)))
+            yield admin_local_start.astimezone(pytz.utc), admin_local_end.astimezone(pytz.utc)
         start = start + timedelta(days=1)
 
 

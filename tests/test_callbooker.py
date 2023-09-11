@@ -36,8 +36,8 @@ def fake_gcal_builder(error=False):
                     'climan@example.com': {
                         'busy': [
                             {
-                                'start': _as_iso_8601(datetime(2026, 7, 3, 11, tzinfo=utc)),
-                                'end': _as_iso_8601(datetime(2026, 7, 3, 12, 30, tzinfo=utc)),
+                                'start': _as_iso_8601(datetime(2026, 7, 8, 11, tzinfo=utc)),
+                                'end': _as_iso_8601(datetime(2026, 7, 8, 12, 30, tzinfo=utc)),
                             }
                         ]
                     }
@@ -479,7 +479,7 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 12, 30, tzinfo=utc).timestamp()), admin_id=admin.id)
+        meeting_data.update(meeting_dt=int(datetime(2026, 7, 8, 12, 30, tzinfo=utc).timestamp()), admin_id=admin.id)
 
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -497,7 +497,7 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 11, 15, tzinfo=utc).timestamp()), admin_id=admin.id)
+        meeting_data.update(meeting_dt=int(datetime(2026, 7, 8, 11, 15, tzinfo=utc).timestamp()), admin_id=admin.id)
 
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -516,7 +516,7 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 10, 45, tzinfo=utc).timestamp()), admin_id=admin.id)
+        meeting_data.update(meeting_dt=int(datetime(2026, 7, 8, 10, 45, tzinfo=utc).timestamp()), admin_id=admin.id)
 
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -572,28 +572,28 @@ class AdminAvailabilityTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         mock_gcal_builder.side_effect = fake_gcal_builder()
-        start = datetime(2026, 7, 2, 2, tzinfo=utc)
-        end = datetime(2026, 7, 4, 23, tzinfo=utc)
-        r = await self.client.post(
-            self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        start = datetime(2026, 7, 7, 2, tzinfo=utc)
+        end = datetime(2026, 7, 9, 23, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
-        slots_2nd = [s for s in slots if s[0].startswith('2026-07-02')]
-        slots_3rd = [s for s in slots if s[0].startswith('2026-07-03')]
-        slots_4th = [s for s in slots if s[0].startswith('2026-07-04')]
+        slots_7th = [s for s in slots if s[0].startswith('2026-07-07')]
+        slots_8th = [s for s in slots if s[0].startswith('2026-07-08')]
+        slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
-        assert len(slots_2nd) == 10  # There should be 10 slots in the full day
-        assert len(slots_3rd) == 7  # There is a busy section on the 3rd so less slots
-        assert len(slots_4th) == 10  # There should be 10 slots in the full day
+        assert len(slots_7th) == 10  # There should be 10 slots in the full day
+        assert len(slots_8th) == 7  # There is a busy section on the 3rd so less slots
+        assert len(slots_9th) == 10  # There should be 10 slots in the full day
 
-        assert slots_3rd == [
-            ['2026-07-03T09:00:00+00:00', '2026-07-03T09:30:00+00:00'],
-            ['2026-07-03T09:45:00+00:00', '2026-07-03T10:15:00+00:00'],
-            ['2026-07-03T12:45:00+00:00', '2026-07-03T13:15:00+00:00'],
-            ['2026-07-03T13:30:00+00:00', '2026-07-03T14:00:00+00:00'],
-            ['2026-07-03T14:15:00+00:00', '2026-07-03T14:45:00+00:00'],
-            ['2026-07-03T15:00:00+00:00', '2026-07-03T15:30:00+00:00'],
-            ['2026-07-03T15:45:00+00:00', '2026-07-03T16:15:00+00:00'],
+        assert slots_8th == [
+            ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
+            ['2026-07-08T09:45:00+00:00', '2026-07-08T10:15:00+00:00'],
+            ['2026-07-08T12:45:00+00:00', '2026-07-08T13:15:00+00:00'],
+            ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
+            ['2026-07-08T14:15:00+00:00', '2026-07-08T14:45:00+00:00'],
+            ['2026-07-08T15:00:00+00:00', '2026-07-08T15:30:00+00:00'],
+            ['2026-07-08T15:45:00+00:00', '2026-07-08T16:15:00+00:00'],
         ]
 
     async def test_admin_slots_toronto(self, mock_gcal_builder):
@@ -608,48 +608,47 @@ class AdminAvailabilityTestCase(HermesTestCase):
             timezone='America/Toronto',
         )
         mock_gcal_builder.side_effect = fake_gcal_builder()
-        start = datetime(2026, 7, 2, 2, tzinfo=utc)
-        end = datetime(2026, 7, 4, 23, tzinfo=utc)
-        r = await self.client.post(
-            self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        start = datetime(2026, 7, 7, 2, tzinfo=utc)
+        end = datetime(2026, 7, 9, 23, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
-        slots_2nd = [s for s in slots if s[0].startswith('2026-07-02')]
-        slots_3rd = [s for s in slots if s[0].startswith('2026-07-03')]
-        slots_4th = [s for s in slots if s[0].startswith('2026-07-04')]
+        slots_7th = [s for s in slots if s[0].startswith('2026-07-07')]
+        slots_8th = [s for s in slots if s[0].startswith('2026-07-08')]
+        slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
-        assert len(slots_2nd) == 10  # There should be 10 slots in the full day
-        assert len(slots_3rd) == 10  # Since the busy period is outside of the Admin's working hours, there are still 10
-        assert len(slots_4th) == 10  # There should be 10 slots in the full day
+        assert len(slots_7th) == 10  # There should be 10 slots in the full day
+        assert len(slots_8th) == 10  # Since the busy period is outside of the Admin's working hours, there are still 10
+        assert len(slots_9th) == 10  # There should be 10 slots in the full day
 
-        assert slots_3rd == [
-            ['2026-07-03T14:00:00+00:00', '2026-07-03T14:30:00+00:00'],
-            ['2026-07-03T14:45:00+00:00', '2026-07-03T15:15:00+00:00'],
-            ['2026-07-03T15:30:00+00:00', '2026-07-03T16:00:00+00:00'],
-            ['2026-07-03T16:15:00+00:00', '2026-07-03T16:45:00+00:00'],
-            ['2026-07-03T17:00:00+00:00', '2026-07-03T17:30:00+00:00'],
-            ['2026-07-03T17:45:00+00:00', '2026-07-03T18:15:00+00:00'],
-            ['2026-07-03T18:30:00+00:00', '2026-07-03T19:00:00+00:00'],
-            ['2026-07-03T19:15:00+00:00', '2026-07-03T19:45:00+00:00'],
-            ['2026-07-03T20:00:00+00:00', '2026-07-03T20:30:00+00:00'],
-            ['2026-07-03T20:45:00+00:00', '2026-07-03T21:15:00+00:00'],
+        assert slots_8th == [
+            ['2026-07-08T14:00:00+00:00', '2026-07-08T14:30:00+00:00'],
+            ['2026-07-08T14:45:00+00:00', '2026-07-08T15:15:00+00:00'],
+            ['2026-07-08T15:30:00+00:00', '2026-07-08T16:00:00+00:00'],
+            ['2026-07-08T16:15:00+00:00', '2026-07-08T16:45:00+00:00'],
+            ['2026-07-08T17:00:00+00:00', '2026-07-08T17:30:00+00:00'],
+            ['2026-07-08T17:45:00+00:00', '2026-07-08T18:15:00+00:00'],
+            ['2026-07-08T18:30:00+00:00', '2026-07-08T19:00:00+00:00'],
+            ['2026-07-08T19:15:00+00:00', '2026-07-08T19:45:00+00:00'],
+            ['2026-07-08T20:00:00+00:00', '2026-07-08T20:30:00+00:00'],
+            ['2026-07-08T20:45:00+00:00', '2026-07-08T21:15:00+00:00'],
         ]
 
-    async def test_admin_slots_over_DST_change(self, mock_gcal_builder):
+    @mock.patch('app.callbooker._availability.is_weekday')
+    async def test_admin_slots_over_DST_change(self, mock_weekday, mock_gcal_builder):
         """
         Testing when we're looking at the admin's slots over a DST change
         """
-        """
-        Testing when the admin is in the Toronto timezone
-        """
+        mock_weekday.return_value = False  # Need this to not be on a weekend to test
         admin = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         mock_gcal_builder.side_effect = fake_gcal_builder()
         start = datetime(2026, 3, 28, 2, tzinfo=utc)
         end = datetime(2026, 3, 30, 23, tzinfo=utc)
-        r = await self.client.post(
-            self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         slots = r.json()['slots']
         slots_28th = [s for s in slots if s[0].startswith('2026-03-28')]
@@ -677,10 +676,10 @@ class AdminAvailabilityTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
         )
         mock_gcal_builder.side_effect = fake_gcal_builder()
-        start = datetime(2026, 7, 3, 11, tzinfo=utc)
-        end = datetime(2026, 7, 3, 12, tzinfo=utc)
-        r = await self.client.post(
-            self.url, json={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        start = datetime(2026, 7, 8, 11, tzinfo=utc)
+        end = datetime(2026, 7, 8, 12, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         assert r.json() == {'slots': [], 'status': 'ok'}
 

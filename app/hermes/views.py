@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from fastapi.exceptions import RequestValidationError
 
 from app.models import Company, Admin
@@ -54,3 +54,8 @@ async def choose_support_person() -> Admin.pydantic_schema():
         next_support_person = admin_ids[0]
     schema = Admin.pydantic_schema()
     return await schema.from_tortoise_orm(admins[next_support_person])
+
+
+@main_router.get('/loc/', name='Get the country code for the current user')
+def get_country(cf_ipcountry: str = Header(None)) -> dict:
+    return {'country_code': cf_ipcountry or 'GB'}

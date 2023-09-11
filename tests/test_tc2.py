@@ -303,26 +303,6 @@ class TC2CallbackTestCase(HermesTestCase):
         assert contact_b.first_name == 'Rudy'
         assert contact_b.last_name == 'Jones'
 
-    async def test_cb_over_invoice_threshold(self):
-        """
-        The company has processed over 4 invoices, so we don't care about it.
-        """
-        assert await Company.all().count() == 0
-        assert await Contact.all().count() == 0
-
-        await Admin.create(
-            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
-        )
-        modified_data = client_full_event_data()
-        modified_data['subject']['meta_agency']['paid_invoice_count'] = 10
-
-        events = [modified_data]
-        data = {'_request_time': 123, 'events': events}
-        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
-        assert r.status_code == 200, r.json()
-
-        assert not await Company.all().exists()
-
     async def test_cb_client_deleted_no_linked_data(self):
         """
         Company deleted, has no contacts
