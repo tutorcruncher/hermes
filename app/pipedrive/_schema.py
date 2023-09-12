@@ -97,7 +97,7 @@ class Organisation(PipedriveBaseModel):
     website: Optional[str] = Field('', custom=True)
     paid_invoice_count: Optional[int] = Field(0, custom=True)
     has_booked_call: Optional[bool] = Field(False, custom=True)
-    has_signed_up: Optional[bool] = Field(False, custo_get_or_create_dealm=True)
+    has_signed_up: Optional[bool] = Field(False, custom=True)
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
     company_id: fk_field(Company, 'id') = Field(0, custom=True)
@@ -226,8 +226,12 @@ class PDDeal(PipedriveBaseModel):
     status: str
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
-    # These are all custom fields
-    hermes_deal_id: Optional[fk_field(Deal, 'id', null_if_invalid=True)] = Field('', custom=True)
+    # # These are all custom fields
+    # hermes_deal_id: Optional[fk_field(Deal, 'id', null_if_invalid=True)] = Field('', custom=True)
+    #
+    # _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    # custom_fields_pd_name: ClassVar[str] = 'dealFields'
+    # obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
     async def from_deal(cls, deal: Deal):
@@ -235,7 +239,7 @@ class PDDeal(PipedriveBaseModel):
         contact = deal.contact_id and await deal.contact
         pipeline = await deal.pipeline
         stage = await deal.stage
-        return cls(
+        obj = cls(
             **_remove_nulls(
                 title=deal.name,
                 org_id=company and company.pd_org_id,
@@ -243,9 +247,13 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
+                # hermes_deal_id=deal.id,
                 status=deal.status,
             )
         )
+        # obj = await cls.set_custom_field_vals(obj)
+        return obj
+
 
     async def deal_dict(self) -> dict:
         return {

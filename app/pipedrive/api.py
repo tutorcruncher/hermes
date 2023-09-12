@@ -27,6 +27,8 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     r = session.request(
         method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
     )
+    debug(data)
+    debug(r.json())
     app_logger.debug('Request to url %s: %r', url, data)
     app_logger.debug('Response: %r', r.json())
     r.raise_for_status()
@@ -85,6 +87,7 @@ async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     """
     pd_deal = await PDDeal.from_deal(deal)
     if not deal.pd_deal_id:
+        debug(pd_deal.dict())
         pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal.dict()))['data'])
         deal.pd_deal_id = pd_deal.id
         await deal.save()

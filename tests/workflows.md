@@ -256,7 +256,7 @@ There are two different callbookers, one for support calls and one for sales cal
 This consists of an index page and a page per salesperson. Salespersons are added via the `data/sales_reprs.yml` and must follow the template of the already added ones. When testing we'll work off the assumption that there are two sales persons added.
 
 * Index page
-  * [ ] The page shows both sales persons and their descriptions, with a CTA to book a call.
+  * [X] The page shows both sales persons and their descriptions, with a CTA to book a call.
   * We check localStorage here on whether or not the user has booked a call with us before:
     * localStorage does not exist (they have not booked a call before on that computer):
       * [ ] Clicking the CTA loads a modal asking the user whether they have previously booked a call with us.

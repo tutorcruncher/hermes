@@ -79,10 +79,12 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
     """
     debug('update_from_client_event')
     try:
+        debug(**tc2_subject.dict())
         tc2_client = TCClient(**tc2_subject.dict())
     except ValidationError as e:
         # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
         # we know to delete their details from our database.
+        debug(e)
         try:
             tc2_client = _TCSimpleRole(**tc2_subject.dict())
         except ValidationError:

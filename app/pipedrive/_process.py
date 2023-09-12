@@ -86,7 +86,8 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
     """
-    deal = await Deal.filter(pd_deal_id=current_pd_deal.hermes_deal_id if current_pd_deal else old_pd_deal.hermes_deal_id).first()
+    # deal = await Deal.filter(pd_deal_id=current_pd_deal.hermes_deal_id if current_pd_deal else old_pd_deal.hermes_deal_id).first()
+    deal = await Deal.filter(pd_deal_id=current_pd_deal.id if current_pd_deal else old_pd_deal.id).first()
 
     if deal:
         if current_pd_deal:

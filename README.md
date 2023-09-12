@@ -84,10 +84,10 @@ Run TC2 (`hermesv2` branch) on port 5000
 
 Add these custom fields to meta Cligency:
 ```
-pipedrive_url
-pipedrive_id
-pipedrive_deal_stage
-pipedrive_pipeline
+pipedrive_url : str
+pipedrive_id : number
+pipedrive_deal_stage : str
+pipedrive_pipeline : str
 ```
 
 Add API Integration to META:
@@ -113,7 +113,7 @@ Navigate to Profile > Tools and apps > Webhooks > Create new webhook:
 Add these Custom Fields to the Organisation:
 ```
 website
-paid_invoice_count
+paid_invoice_count : 
 has_booked_call
 has_signed_up
 tc2_status
@@ -130,6 +130,12 @@ Create a pipeline for each of the following:
 - `PAYG`
 - `STARTUP`
 - `ENTERPRISE`
+
+#### Callbooker:
+- set `DEV_MODE=True` in `.env`
+- set `G_PRIVATE_KEY` in `.env` to the private key of the google service account
+- set `G_PRIVATE_KEY_ID` in `.env` to the private key id of the google service account
+- ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)
 
 ## TODOs:
 
