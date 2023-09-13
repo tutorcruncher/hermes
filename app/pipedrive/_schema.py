@@ -138,19 +138,20 @@ class Organisation(PipedriveBaseModel):
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    primary_email: Optional[str] = ''
+    primary_email: Optional[str] = Field('', custom=True)
     phone: Optional[str] = ''
-    address_country: Optional[str] = None
+    address_country: Optional[str] = Field(None, custom=True)
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    custom_fields_pd_name: ClassVar[str] = 'personFields'
     obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
     async def from_contact(cls, contact: Contact):
         company: Company = await contact.company
-        return cls(
+        obj = cls(
             name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
             primary_email=contact.email,
@@ -158,6 +159,8 @@ class Person(PipedriveBaseModel):
             address_country=contact.country,
             org_id=company.pd_org_id,
         )
+        obj = await cls.set_custom_field_vals(obj)
+        return obj
 
     @validator('phone', pre=True)
     def get_primary_attr(cls, v):
@@ -224,14 +227,13 @@ class PDDeal(PipedriveBaseModel):
     pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
     stage_id: fk_field(Stage, 'pd_stage_id')
     status: str
-    obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     # # These are all custom fields
     # hermes_deal_id: Optional[fk_field(Deal, 'id', null_if_invalid=True)] = Field('', custom=True)
     #
     # _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     # custom_fields_pd_name: ClassVar[str] = 'dealFields'
-    # obj_type: Literal['deal'] = Field('deal', exclude=True)
+    obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
     async def from_deal(cls, deal: Deal):

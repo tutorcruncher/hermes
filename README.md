@@ -120,6 +120,12 @@ tc2_status
 tc2_cligency_url
 ```
 
+Add these Custom Fields to the Person:
+```
+primary_email
+address_country
+```
+
 Get your Pipedrive Owner ID:
 - Navigate to ... > User Overview > select your user
 - Copy the number at the end of the URL

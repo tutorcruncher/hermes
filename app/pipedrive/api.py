@@ -27,6 +27,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     r = session.request(
         method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
     )
+    debug(url)
     debug(data)
     debug(r.json())
     app_logger.debug('Request to url %s: %r', url, data)
@@ -66,10 +67,10 @@ async def create_or_update_person(contact: Contact) -> Person:
     Create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.dict()
+    hermes_person_data = hermes_person.dict(by_alias=True)
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.dict():
+        if hermes_person_data != pipedrive_person.dict(by_alias=True):
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
@@ -87,7 +88,6 @@ async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     """
     pd_deal = await PDDeal.from_deal(deal)
     if not deal.pd_deal_id:
-        debug(pd_deal.dict())
         pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal.dict()))['data'])
         deal.pd_deal_id = pd_deal.id
         await deal.save()

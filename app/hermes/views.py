@@ -32,7 +32,10 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     else:
         next_sales_person = admin_ids[0]
     schema = Admin.pydantic_schema()
-    return await schema.from_tortoise_orm(admins[next_sales_person])
+
+    returned_admin = await schema.from_tortoise_orm(admins[next_sales_person])
+    debug(returned_admin)
+    return returned_admin
 
 
 @main_router.get('/choose-roundrobin/support/', name='Decide which support person to assign to a new signup')

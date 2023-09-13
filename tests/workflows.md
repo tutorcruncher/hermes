@@ -259,16 +259,16 @@ This consists of an index page and a page per salesperson. Salespersons are adde
   * [X] The page shows both sales persons and their descriptions, with a CTA to book a call.
   * We check localStorage here on whether or not the user has booked a call with us before:
     * localStorage does not exist (they have not booked a call before on that computer):
-      * [ ] Clicking the CTA loads a modal asking the user whether they have previously booked a call with us.
+      * [X] Clicking the CTA loads a modal asking the user whether they have previously booked a call with us.
       * User chooses No/Not sure:
-        * [ ] User is asked their revenue bracket
+        * [X] User is asked their revenue bracket
         * [ ] The user's country is got based on a request to /loc/. We get the country's main currency and if it is not one of our supported currencies then USD is chosen.
-        * [ ] The revenue brackets are chosen from the currency
-        * [ ] Depending on the revenue bracket (see `call_booker_index.js`) the price plan is calculated and we do a request to Hermes to the next salesperson that should be assigned to them.
-        * [ ] The user clicks the CTA to Book a call and is directed to the admin's callbooker
+        * [X] The revenue brackets are chosen from the currency
+        * [X] Depending on the revenue bracket (see `call_booker_index.js`) the price plan is calculated and we do a request to Hermes to the next salesperson that should be assigned to them.
+        * [X] The user clicks the CTA to Book a call and is directed to the admin's callbooker
         * **Callbooker calendar start**
-        * [ ] The calendar loads
-        * [ ] When a day is selected, a list of times should show.
+        * [X] The calendar loads
+        * [X] When a day is selected, a list of times should show.
         * [ ] All days and times should be based on the admin's availability.
         * [ ] Availability must start at least 2 hours after now.
         * [ ] The availability shown should be based on the admin's timezone. The user should see the availability in their own timezone (test as if you were in Toronto)
