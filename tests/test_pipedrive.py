@@ -152,7 +152,7 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert self.pipedrive.db['activities'] == {
             1: {
                 'id': 1,
-                'due_dt': '2023-01-01',
+                'due_date': '2023-01-01',
                 'due_time': '00:00',
                 'subject': 'Introductory call with Steve Jobs',
                 'user_id': 99,
@@ -239,7 +239,7 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert not await Deal.exists()
         assert self.pipedrive.db['activities'] == {
             1: {
-                'due_dt': '2023-01-01',
+                'due_date': '2023-01-01',
                 'due_time': '00:00',
                 'subject': 'Introductory call with Steve Jobs',
                 'user_id': 99,

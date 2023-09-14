@@ -47,7 +47,6 @@ class AdminTestCase(HermesTestCase):
 
     async def test_admins_create(self):
         await self._login()
-        debug(await Admin.all().count())
         assert await Admin.all().count() == 1
         r = await self.client.get('/admin/create')
         assert r.status_code == 200

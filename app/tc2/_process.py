@@ -16,7 +16,6 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
 
     TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
-    debug('_create_or_update_company')
     company_data = tc2_client.company_dict()
     company_id = company_data.pop('tc2_agency_id')
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
@@ -31,7 +30,6 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
-    debug('_create_or_update_contact')
     contact_data = tc2_sr.contact_dict()
     contact_data['company_id'] = company.id
     contact_id = contact_data.pop('tc2_sr_id')
@@ -68,7 +66,6 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             admin_id=company.sales_person_id,
             stage_id=pipeline.dft_entry_stage_id,
         )
-        debug(deal)
     return deal
 
 
@@ -77,20 +74,16 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
     """
-    debug('update_from_client_event')
     try:
-        debug(**tc2_subject.dict())
         tc2_client = TCClient(**tc2_subject.dict())
     except ValidationError as e:
         # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
         # we know to delete their details from our database.
-        debug(e)
         try:
             tc2_client = _TCSimpleRole(**tc2_subject.dict())
         except ValidationError:
             raise e
         else:
-            debug('process to delete')
             company = await Company.get_or_none(tc2_cligency_id=tc2_client.id)
             if company:
                 await company.delete()

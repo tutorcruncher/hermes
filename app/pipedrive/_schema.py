@@ -190,7 +190,7 @@ class Person(PipedriveBaseModel):
 
 class Activity(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    due_dt: str
+    due_date: str
     due_time: str
     subject: str
     user_id: int
@@ -205,7 +205,7 @@ class Activity(PipedriveBaseModel):
         return cls(
             **_remove_nulls(
                 **{
-                    'due_dt': meeting.start_time.strftime('%Y-%m-%d'),
+                    'due_date': meeting.start_time.strftime('%Y-%m-%d'),
                     'due_time': meeting.start_time.strftime('%H:%M'),
                     'subject': meeting.name,
                     'user_id': (await meeting.admin).pd_owner_id,
@@ -229,10 +229,10 @@ class PDDeal(PipedriveBaseModel):
     status: str
 
     # # These are all custom fields
-    # hermes_deal_id: Optional[fk_field(Deal, 'id', null_if_invalid=True)] = Field('', custom=True)
-    #
-    # _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
-    # custom_fields_pd_name: ClassVar[str] = 'dealFields'
+    hermes_deal_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
+
+    _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
+    custom_fields_pd_name: ClassVar[str] = 'dealFields'
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
@@ -249,11 +249,11 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
-                # hermes_deal_id=deal.id,
+                hermes_deal_id=deal.id,
                 status=deal.status,
             )
         )
-        # obj = await cls.set_custom_field_vals(obj)
+        obj = await cls.set_custom_field_vals(obj)
         return obj
 
 
@@ -298,8 +298,8 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(None, discriminator='obj_type')
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(None, discriminator='obj_type')
 
     @root_validator(pre=True)
     def validate_object_type(cls, values):

@@ -39,11 +39,6 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     else:
         meeting.deal = deal
         await meeting.save()
-        debug('hello')
-        debug(meeting)
-        debug(deal)
-        debug(contact)
-        debug(company)
         tasks.add_task(pd_post_process_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
         return {'status': 'ok'}
 

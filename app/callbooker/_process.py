@@ -90,7 +90,6 @@ async def get_or_create_deal(company: Company, contact: Contact) -> Deal:
     """
     Get or create an Open deal.
     """
-    debug(company.price_plan)
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
     config = await get_config()
     if not deal:

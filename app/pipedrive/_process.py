@@ -20,7 +20,6 @@ async def _process_pd_organisation(
     # company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
     company = await Company.filter(id=current_pd_org.company_id if current_pd_org else old_pd_org.company_id).first()
     if company:
-        debug('company exists')
         if current_pd_org:
             # The org has been updated
             old_data = old_pd_org and await old_pd_org.company_dict()
@@ -36,7 +35,6 @@ async def _process_pd_organisation(
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        debug('create company')
         company = await Company.create(**await current_pd_org.company_dict())
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
     return company

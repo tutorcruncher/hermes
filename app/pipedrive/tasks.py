@@ -13,7 +13,6 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     """
     await create_or_update_organisation(company)
     await create_or_update_person(contact)
-    debug('pd_post_process_sales_call')
     pd_deal = await get_or_create_pd_deal(deal)
     await create_activity(meeting, pd_deal)
 
@@ -32,5 +31,4 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     for contact in await company.contacts:
         await create_or_update_person(contact)
     if deal:
-        debug('we should get the deal here not create')
         await get_or_create_pd_deal(deal)

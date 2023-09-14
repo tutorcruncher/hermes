@@ -34,7 +34,6 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
     schema = Admin.pydantic_schema()
 
     returned_admin = await schema.from_tortoise_orm(admins[next_sales_person])
-    debug(returned_admin)
     return returned_admin
 
 

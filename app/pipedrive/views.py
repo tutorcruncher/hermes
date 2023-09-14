@@ -25,8 +25,6 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     event.current and await event.current.a_validate()
     event.previous and await event.previous.a_validate()
 
-    debug(event)
-
     app_logger.info(f'Callback: event received for {event.meta.object}')
     if event.meta.object == 'deal':
         deal = await _process_pd_deal(event.current, event.previous)
@@ -45,14 +43,14 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
+    elif event.meta.object == 'activity':
+        pass
     return {'status': 'ok'}
 
 
 @pipedrive_router.post('/callback/debug/', name='Pipedrive debug callback')
 async def debug_callback(body: Request):
     data = await body.json()
-    debug(data)
-    # app_logger.info(f'Debug: event received for {data}')
+    app_logger.info(f'Debug: event received for {data}')
     r = requests.post('http://localhost:8000/pipedrive/callback/', json=data)
-    debug(r.json())
     return r.json
