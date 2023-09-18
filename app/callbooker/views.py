@@ -77,6 +77,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     """
     Endpoint to generate a support link for a company from within TC2
     """
+    debug(tc2_admin_id, tc2_cligency_id)
     if get_bearer(Authorization) != settings.tc2_api_key.decode():
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc2_admin_id=tc2_admin_id)
@@ -84,6 +85,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     expiry = datetime.now() + timedelta(days=settings.support_ttl_days)
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': int(expiry.timestamp())}
     sig = await sign_args(*kwargs.values())
+    debug(kwargs, sig)
     return {'link': f"{admin.call_booker_url}?{urlencode({'s': sig, **kwargs})}"}
 
 
@@ -92,6 +94,7 @@ async def validate_support_link(admin_id: int, company_id: int, e: int, s: str):
     """
     Endpoint to validate a support link for a company from the website
     """
+    debug(admin_id, company_id, e, s)
     admin = await Admin.get(id=admin_id)
     company = await Company.get(id=company_id)
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': e}

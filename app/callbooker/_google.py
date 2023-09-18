@@ -28,7 +28,7 @@ class AdminGoogleCalendar:
     def get_free_busy_slots(self, start: datetime, end: datetime) -> dict:
         q_data = {
             'timeMin': start.isoformat(),
-            'timeMax': (start + timedelta(days=1)).isoformat(),
+            'timeMax': end.isoformat(),
             'timeZone': 'utc',
             'groupExpansionMax': 100,
             'items': [{'id': self.admin_email}],

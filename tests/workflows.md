@@ -269,35 +269,35 @@ This consists of an index page and a page per salesperson. Salespersons are adde
         * **Callbooker calendar start**
         * [X] The calendar loads
         * [X] When a day is selected, a list of times should show.
-        * [ ] All days and times should be based on the admin's availability.
-        * [ ] Availability must start at least 2 hours after now.
-        * [ ] The availability shown should be based on the admin's timezone. The user should see the availability in their own timezone (test as if you were in Toronto)
-        * [ ] When a time is selected, the form should be loaded
-        * [ ] Revenue bracket should be prefilled from the previous answer
-        * [ ] Phone extension should be automatically filled
-        * [ ] Currency should be automatically filled
+        * [X] All days and times should be based on the admin's availability.
+        * [X] Availability must start at least 2 hours after now.
+        * [X] The availability shown should be based on the admin's timezone. The user should see the availability in their own timezone (test as if you were in Toronto)
+        * [X] When a time is selected, the form should be loaded
+        * [X] Revenue bracket should be prefilled from the previous answer
+        * [X] Phone extension should be automatically filled
+        * [X] Currency should be automatically filled
         * [ ] Submitting the form shows a success message and follows the above logic in Hermes for the Sales call booked
-        * [ ] Validation on the `name` works (the name must have at least 2 words)
-        * [ ] Validation on the `website` works (standard URL format)
-        * [ ] If the timeslot becomes unavailable between selection and form submit, the user gets an error
+        * [X] Validation on the `name` works (the name must have at least 2 words)
+        * [X] Validation on the `website` works (standard URL format)
+        * [X] If the timeslot becomes unavailable between selection and form submit, the user gets an error
       * User chooses Yes:
-        * [ ] The user chooses a salesperson and gets redirected to the admin's callbooker
-        * [ ] The logic above after **Callbooker calendar start** is followed except:
-        * [ ] The revenue bracket is not prefilled
+        * [X] The user chooses a salesperson and gets redirected to the admin's callbooker
+        * [X] The logic above after **Callbooker calendar start** is followed except:
+        * [X] The revenue bracket is prefilled and is a selection of the revenue brackets
     * localStorage exists:
-      * [ ] The user is redirected to the callbooker for the admin they had previously booked a call with
-      * [ ] The logic above after **Callbooker calendar start** is followed except:
-      * [ ] All fields on the form are prefilled with the data the user entered last time
+      * [X] The user is redirected to the callbooker for the admin they had previously booked a call with
+      * [X] The logic above after **Callbooker calendar start** is followed except:
+      * [X] All fields on the form are prefilled with the data the user entered last time
 
 ## Support callbooker
 
-The user cannot navigate to this page thorugh the website. Instead the support admin will generate a link from the client's meta profilen (so this involves testing 3 systems...). We assume that all (live) Agencies inside TC have a Company object in Hermes.
+The user cannot navigate to this page through the website. Instead the support admin will generate a link from the client's meta profilen (so this involves testing 3 systems...). We assume that all (live) Agencies inside TC have a Company object in Hermes.
 
-* [ ] In TC2, admin clicks a link on the company's meta profile to generate a support link
-* [ ] The admin has a choice of an Express link or not (this affects availability below)
-* [ ] The link directs the user to the admin's callbooker on the website
+* [X] In TC2, admin clicks a link on the company's meta profile to generate a support link
+* [X] The admin has a choice of an Express link or not (this affects availability below)
+* [X] The link directs the user to the admin's callbooker on the website
 * The link contains a token which is validated through a request to Hermes:
-  * [ ] If the token is missing/invalid then the user gets an error message
+  * [X] If the token is missing/invalid then the user gets an error message
   * [ ] If the token has expired (check `settings.support_ttl_days`) then the user gets an error message
 * The link contains a `company_id`
   * [ ] If the company_id doesn't match a company, the user gets an error message
