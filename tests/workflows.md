@@ -298,14 +298,15 @@ The user cannot navigate to this page through the website. Instead the support a
 * [X] The link directs the user to the admin's callbooker on the website
 * The link contains a token which is validated through a request to Hermes:
   * [X] If the token is missing/invalid then the user gets an error message
-  * [ ] If the token has expired (check `settings.support_ttl_days`) then the user gets an error message
+  * [X] If the token has expired (check `settings.support_ttl_days`) then the user gets an error message
 * The link contains a `company_id`
-  * [ ] If the company_id doesn't match a company, the user gets an error message
-  * [ ] If the company does, then we use that information later
-* [ ] The admin's callbooker follows the logic above under **Callbooker calendar start** except:
-* [ ] If the admin has selected that the link is an Express link, the availability should show from now + 15mins
-* [ ] We only show the fields for Name, Company Name and Email
-* [ ] Company Name is prefilled
+  * [X] If the company_id doesn't match a company, the user gets an error message
+  * [X] If the company does, then we use that information later
+* [X] The admin's callbooker follows the logic above under **Callbooker calendar start** except:
+  * [X] If the admin has selected that the link is an Express link, the availability should show from now for the 15mins slots
+  * [X] We only show the fields for Name, Company Name and Email
+  * [X] Company Name is prefilled
+  * [X] Company Id id hidden and prefilled
 
 # TODO: 
 
