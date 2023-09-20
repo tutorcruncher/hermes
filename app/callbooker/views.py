@@ -8,14 +8,16 @@ from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 
 from app.callbooker._availability import get_admin_available_slots
-from app.callbooker._process import (MeetingBookingError, book_meeting,
-                                     get_or_create_contact,
-                                     get_or_create_contact_company,
-                                     get_or_create_deal)
+from app.callbooker._process import (
+    MeetingBookingError,
+    book_meeting,
+    get_or_create_contact,
+    get_or_create_contact_company,
+    get_or_create_deal,
+)
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
-from app.pipedrive.tasks import (pd_post_process_sales_call,
-                                 pd_post_process_support_call)
+from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
 from app.utils import get_bearer, settings, sign_args
 
 cb_router = APIRouter()

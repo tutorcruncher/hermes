@@ -2,8 +2,7 @@ from datetime import timedelta
 
 from tortoise.expressions import Q
 
-from app.callbooker._booking import (check_gcal_open_slots,
-                                     create_meeting_gcal_event)
+from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Company, Contact, Deal, Meeting
 from app.utils import get_config, settings

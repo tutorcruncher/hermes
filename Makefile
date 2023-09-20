@@ -8,6 +8,11 @@ lint:
 	ruff check app/ tests/
 	black --check app tests
 
+.PHONY: format
+format:
+	ruff app/ tests/
+	black app tests
+
 .PHONY: test
 test:
 	pytest --cov=app

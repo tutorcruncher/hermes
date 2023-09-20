@@ -2,6 +2,7 @@ from app.main import app, startup
 from app.models import Admin, Config, Pipeline, Stage
 from tests._common import HermesTestCase
 
+
 class AdminTestCase(HermesTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()

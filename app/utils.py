@@ -43,6 +43,7 @@ async def get_config() -> 'Config':
     # if CREATE_TESTING_ADMIN env var is true
     if settings.CREATE_TESTING_ADMIN:
         from app.models import Admin, Pipeline
+
         if not await Admin.exists():
             await Admin.create(
                 email='testing@tutorcruncher.com',
@@ -58,7 +59,5 @@ async def get_config() -> 'Config':
                 name='pipeline',
                 pd_pipeline_id=1,
             )
-
-
 
     return config

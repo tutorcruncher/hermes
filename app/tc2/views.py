@@ -8,8 +8,7 @@ from starlette.background import BackgroundTasks
 from starlette.requests import Request
 
 from app.pipedrive.tasks import pd_post_process_client_event
-from app.tc2._process import (update_from_client_event,
-                              update_from_invoice_event)
+from app.tc2._process import update_from_client_event, update_from_invoice_event
 from app.tc2._schema import TCWebhook
 from app.tc2._utils import app_logger
 from app.utils import settings
@@ -39,6 +38,7 @@ async def callback(
         if company:
             tasks.add_task(pd_post_process_client_event, company, deal)
     return {'status': 'ok'}
+
 
 @tc2_router.post('/debug_log/', name='debug log')
 async def debug_log(event_data: dict):

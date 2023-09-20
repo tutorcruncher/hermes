@@ -4,8 +4,7 @@ from pydantic import ValidationError
 from pytz import utc
 
 from app.models import Company, Contact, Deal
-from app.tc2._schema import (TCClient, TCInvoice, TCRecipient, TCSubject,
-                             _TCSimpleRole)
+from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 from app.utils import get_config
@@ -57,7 +56,6 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')
-
 
         deal = await Deal.create(
             company_id=company.id,

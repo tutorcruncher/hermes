@@ -256,7 +256,6 @@ class PDDeal(PipedriveBaseModel):
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-
     async def deal_dict(self) -> dict:
         return {
             'pd_deal_id': self.id,
@@ -298,10 +297,12 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] =\
-        Field(None, discriminator='obj_type')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] =\
-        Field(None, discriminator='obj_type')
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(
+        None, discriminator='obj_type'
+    )
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(
+        None, discriminator='obj_type'
+    )
 
     @root_validator(pre=True)
     def validate_object_type(cls, values):

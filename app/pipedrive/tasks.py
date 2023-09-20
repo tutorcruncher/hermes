@@ -1,6 +1,10 @@
 from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive.api import (create_activity, create_or_update_organisation,
-                               create_or_update_person, get_or_create_pd_deal)
+from app.pipedrive.api import (
+    create_activity,
+    create_or_update_organisation,
+    create_or_update_person,
+    get_or_create_pd_deal,
+)
 
 
 async def pd_post_process_sales_call(company: Company, contact: Contact, meeting: Meeting, deal: Deal):
