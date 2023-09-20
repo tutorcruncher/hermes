@@ -17,6 +17,7 @@ class FakePipedrive:
             'deals': {},
             'activities': {},
             'organizationFields': {
+                'company_id': {'name': 'Company ID', 'key': '123_company_id_456'},
                 'website': {'name': 'website', 'key': '123_website_456'},
                 'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
                 'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
@@ -24,6 +25,11 @@ class FakePipedrive:
                 'tc2_cligency_url': {'name': 'TC2 cligency URL', 'key': '123_tc2_cligency_url_456'},
                 'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
             },
+            'personFields': {},
+            'dealFields': {
+                'hermes_deal_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_deal_id_456'},
+            },
+
         }
 
 
@@ -116,6 +122,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'id': 1,
                 '123_website_456': 'https://junes.com',
+                '123_company_id_456': 1,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -146,6 +153,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'status': 'open',
                 'id': 1,
                 'user_id': 99,
+                '123_hermes_deal_id_456': 1,
             }
         }
         assert (await Deal.get()).pd_deal_id == 1
@@ -189,6 +197,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
+                '123_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -216,6 +225,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
+                '123_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -311,6 +321,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
+                '123_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -347,6 +358,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
+                '123_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -413,6 +425,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
+                '123_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -458,6 +471,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
+                '123_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -497,6 +511,19 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=admin,
             pd_deal_id=17,
         )
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '123_hermes_deal_id_456': '123',
+            }
+        }
         await pd_post_process_sales_call(company, contact, meeting, deal)
         call_args = mock_request.call_args_list
         assert not any('PUT' in str(call) for call in call_args)
@@ -523,6 +550,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
+                '123_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -593,6 +621,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
+                '123_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -623,6 +652,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'stage_id': 1,
                 'status': 'open',
                 'id': 1,
+                '123_hermes_deal_id_456': 1,
             },
         }
         assert (await Deal.get()).pd_deal_id == 1

@@ -10,7 +10,6 @@ lint:
 
 .PHONY: format
 format:
-	ruff app/ tests/
 	black app tests
 
 .PHONY: test
