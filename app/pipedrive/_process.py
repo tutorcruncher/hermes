@@ -1,7 +1,8 @@
 from typing import Optional
 
-from app.models import Deal, Pipeline, Stage, Contact, Company
-from app.pipedrive._schema import PDDeal, PDPipeline, PDStage, Person, Organisation
+from app.models import Company, Contact, Deal, Pipeline, Stage
+from app.pipedrive._schema import (Organisation, PDDeal, PDPipeline, PDStage,
+                                   Person)
 from app.pipedrive._utils import app_logger
 
 
@@ -17,7 +18,6 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # add hermes company id to pipedrive Org, that way filter by company_id
-    # company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
     company = await Company.filter(id=current_pd_org.company_id if current_pd_org else old_pd_org.company_id).first()
     if company:
         if current_pd_org:
@@ -84,7 +84,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
     """
-    # deal = await Deal.filter(pd_deal_id=current_pd_deal.hermes_deal_id if current_pd_deal else old_pd_deal.hermes_deal_id).first()
     deal = await Deal.filter(pd_deal_id=current_pd_deal.id if current_pd_deal else old_pd_deal.id).first()
 
     if deal:

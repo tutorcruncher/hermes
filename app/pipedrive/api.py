@@ -13,9 +13,7 @@ We want to create activities in pipedrive when:
 import requests
 
 from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive._schema import Activity
-from app.pipedrive._schema import PDDeal
-from app.pipedrive._schema import Organisation, Person
+from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
 from app.pipedrive._utils import app_logger
 from app.utils import settings
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn, Field, Extra
+from pydantic import BaseSettings, Extra, Field, PostgresDsn
 
 THIS_DIR = Path(__file__).parent.resolve()
 

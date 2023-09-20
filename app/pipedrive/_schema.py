@@ -1,12 +1,12 @@
 import json
-from typing import Optional, ClassVar, Literal
+from typing import ClassVar, Literal, Optional
 
-from pydantic import Field, validator, root_validator
+from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
 from pydantic.main import BaseModel, validate_model
 
-from app.base_schema import fk_field, HermesBaseModel
-from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
+from app.base_schema import HermesBaseModel, fk_field
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
 from app.utils import get_redis_client
 
 
@@ -228,7 +228,7 @@ class PDDeal(PipedriveBaseModel):
     stage_id: fk_field(Stage, 'pd_stage_id')
     status: str
 
-    # # These are all custom fields
+    # These are all custom fields
     hermes_deal_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
 
     _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
@@ -298,8 +298,10 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(None, discriminator='obj_type')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(None, discriminator='obj_type')
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] =\
+        Field(None, discriminator='obj_type')
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] =\
+        Field(None, discriminator='obj_type')
 
     @root_validator(pre=True)
     def validate_object_type(cls, values):

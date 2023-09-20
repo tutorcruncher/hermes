@@ -1,14 +1,15 @@
 import hashlib
 import hmac
-from typing import Optional
 from secrets import compare_digest
+from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
 from starlette.requests import Request
 
 from app.pipedrive.tasks import pd_post_process_client_event
-from app.tc2._process import update_from_client_event, update_from_invoice_event
+from app.tc2._process import (update_from_client_event,
+                              update_from_invoice_event)
 from app.tc2._schema import TCWebhook
 from app.tc2._utils import app_logger
 from app.utils import settings

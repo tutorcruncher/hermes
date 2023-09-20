@@ -1,15 +1,11 @@
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from starlette.background import BackgroundTasks
 from starlette.requests import Request
 
-from app.pipedrive._process import (
-    _process_pd_deal,
-    _process_pd_pipeline,
-    _process_pd_stage,
-    _process_pd_person,
-    _process_pd_organisation,
-)
+from app.pipedrive._process import (_process_pd_deal, _process_pd_organisation,
+                                    _process_pd_person, _process_pd_pipeline,
+                                    _process_pd_stage)
 from app.pipedrive._schema import PipedriveEvent
 from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company

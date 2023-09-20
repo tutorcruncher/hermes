@@ -1,6 +1,4 @@
-import json
-
-from app.models import Deal, Company
+from app.models import Company, Deal
 from app.tc2._schema import TCClient
 from app.tc2.api import tc2_request
 

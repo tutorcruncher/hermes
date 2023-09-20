@@ -1,10 +1,11 @@
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from pytz import utc
 
 from app.models import Company, Contact, Deal
-from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
+from app.tc2._schema import (TCClient, TCInvoice, TCRecipient, TCSubject,
+                             _TCSimpleRole)
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 from app.utils import get_config
