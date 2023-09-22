@@ -1,5 +1,7 @@
 # TC - Hermes
 
+<img src="https://i.ibb.co/crgkVkS/ferb0000-Hermes-the-messenger-god-if-he-lived-in-the-21st-centu-baa1282d-8782-4983-9f81-b0406eb4abbd.png" width="500">
+
 Hermes is our sales system that manages the connection between TutorCruncher (the system), the callbooker on our 
 website, and Pipedrive (our current sales CRM).
 
@@ -18,7 +20,6 @@ Objects are named different things depending on which system you use:
 | Deal     |               | Deal         | A potential sale with a Company.                                  |
 | Meeting  |               | Activity     | A meeting with a Contact.                                         |
 
-Client?
 
 ## Project structure
 

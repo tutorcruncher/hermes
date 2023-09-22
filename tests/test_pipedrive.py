@@ -29,7 +29,6 @@ class FakePipedrive:
             'dealFields': {
                 'hermes_deal_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_deal_id_456'},
             },
-
         }
 
 

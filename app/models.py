@@ -284,7 +284,7 @@ class Meeting(models.Model):
     @property
     def name(self):
         if self.meeting_type == Meeting.TYPE_SALES:
-            return f'Introductory call with {self.admin.name}'
+            return f'TutorCruncher demo with {self.admin.name}'
         else:
             assert self.meeting_type == Meeting.TYPE_SUPPORT
-            return f'Support call with {self.admin.name}'
+            return f'TutorCruncher support meeting with {self.admin.name}'
