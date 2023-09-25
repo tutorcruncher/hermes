@@ -17,7 +17,7 @@ class FakePipedrive:
             'deals': {},
             'activities': {},
             'organizationFields': {
-                'company_id': {'name': 'Company ID', 'key': '123_company_id_456'},
+                'hermes_company_id': {'name': 'Hermes Company ID', 'key': '123_hermes_company_id_456'},
                 'website': {'name': 'website', 'key': '123_website_456'},
                 'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
                 'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
@@ -121,7 +121,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'id': 1,
                 '123_website_456': 'https://junes.com',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -161,7 +161,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'due_date': '2023-01-01',
                 'due_time': '00:00',
-                'subject': 'Introductory call with Steve Jobs',
+                'subject': 'TutorCruncher demo with Steve Jobs',
                 'user_id': 99,
                 'deal_id': 1,
                 'person_id': 1,
@@ -196,7 +196,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -224,7 +224,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -250,7 +250,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'due_date': '2023-01-01',
                 'due_time': '00:00',
-                'subject': 'Introductory call with Steve Jobs',
+                'subject': 'TutorCruncher demo with Steve Jobs',
                 'user_id': 99,
                 'deal_id': None,
                 'person_id': 1,
@@ -320,7 +320,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -357,7 +357,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -424,7 +424,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -470,7 +470,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -549,7 +549,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -620,7 +620,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_company_id_456': 1,
+                '123_hermes_company_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -732,6 +732,7 @@ def basic_pd_stage_data():
 class PipedriveCallbackTestCase(HermesTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        self.pipedrive = FakePipedrive()
         self.admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         self.url = '/pipedrive/callback/'
         await (await get_redis_client()).delete('organizationFields-custom-fields')
@@ -754,27 +755,33 @@ class PipedriveCallbackTestCase(HermesTestCase):
         }
 
     async def test_org_delete(self):
-        await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = data.pop('current')
+        data['previous']['hermes_company_id'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
 
     async def test_org_update(self):
-        await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
+        company = await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
+        data['previous']['123_hermes_company_id_456'] = company.id
         data['current'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
+        debug(r.json())
         assert r.status_code == 200, r.json()
         company = await Company.get()
         assert company.name == 'New test company'
 
-    async def test_org_update_no_changes(self):
-        await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_no_changes(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
+        data['current']['123_hermes_company_id_456'] = company.id
         data['previous'] = copy.deepcopy(data['current'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()

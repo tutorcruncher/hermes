@@ -446,7 +446,7 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_cligency(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
-        company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin)
+        company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',
@@ -465,6 +465,7 @@ class TC2TasksTestCase(HermesTestCase):
                     'first_name': 'Mary',
                     'last_name': 'Booth',
                 },
+                'website': None,
                 'status': 'live',
                 'sales_person_id': 30,
                 'associated_admin_id': 30,
