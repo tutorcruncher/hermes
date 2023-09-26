@@ -24,7 +24,7 @@ async def callback(
     Callback for TC2
     Updates Hermes and other systems based on events in TC2.
     """
-    expected_sig = hmac.new(settings.tc2_api_key, (await request.body()), hashlib.sha256).hexdigest()
+    expected_sig = hmac.new(settings.tc2_api_key.encode(), (await request.body()), hashlib.sha256).hexdigest()
     if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
@@ -37,10 +37,4 @@ async def callback(
             app_logger.info('Ignoring event with subject model %s', event.subject.model)
         if company:
             tasks.add_task(pd_post_process_client_event, company, deal)
-    return {'status': 'ok'}
-
-
-@tc2_router.post('/debug_log/', name='debug log')
-async def debug_log(event_data: dict):
-    app_logger.info("Captured event data for debugging:")
     return {'status': 'ok'}

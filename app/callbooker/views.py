@@ -77,7 +77,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     """
     Endpoint to generate a support link for a company from within TC2
     """
-    if get_bearer(Authorization) != settings.tc2_api_key.decode():
+    if get_bearer(Authorization) != settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc2_admin_id=tc2_admin_id)
     company = await Company.get(tc2_cligency_id=tc2_cligency_id)

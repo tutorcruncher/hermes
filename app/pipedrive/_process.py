@@ -17,8 +17,8 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # add hermes company id to pipedrive Org, that way filter by hermes_company_id
-    current_pd_org = await Organisation.set_custom_field_vals(current_pd_org)
-    old_pd_org = await Organisation.set_custom_field_vals(old_pd_org)
+    # current_pd_org = await Organisation.set_custom_field_vals(current_pd_org)
+    # old_pd_org = await Organisation.set_custom_field_vals(old_pd_org)
     company = current_pd_org.company if current_pd_org else old_pd_org.company
     if company:
         if current_pd_org:

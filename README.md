@@ -36,6 +36,7 @@ The list of all workflows is in the workflows.md file. They need to all be teste
 ### Running locally
 
 #### Ngrok:
+We use ngrok to expose our local hermes server to the internet, so that we can receive webhooks from Pipedrive and TC2.
 
 HINT: if you create a account with ngrok, it will give you a static url that you can use for the webhooks, that will never expire ;)
 
@@ -43,52 +44,58 @@ run ngrok on port 8000
 
 `ngrok http --${your ngrok domain} 8000`
 
+use the given url as the webhook url in pipedrive and tc2
+
 #### Hermes:
 
-Install the dependencies with `make install`. You may need to create the database with `make reset-db`.
+Install the dependencies with `make install`. 
+You may need to create the database with `make reset-db`.
+
+The first time you run the server, you'll need to create an admin user.
+run `export CREATE_TESTING_ADMIN=True` in terminal.
+
 Then run the server with `python -m uvicorn app.main:app --reload`
 
-You'll be able to view the admin interface at http://localhost:8000/. To login, go to /login. You need to have an admin
-already created; if you look in `utils.py` you'll see some code you can uncomment so that the admin is created when the
-server starts.
+You'll be able to view the admin interface at http://localhost:8000/. 
+To login, go to /login. You need to have an admin already created;
+
+
+[//]: # (Therefore set `CREATE_TESTING_ADMIN=True` in `.env` and run the server once.)
+need to check how this effects tests
+[//]: # (Then set `CREATE_TESTING_ADMIN=False` and run the server again.)
 
 set `.env` vars:
 ```
 # First Run
-# tests will fail if this is set to True, make sure to make reset-db before running tests
-CREATE_TESTING_ADMIN=False
-tc2_admin_id=66
-pd_owner_id=15708604
-
+tc2_admin_id=${tc meta admin id}
+pd_owner_id=${pipedrive owner id}
 
 # TC2
-tc2_api_key=
+tc2_api_key=${tc2 api integration private key}
 tc2_base_url='http://localhost:5000'
 
 # Pipedrive
-pd_api_key=
+pd_api_key=${pipedrive api key} # can be found in pipedrive > settings > personal preferences > api
 pd_base_url='https://seb-sandbox2.pipedrive.com'
 
-
 ```
+- `tc2_admin_id` is the id of the admin in TC2 that will be used to create the Cligency
+- `pd_owner_id` is the id of the user in Pipedrive that will be used to create the Deals and Activities for the Cligency
+- `tc2_api_key` is the private key of the API integration in TC2
+- `pd_api_key` is the api key of the user in Pipedrive
 
-##### Config
-
-Edit Hermes config in the admin interface:
-- Set Price Plan Pipelines to their associated Hermes Pipeline ID
-- Set Pipeline `dft_entry_pipeline_state` (warning, dropdown is not filtered by pipeline)
-Create Admin
 
 #### TC2:
 
 Run TC2 (`hermesv2` branch) on port 5000
 
-Add these custom fields to meta Cligency:
+
+Add these custom fields to Meta Cligency (Client):
 ```
-pipedrive_url : str
-pipedrive_id : number
-pipedrive_deal_stage : str
-pipedrive_pipeline : str
+pipedrive_url : str (Long Textbox)
+pipedrive_id : int (Number)
+pipedrive_deal_stage : str (Long Textbox)
+pipedrive_pipeline : str (Long Textbox)
 ```
 
 Add API Integration to META:
@@ -131,6 +138,17 @@ Get your Pipedrive Owner ID:
 - Navigate to ... > User Overview > select your user
 - Copy the number at the end of the URL
 
+##### Hermes Config Tab
+
+- Navigate to the Hermes Config tab in the admin interface
+
+Edit Hermes config in the admin interface:
+- Set Price Plan Pipelines to their associated Hermes Pipeline ID i.e ()
+- Set Pipeline `dft_entry_pipeline_state` (warning, dropdown is not filtered by pipeline)
+Create Admin:
+- Create an admin user in the admin interface
+- ensure the admins email address and `tc_admin_id` match the ones in TC2
+
 ##### Setup Pipelines
 
 Create a pipeline for each of the following:
@@ -138,7 +156,7 @@ Create a pipeline for each of the following:
 - `STARTUP`
 - `ENTERPRISE`
 
-#### Callbooker:
+#### Setup Callbooker:
 - set `DEV_MODE=True` in `.env`
 - set `G_PRIVATE_KEY` in `.env` to the private key of the google service account
 - set `G_PRIVATE_KEY_ID` in `.env` to the private key id of the google service account

@@ -2,7 +2,6 @@ from app.models import Meeting
 
 MEETING_CONTENT_TEMPLATES = {
     Meeting.TYPE_SUPPORT: {
-        'summary': 'Introduction to TutorCruncher with {admin_name}',
         'description': """
 Hi {contact_first_name},
 
@@ -34,7 +33,6 @@ The TutorCruncher Team
 """,
     },
     Meeting.TYPE_SALES: {
-        'summary': 'Introduction to TutorCruncher with {admin_name}',
         'description': """
 Hi {contact_first_name},
 
