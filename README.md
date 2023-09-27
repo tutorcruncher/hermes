@@ -59,11 +59,6 @@ Then run the server with `python -m uvicorn app.main:app --reload`
 You'll be able to view the admin interface at http://localhost:8000/. 
 To login, go to /login. You need to have an admin already created;
 
-
-[//]: # (Therefore set `CREATE_TESTING_ADMIN=True` in `.env` and run the server once.)
-need to check how this effects tests
-[//]: # (Then set `CREATE_TESTING_ADMIN=False` and run the server again.)
-
 set `.env` vars:
 ```
 # First Run

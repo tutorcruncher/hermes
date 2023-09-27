@@ -17,8 +17,8 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # add hermes company id to pipedrive Org, that way filter by hermes_id
-    # current_pd_org = await Organisation.set_custom_field_vals(current_pd_org)
-    # old_pd_org = await Organisation.set_custom_field_vals(old_pd_org)
+    current_pd_org = await Organisation.set_custom_field_vals(current_pd_org)
+    old_pd_org = await Organisation.set_custom_field_vals(old_pd_org)
     company = current_pd_org.company if current_pd_org else old_pd_org.company
     if company:
         if current_pd_org:
@@ -49,7 +49,11 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     TODO: If we can't match the contact by it's PD id, we should really try and match it by name also. However, I don't
     care enough since Companies are really the only important part.
     """
-    contact = await Contact.filter(pd_person_id=current_pd_person.id if current_pd_person else old_pd_person.id).first()
+
+    current_pd_person = await Person.set_custom_field_vals(current_pd_person)
+    old_pd_person = await Person.set_custom_field_vals(old_pd_person)
+
+    contact = current_pd_person.contact if current_pd_person else old_pd_person.contact
 
     if contact:
         if current_pd_person:
@@ -62,7 +66,6 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
                 app_logger.info('Callback: updating Contact %s from Person %s', contact.id, current_pd_person.id)
         else:
             # The person has been deleted
-            contact = await Contact.get(pd_person_id=old_pd_person.id)
             await contact.delete()
             app_logger.info('Callback: deleting Contact %s from Person %s', contact.id, old_pd_person.id)
     elif current_pd_person:
@@ -85,7 +88,10 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
     """
-    deal = await Deal.filter(pd_deal_id=current_pd_deal.id if current_pd_deal else old_pd_deal.id).first()
+    current_pd_deal = await PDDeal.set_custom_field_vals(current_pd_deal)
+    old_pd_deal = await PDDeal.set_custom_field_vals(old_pd_deal)
+
+    deal = current_pd_deal.deal if current_pd_deal else old_pd_deal.deal
 
     if deal:
         if current_pd_deal:
@@ -98,7 +104,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
         else:
             # The deal has been deleted
-            deal = await Deal.get(pd_deal_id=old_pd_deal.id)
             await deal.delete()
             app_logger.info('Callback: deleting Deal %s from PDDeal %s', deal.id, old_pd_deal.id)
     elif current_pd_deal:

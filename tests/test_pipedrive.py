@@ -25,7 +25,9 @@ class FakePipedrive:
                 'tc2_cligency_url': {'name': 'TC2 cligency URL', 'key': '123_tc2_cligency_url_456'},
                 'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
             },
-            'personFields': {},
+            'personFields': {
+                'contact_id': {'name': 'Contact ID', 'key': '123_contact_id_456'},
+            },
             'dealFields': {
                 'hermes_deal_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_deal_id_456'},
             },
@@ -771,7 +773,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data['previous']['123_hermes_id_456'] = company.id
         data['current'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
-        debug(r.json())
         assert r.status_code == 200, r.json()
         company = await Company.get()
         assert company.name == 'New test company'

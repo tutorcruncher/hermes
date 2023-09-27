@@ -90,7 +90,8 @@ class PipedriveBaseModel(HermesBaseModel):
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    address_country: Optional[str] = None
+    # address_country: Optional[str] = None
+    address: Optional[str] = None
     owner_id: fk_field(Admin, 'pd_owner_id')
 
     # These are all custom fields
@@ -112,7 +113,7 @@ class Organisation(PipedriveBaseModel):
             **_remove_nulls(
                 name=company.name,
                 owner_id=(await company.sales_person).pd_owner_id,
-                address_country=company.country,
+                address=company.country,
                 website=company.website,
                 paid_invoice_count=company.paid_invoice_count,
                 has_booked_call=company.has_booked_call,
@@ -140,9 +141,12 @@ class Person(PipedriveBaseModel):
     name: str
     email: Optional[str] = ''
     phone: Optional[str] = ''
-    address_country: Optional[str] = Field(None, custom=True)
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
+
+    # These are all custom fields
+    address_country: Optional[str] = Field(None, custom=True)
+    contact_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'personFields'
@@ -158,6 +162,7 @@ class Person(PipedriveBaseModel):
             phone=contact.phone,
             address_country=contact.country,
             org_id=company.pd_org_id,
+            contact_id=contact.id,
         )
         obj = await cls.set_custom_field_vals(obj)
         return obj
