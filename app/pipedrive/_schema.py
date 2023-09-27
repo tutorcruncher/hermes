@@ -100,7 +100,7 @@ class Organisation(PipedriveBaseModel):
     has_signed_up: Optional[bool] = Field(False, custom=True)
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
-    hermes_company_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
+    hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
@@ -119,7 +119,7 @@ class Organisation(PipedriveBaseModel):
                 has_signed_up=company.has_signed_up,
                 tc2_status=company.tc2_status,
                 tc2_cligency_url=company.tc2_cligency_url,
-                hermes_company_id=company.id,
+                hermes_id=company.id,
             )
         )
         obj = await cls.set_custom_field_vals(obj)
@@ -138,7 +138,7 @@ class Organisation(PipedriveBaseModel):
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    primary_email: Optional[str] = Field('', custom=True)
+    email: Optional[str] = ''
     phone: Optional[str] = ''
     address_country: Optional[str] = Field(None, custom=True)
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None

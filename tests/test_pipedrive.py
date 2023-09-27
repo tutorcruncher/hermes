@@ -17,7 +17,7 @@ class FakePipedrive:
             'deals': {},
             'activities': {},
             'organizationFields': {
-                'hermes_company_id': {'name': 'Hermes Company ID', 'key': '123_hermes_company_id_456'},
+                'hermes_id': {'name': 'Hermes Company ID', 'key': '123_hermes_id_456'},
                 'website': {'name': 'website', 'key': '123_website_456'},
                 'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
                 'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
@@ -121,7 +121,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'id': 1,
                 '123_website_456': 'https://junes.com',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -196,7 +196,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -224,7 +224,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -320,7 +320,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -357,7 +357,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
                 '123_has_signed_up_456': False,
@@ -424,7 +424,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -470,7 +470,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -549,7 +549,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -620,7 +620,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
-                '123_hermes_company_id_456': 1,
+                '123_hermes_id_456': 1,
                 '123_website_456': 'https://junes.com',
                 '123_paid_invoice_count_456': 0,
                 '123_has_booked_call_456': False,
@@ -759,7 +759,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = data.pop('current')
-        data['previous']['hermes_company_id'] = company.id
+        data['previous']['hermes_id'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
@@ -768,7 +768,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['previous']['123_hermes_company_id_456'] = company.id
+        data['previous']['123_hermes_id_456'] = company.id
         data['current'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
         debug(r.json())
@@ -781,7 +781,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
-        data['current']['123_hermes_company_id_456'] = company.id
+        data['current']['123_hermes_id_456'] = company.id
         data['previous'] = copy.deepcopy(data['current'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
