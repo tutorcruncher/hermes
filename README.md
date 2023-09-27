@@ -118,7 +118,8 @@ Navigate to Profile > Tools and apps > Webhooks > Create new webhook:
 
 - HTTP Auth: `None`
 
-Add these Custom Fields to the Organisation:
+Navigate to Company Settings > Data Fields
+Add these Data Fields to the Organisation:
 ```
 website
 paid_invoice_count : 
@@ -128,9 +129,8 @@ tc2_status
 tc2_cligency_url
 ```
 
-Add these Custom Fields to the Person:
+Add these Data Fields to the Person:
 ```
-primary_email
 address_country
 ```
 
@@ -149,7 +149,7 @@ Create Admin:
 - Create an admin user in the admin interface
 - ensure the admins email address and `tc_admin_id` match the ones in TC2
 
-##### Setup Pipelines
+##### Setup Pipelines in Hermes
 
 Create a pipeline for each of the following:
 - `PAYG`
@@ -157,10 +157,15 @@ Create a pipeline for each of the following:
 - `ENTERPRISE`
 
 #### Setup Callbooker:
+
+in order for the callbooker to work on tutorcruncher.com, you need to set the following env vars:
 - set `DEV_MODE=True` in `.env`
 - set `G_PRIVATE_KEY` in `.env` to the private key of the google service account
 - set `G_PRIVATE_KEY_ID` in `.env` to the private key id of the google service account
-- ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)
+
+Ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)
+
+Edit in tutorcruncher.com `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support teams in TC2
 
 ## TODOs:
 

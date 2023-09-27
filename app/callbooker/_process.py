@@ -92,14 +92,13 @@ async def get_or_create_deal(company: Company, contact: Contact) -> Deal:
     """
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
     config = await get_config()
-    debug(company.price_plan)
     if not deal:
         match company.price_plan:
-            case plan if Company.PP_PAYG in plan:
+            case Company.PP_PAYG:
                 pipeline = await config.payg_pipeline
-            case plan if Company.PP_STARTUP in plan:
+            case Company.PP_STARTUP:
                 pipeline = await config.startup_pipeline
-            case plan if Company.PP_ENTERPRISE in plan:
+            case Company.PP_ENTERPRISE:
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')

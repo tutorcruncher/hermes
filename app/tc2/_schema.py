@@ -38,7 +38,8 @@ class _TCAgency(HermesBaseModel):
     status: str
     paid_invoice_count: int
     created: datetime = Field(exclude=True)
-    # price_plan: str
+
+
 
     @validator('country')
     def country_to_code(cls, v):
