@@ -172,7 +172,7 @@ class DealResource(Model):
         Field('pipeline_id', input_=inputs.ForeignKey(model=Pipeline)),
         Field('stage_id', input_=inputs.ForeignKey(model=Stage)),
         Field('company_id', input_=inputs.ForeignKey(model=Company)),
-        Field('contact_id', input_=inputs.ForeignKey(model=Contact)),
+        Field('hermes_id', input_=inputs.ForeignKey(model=Contact)),
     ]
 
     async def get_toolbar_actions(self, request: Request):
@@ -196,7 +196,7 @@ class MeetingResource(Model):
         'meeting_type',
         Field('admin_id', input_=inputs.ForeignKey(model=Admin)),
         Field('deal_id', input_=inputs.ForeignKey(model=Deal)),
-        Field('contact_id', input_=inputs.ForeignKey(model=Contact)),
+        Field('hermes_id', input_=inputs.ForeignKey(model=Contact)),
     ]
 
     async def get_toolbar_actions(self, request: Request):

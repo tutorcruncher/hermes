@@ -29,8 +29,7 @@ Best,
 The TutorCruncher Team
 
 <a href="{tc2_cligency_url}" target="_blank">Link for TC</a>
-"""
-    ,
+""",
     Meeting.TYPE_SALES: """
 Hi {contact_first_name},
 
@@ -63,6 +62,5 @@ The TutorCruncher Team
 
 <a href="{crm_url}" class="smaller" target="_blank">CRM link</a>
 <a href="{tc2_cligency_url}" class="smaller" target="_blank">TC link</a>
-"""
-    ,
+""",
 }

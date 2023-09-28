@@ -61,9 +61,6 @@ To login, go to /login. You need to have an admin already created;
 
 set `.env` vars:
 ```
-# First Run
-tc2_admin_id=${tc meta admin id}
-pd_owner_id=${pipedrive owner id}
 
 # TC2
 tc2_api_key=${tc2 api integration private key}
@@ -103,11 +100,11 @@ check `Account Managers` and `is support person`, `is sales person`
 #### Pipedrive:
 
 Create a pipedrive sandbox account.
-Navigate to Profile > Tools and apps > Webhooks > Create new webhook:
+Navigate to Profile > Tools and apps > Webhooks > Create 6 new webhooks:
 
 - Event action: `*`
 
-- Event object: `*`
+- Event object: `deal`, `organization`, `person`, `product`, `stage`, `user`
 
 - Endpoint URL: `https://${your ngrok domain}/pipedrive/callback`
 
@@ -117,7 +114,7 @@ Navigate to Company Settings > Data Fields
 Add these Data Fields to the Organisation:
 ```
 website
-paid_invoice_count : 
+paid_invoice_count
 has_booked_call
 has_signed_up
 tc2_status

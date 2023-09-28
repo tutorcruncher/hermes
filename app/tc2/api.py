@@ -8,7 +8,8 @@ session = requests.Session()
 
 async def tc2_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
     headers = {'Authorization': f'Bearer {settings.tc2_api_key}'}
-    r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', json=data, headers=headers)
+    # need to double check this, data=data works in tests but needs to be json=data in live testing local
+    r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', data=data, headers=headers)
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
     r.raise_for_status()
     return r.json()

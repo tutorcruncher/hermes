@@ -1,7 +1,5 @@
-import requests
 from fastapi import APIRouter
 from starlette.background import BackgroundTasks
-from starlette.requests import Request
 
 from app.pipedrive._process import (
     _process_pd_deal,
@@ -43,14 +41,4 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
-    elif event.meta.object == 'activity':
-        pass
     return {'status': 'ok'}
-
-
-@pipedrive_router.post('/callback/debug/', name='Pipedrive debug callback')
-async def debug_callback(body: Request):
-    data = await body.json()
-    app_logger.info(f'Debug: event received for {data}')
-    r = requests.post('http://localhost:8000/pipedrive/callback/', json=data)
-    return r.json

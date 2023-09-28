@@ -55,10 +55,7 @@ class Settings(BaseSettings):
     )
 
     # Testing
-    # Admin user to create when testing locally
-    CREATE_TESTING_ADMIN: bool = False
-    tc2_admin_id: int = 66
-    pd_owner_id: int = 15708604
+    TESTING: bool = False
 
     @property
     def google_credentials(self):

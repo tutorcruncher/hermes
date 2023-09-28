@@ -1,5 +1,4 @@
 from fastapi_admin.models import AbstractAdmin
-from pydantic import validator
 from tortoise import fields, models
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -190,18 +189,6 @@ class Company(models.Model):
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']
     meetings: fields.ReverseRelation['Meeting']
-
-    @validator('price_plan')
-    def _price_plan(cls, v):
-        # Extract the part after the hyphen
-        plan = v.split('-')[1] if '-' in v else v
-
-        # Validate the extracted part
-        valid_plans = (cls.PP_PAYG, cls.PP_STARTUP, cls.PP_ENTERPRISE)
-        if plan not in valid_plans:
-            raise ValueError(f"Invalid price plan: {v}")
-
-        return plan
 
     def __str__(self):
         return self.name

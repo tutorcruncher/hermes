@@ -90,7 +90,6 @@ class PipedriveBaseModel(HermesBaseModel):
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    # address_country: Optional[str] = None
     address: Optional[str] = None
     owner_id: fk_field(Admin, 'pd_owner_id')
 
@@ -146,7 +145,7 @@ class Person(PipedriveBaseModel):
 
     # These are all custom fields
     address_country: Optional[str] = Field(None, custom=True)
-    contact_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
+    hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'personFields'
@@ -158,16 +157,16 @@ class Person(PipedriveBaseModel):
         obj = cls(
             name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
-            primary_email=contact.email,
+            email=contact.email,
             phone=contact.phone,
             address_country=contact.country,
             org_id=company.pd_org_id,
-            contact_id=contact.id,
+            hermes_id=contact.id,
         )
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    @validator('phone', pre=True)
+    @validator('phone', 'email', pre=True)
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
@@ -187,7 +186,7 @@ class Person(PipedriveBaseModel):
             'pd_person_id': self.id,
             'first_name': first_name,
             'last_name': last_name,
-            'email': self.primary_email,
+            'email': self.email,
             'phone': self.phone,
             'company_id': self.company and self.company.id,  # noqa: F821 - Added in a_validate
         }
@@ -234,7 +233,7 @@ class PDDeal(PipedriveBaseModel):
     status: str
 
     # These are all custom fields
-    hermes_deal_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
+    hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
 
     _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'dealFields'
@@ -254,7 +253,7 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
-                hermes_deal_id=deal.id,
+                hermes_id=deal.id,
                 status=deal.status,
             )
         )

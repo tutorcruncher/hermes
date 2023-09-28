@@ -26,10 +26,10 @@ class FakePipedrive:
                 'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
             },
             'personFields': {
-                'contact_id': {'name': 'Contact ID', 'key': '123_contact_id_456'},
+                'hermes_id': {'name': 'Contact ID', 'key': '123_hermes_id_456'},
             },
             'dealFields': {
-                'hermes_deal_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_deal_id_456'},
+                'hermes_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_id_456'},
             },
         }
 
@@ -119,7 +119,7 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 'id': 1,
                 '123_website_456': 'https://junes.com',
@@ -139,7 +139,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -194,7 +194,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 10,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
@@ -222,7 +222,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 10,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
@@ -241,7 +241,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 10,
             },
         }
@@ -318,7 +318,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Junes Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
@@ -355,7 +355,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_website_456': 'https://junes.com',
@@ -373,7 +373,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -423,7 +423,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': 1,
@@ -442,7 +442,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -469,7 +469,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': 1,
@@ -490,7 +490,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -548,7 +548,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': 1,
@@ -567,7 +567,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -601,7 +601,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -619,7 +619,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
-                'address_country': 'GB',
+                'address': 'GB',
                 'owner_id': 99,
                 '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': 1,
@@ -638,7 +638,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'primary_email': 'brain@junes.com',
                 'phone': None,
-                'address_country': None,
+                'address': None,
                 'org_id': 1,
             },
         }
@@ -664,7 +664,7 @@ def basic_pd_org_data():
         'v': 1,
         'matches_filters': {'current': []},
         'meta': {'action': 'updated', 'object': 'organization'},
-        'current': {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
+        'current': {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address': None},
         'previous': {},
         'event': 'updated.organization',
     }
@@ -761,7 +761,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = data.pop('current')
-        data['previous']['hermes_id'] = company.id
+        data['previous']['123_hermes_id_456'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
@@ -956,6 +956,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await Deal.exists()
         data = copy.deepcopy(basic_pd_deal_data())
         data['previous'] = data.pop('current')
+        data['previous']['123_hermes_deal_id_456'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Deal.exists()

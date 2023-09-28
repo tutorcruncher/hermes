@@ -25,6 +25,7 @@ def _client_data():
             'status': 'active',
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
+            'price_plan': '1-payg',
             'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },
         'associated_admin': {
@@ -118,7 +119,7 @@ class TC2CallbackTestCase(HermesTestCase):
         self.url = '/tc2/callback/'
 
     def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key, json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
 
     async def test_callback_invalid_api_key(self):
         r = await self.client.post(
@@ -446,7 +447,9 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_cligency(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
-        company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',

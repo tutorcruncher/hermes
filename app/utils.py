@@ -42,15 +42,13 @@ async def get_config() -> 'Config':
     # When testing locally, you can add your own admin user here. Set the pd_owner_id to your own Pipedrive user ID.
     from app.models import Admin, Pipeline
 
-    if not await Admin.filter(username='testing@tutorcruncher.com').exists():
+    if not settings.TESTING and await Admin.filter(username='testing@tutorcruncher.com').exists():
         await Admin.create(
             email='testing@tutorcruncher.com',
             username='testing@tutorcruncher.com',
             password='testing',
             is_bdr_person=True,
             is_sales_person=True,
-            tc2_admin_id=settings.tc2_admin_id,
-            pd_owner_id=settings.pd_owner_id,
         )
     if not await Pipeline.exists():
         await Pipeline.create(
