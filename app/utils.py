@@ -43,9 +43,7 @@ async def get_config() -> 'Config':
     from app.models import Admin
 
     admin_exists = await Admin.exists()
-    debug(settings.dev_mode, admin_exists, settings.testing)
     if not settings.testing and settings.dev_mode and not admin_exists:
-        debug('Creating admin user')
         await Admin.create(
             email='testing@tutorcruncher.com',
             username='testing@tutorcruncher.com',

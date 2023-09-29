@@ -7,6 +7,7 @@ from app.utils import get_config
 
 from app.utils import settings
 
+
 class HermesTestCase(TestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()

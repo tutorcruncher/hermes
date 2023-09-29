@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import Field, root_validator, validator
 
 from app.base_schema import HermesBaseModel, fk_field
-from app.models import Admin
+from app.models import Admin, Company
 
 
 class TCSubject(HermesBaseModel):
@@ -43,11 +43,11 @@ class _TCAgency(HermesBaseModel):
     @validator('price_plan')
     def _price_plan(cls, v):
         # Extract the part after the hyphen
-        try:
-            plan = v.split('-')[-1]
-        except Exception as e:
-            raise ValueError(f'Invalid price plan: {v}. Original error: {str(e)}')
-
+        plan = v.split('-')[-1]
+        # Validate the extracted part
+        valid_plans = (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
+        if plan not in valid_plans:
+            raise ValueError(f'Invalid price plan {v}')
         return plan
 
     @validator('country')
