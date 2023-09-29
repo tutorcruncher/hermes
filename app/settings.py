@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     host: str = '0.0.0.0'
     port: int = 8000
 
+    # Dev and Test settings
+    testing: bool = False
     dev_mode: bool = False
     log_level: str = 'INFO'
 
@@ -55,7 +57,7 @@ class Settings(BaseSettings):
     )
 
     # Testing
-    TESTING: bool = False
+    testing: bool = False
 
     @property
     def google_credentials(self):

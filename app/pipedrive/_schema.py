@@ -90,7 +90,7 @@ class PipedriveBaseModel(HermesBaseModel):
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    address: Optional[str] = None
+    address_country: Optional[str] = None
     owner_id: fk_field(Admin, 'pd_owner_id')
 
     # These are all custom fields
@@ -112,7 +112,7 @@ class Organisation(PipedriveBaseModel):
             **_remove_nulls(
                 name=company.name,
                 owner_id=(await company.sales_person).pd_owner_id,
-                address=company.country,
+                address_country=company.country,
                 website=company.website,
                 paid_invoice_count=company.paid_invoice_count,
                 has_booked_call=company.has_booked_call,
@@ -138,13 +138,12 @@ class Organisation(PipedriveBaseModel):
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    email: Optional[str] = ''
+    primary_email: Optional[str] = ''
     phone: Optional[str] = ''
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
 
     # These are all custom fields
-    address_country: Optional[str] = Field(None, custom=True)
     hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
@@ -157,16 +156,15 @@ class Person(PipedriveBaseModel):
         obj = cls(
             name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
-            email=contact.email,
+            primary_email=contact.email,
             phone=contact.phone,
-            address_country=contact.country,
             org_id=company.pd_org_id,
             hermes_id=contact.id,
         )
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    @validator('phone', 'email', pre=True)
+    @validator('phone', pre=True)
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
@@ -186,7 +184,7 @@ class Person(PipedriveBaseModel):
             'pd_person_id': self.id,
             'first_name': first_name,
             'last_name': last_name,
-            'email': self.email,
+            'email': self.primary_email,
             'phone': self.phone,
             'company_id': self.company and self.company.id,  # noqa: F821 - Added in a_validate
         }
@@ -301,12 +299,8 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(
-        None, discriminator='obj_type'
-    )
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = Field(
-        None, discriminator='obj_type'
-    )
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
 
     @root_validator(pre=True)
     def validate_object_type(cls, values):

@@ -5,10 +5,12 @@ from app.main import app
 from app.models import Pipeline, Stage
 from app.utils import get_config
 
+from app.utils import settings
 
 class HermesTestCase(TestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        settings.testing = True
         self.client = AsyncClient(app=app, base_url='http://test')
         self.stage = await Stage.create(name='New', pd_stage_id=1)
         self.pipeline = await Pipeline.create(name='payg', pd_pipeline_id=1, dft_entry_stage=self.stage)

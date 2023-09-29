@@ -468,7 +468,6 @@ class TC2TasksTestCase(HermesTestCase):
                     'first_name': 'Mary',
                     'last_name': 'Booth',
                 },
-                'website': None,
                 'status': 'live',
                 'sales_person_id': 30,
                 'associated_admin_id': 30,
@@ -481,10 +480,10 @@ class TC2TasksTestCase(HermesTestCase):
                     },
                 ],
                 'extra_attrs': {
-                    'pipedrive_deal_stage': 'New',
-                    'pipedrive_pipeline': 'payg',
                     'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
                     'pipedrive_id': 20,
+                    'pipedrive_deal_stage': 'New',
+                    'pipedrive_pipeline': 'payg',
                 },
             }
         }

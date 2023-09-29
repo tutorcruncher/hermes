@@ -1,4 +1,3 @@
-from app import settings
 from app.main import app, startup
 from app.models import Admin, Config, Pipeline, Stage
 from tests._common import HermesTestCase
@@ -7,7 +6,6 @@ from tests._common import HermesTestCase
 class AdminTestCase(HermesTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        settings.TESTING = True
         if not app.middleware_stack:
             # We need to call startup() to initialize the admin app, but since Tortoise's TestCase initializes the app
             # once for the entire test suite, we need to make sure we don't call startup() more than once.
