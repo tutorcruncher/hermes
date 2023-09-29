@@ -12,18 +12,12 @@ async def _process_pd_organisation(
     Processes a Pipedrive Organisation/Company event. Creates the Organisation/Company if it didn't exist in Hermes,
     updates it if it did.
 
-    TODO: If we can't match the company by it's PD id, we should really try and match it by name also. However, as of
-    now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
+    TODO: If we can't match the company by it's hermes_id, we should really try and match it by name also. However, as
+    of now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
-    # current_pd_org = await Organisation.set_custom_field_vals(current_pd_org)
-    # old_pd_org = old_pd_org and await Organisation.set_custom_field_vals(old_pd_org)
-    # company = current_pd_org.company if current_pd_org else old_pd_org.company
-    #
-    # test passed old way below, but we want the about method about, however it breaks test at test_pipedrive.py line
-    # 959
-
-    company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
+    # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
+    company = current_pd_org.company if current_pd_org else old_pd_org.company
     if company:
         if current_pd_org:
             # The org has been updated
@@ -50,18 +44,11 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     Processes a Pipedrive Person/Contact event. Creates the Person/Contact if it didn't exist in Hermes,
     updates it if it did
 
-    TODO: If we can't match the contact by it's PD id, we should really try and match it by name also. However, I don't
-    care enough since Companies are really the only important part.
+    TODO: If we can't match the contact by it's hermes_id, we should really try and match it by name also. However, I
+    don't care enough since Companies are really the only important part.
     """
-
-    # current_pd_person = await Person.set_custom_field_vals(current_pd_person)
-    # old_pd_person = old_pd_person and await Person.set_custom_field_vals(old_pd_person)
-    # contact = current_pd_person.contact if current_pd_person else old_pd_person.contact
-
-    # test passed old way below, but we want the about method about, however it breaks test at test_pipedrive.py line
-    # 959
-    contact = await Contact.filter(pd_person_id=current_pd_person.id if current_pd_person else old_pd_person.id).first()
-
+    # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
+    contact = current_pd_person.contact if current_pd_person else old_pd_person.contact
     if contact:
         if current_pd_person:
             # The person has been updated
@@ -95,14 +82,8 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
     """
-    # current_pd_deal = current_pd_deal and await PDDeal.set_custom_field_vals(current_pd_deal)
-    # old_pd_deal = old_pd_deal and await PDDeal.set_custom_field_vals(old_pd_deal)
-    # deal = current_pd_deal.deal if current_pd_deal else old_pd_deal.deal
-
-    # test passed old way below, but we want the about method about, however it breaks test at test_pipedrive.py line
-    # 959
-
-    deal = await Deal.filter(pd_deal_id=current_pd_deal.id if current_pd_deal else old_pd_deal.id).first()
+    # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
+    deal = current_pd_deal.deal if current_pd_deal else old_pd_deal.deal
     if deal:
         if current_pd_deal:
             # The deal has been updated

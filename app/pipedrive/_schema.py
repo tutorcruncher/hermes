@@ -79,9 +79,15 @@ class PipedriveBaseModel(HermesBaseModel):
             field.alias = pd_field.key
 
         # Since we've set the field aliases, we can just re-validate the model to add the values
-        validate_model(obj.__class__, obj.__dict__)
+        validate_model(cls, obj.__dict__)
 
         return obj
+
+    async def a_validate(self):
+        # We need to set the custom field values before we validate
+        if await self._custom_fields():
+            await self.__class__.set_custom_field_vals(self)
+        await super().a_validate()
 
     class Config:
         allow_population_by_field_name = True
@@ -103,7 +109,9 @@ class Organisation(PipedriveBaseModel):
     hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
+
     obj_type: Literal['organization'] = Field('organization', exclude=True)
 
     @classmethod

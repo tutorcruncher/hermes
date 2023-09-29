@@ -17,7 +17,7 @@ class FakePipedrive:
             'deals': {},
             'activities': {},
             'organizationFields': {
-                'hermes_id': {'name': 'Hermes Company ID', 'key': '123_hermes_id_456'},
+                'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'},
                 'website': {'name': 'website', 'key': '123_website_456'},
                 'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
                 'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
@@ -25,12 +25,8 @@ class FakePipedrive:
                 'tc2_cligency_url': {'name': 'TC2 cligency URL', 'key': '123_tc2_cligency_url_456'},
                 'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
             },
-            'personFields': {
-                'hermes_id': {'name': 'Contact ID', 'key': '123_hermes_id_456'},
-            },
-            'dealFields': {
-                'hermes_id': {'name': 'Hermes Deal ID', 'key': '123_hermes_id_456'},
-            },
+            'personFields': {'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'}},
+            'dealFields': {'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'}},
         }
 
 
@@ -140,6 +136,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -241,6 +238,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 10,
+                '123_hermes_id_456': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -372,6 +370,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         assert self.pipedrive.db['deals'] == {}
@@ -440,6 +439,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -487,6 +487,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
                 '123_hermes_id_456': 1,
             },
         }
@@ -564,6 +565,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -597,6 +599,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         deal = await Deal.create(
@@ -633,6 +636,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'primary_email': 'brain@junes.com',
                 'phone': None,
                 'org_id': 1,
+                '123_hermes_id_456': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
