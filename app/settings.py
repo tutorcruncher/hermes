@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, Extra, Field, PostgresDsn
+from pydantic import BaseSettings, Extra, Field, PostgresDsn, RedisDsn
 
 THIS_DIR = Path(__file__).parent.resolve()
 
@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
 
     # Redis
-    redis_dsn: str = 'redis://localhost:6379'
+    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDIS_URL', alias='redis_url')
 
     # Sentry
     sentry_dsn: str = ''
