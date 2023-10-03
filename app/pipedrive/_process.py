@@ -87,8 +87,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if it's been removed.
     """
     # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
-    debug(current_pd_deal)
-    debug(old_pd_deal)
     c_deal = current_pd_deal.deal if current_pd_deal else None
     o_deal = old_pd_deal.deal if old_pd_deal else None
     deal = c_deal or o_deal
@@ -98,8 +96,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
 
-            debug(old_data)
-            debug(new_data)
             if old_data != new_data:
                 await deal.update_from_dict(new_data)
                 await deal.save()
