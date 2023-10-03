@@ -104,7 +104,7 @@ Navigate to Profile > Tools and apps > Webhooks > Create 6 new webhooks:
 
 - Event action: `*`
 
-- Event object: `deal`, `organization`, `person`, `product`, `stage`, `user`
+- Event object: `deal`, `organization`, `pipeline`, `person`, `product`, `stage`, `user`
 
 - Endpoint URL: `https://${your ngrok domain}/pipedrive/callback`
 
@@ -119,11 +119,6 @@ has_booked_call
 has_signed_up
 tc2_status
 tc2_cligency_url
-```
-
-Add these Data Fields to the Person:
-```
-address_country
 ```
 
 Get your Pipedrive Owner ID:
