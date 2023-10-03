@@ -90,7 +90,7 @@ class Admin(AbstractAdmin):
 
     # This should be the user's actual email address, but it's a pain to overwrite fastapi to use email address instead
     # of username, so we use username and have a property for email.
-    username = fields.CharField(max_length=255, description='Use their ACTUAL email address, not META')
+    username = fields.CharField(unique=True, max_length=255, description='Use their ACTUAL email address, not META')
     timezone = fields.CharField(max_length=255, default=settings.dft_timezone)
 
     is_sales_person = fields.BooleanField(default=False)
