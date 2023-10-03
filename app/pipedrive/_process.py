@@ -17,7 +17,9 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
-    company = current_pd_org.company if current_pd_org else old_pd_org.company
+    c_company = current_pd_org.company if current_pd_org else None
+    o_company = old_pd_org.company if old_pd_org else None
+    company = c_company or o_company
     if company:
         if current_pd_org:
             # The org has been updated
@@ -48,7 +50,9 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     don't care enough since Companies are really the only important part.
     """
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
-    contact = current_pd_person.contact if current_pd_person else old_pd_person.contact
+    c_contact = current_pd_person.contact if current_pd_person else None
+    o_contact = old_pd_person.contact if old_pd_person else None
+    contact = c_contact or o_contact
     if contact:
         if current_pd_person:
             # The person has been updated
@@ -83,12 +87,19 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if it's been removed.
     """
     # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
-    deal = current_pd_deal.deal if current_pd_deal else old_pd_deal.deal
+    debug(current_pd_deal)
+    debug(old_pd_deal)
+    c_deal = current_pd_deal.deal if current_pd_deal else None
+    o_deal = old_pd_deal.deal if old_pd_deal else None
+    deal = c_deal or o_deal
     if deal:
         if current_pd_deal:
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
+
+            debug(old_data)
+            debug(new_data)
             if old_data != new_data:
                 await deal.update_from_dict(new_data)
                 await deal.save()

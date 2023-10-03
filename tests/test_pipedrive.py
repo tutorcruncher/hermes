@@ -765,7 +765,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Company.exists()
 
     async def test_org_update(self):
-        company = await Company.create(name='Old test company', pd_org_id=20, sales_person=self.admin)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['previous']['hermes_id'] = company.id
@@ -963,7 +963,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Deal.exists()
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
-    async def test_deal_update(self, mock_add_task):
+    async def test_deal_update_reeeee(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
@@ -978,6 +978,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
             admin=self.admin,
         )
         assert await Deal.exists()
+
         data = copy.deepcopy(basic_pd_deal_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['previous']['hermes_id'] = deal.id
