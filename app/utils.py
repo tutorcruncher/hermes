@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from typing import TYPE_CHECKING
 
 import aioredis
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
     from app.models import Config
 
 settings = Settings()
+logger = logging.getLogger('utils')
+
 
 
 async def sign_args(*args):
@@ -44,6 +47,7 @@ async def get_config() -> 'Config':
 
     admin_exists = await Admin.exists()
     if not settings.testing and settings.dev_mode and not admin_exists:
+        logger.info('Creating Testing admin user')
         await Admin.create(
             email='testing@tutorcruncher.com',
             username='testing@tutorcruncher.com',
