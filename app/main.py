@@ -29,7 +29,7 @@ app = FastAPI()
 allowed_origins = ['https://tutorcruncher.com/']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
-app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
+app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 logging.config.dictConfig(config)
 register_tortoise(
     app,
