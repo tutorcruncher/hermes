@@ -402,7 +402,8 @@ class MockResponse:
 
 
 def fake_tc2_request(fake_tc2: FakeTC2):
-    def _tc2_request(*, url: str, method: str, data: dict, headers: dict):
+    def _tc2_request(*, url: str, method: str, json: dict, headers: dict):
+        data = json
         obj_type = re.search(r'/api/(.*?)(?:/|$)', url).group(1)
         if method == 'GET':
             obj_id = int(url.split(f'/{obj_type}/')[1].rstrip('/'))

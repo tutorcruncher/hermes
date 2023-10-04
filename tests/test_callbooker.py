@@ -697,7 +697,7 @@ class SupportLinkTestCase(HermesTestCase):
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', tc2_cligency_id=10, sales_person=admin
         )
-        headers = {'Authorization': f'Bearer {settings.tc2_api_key}'}
+        headers = {'Authorization': f'token {settings.tc2_api_key}', 'Content-Type': 'application/json'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': admin.tc2_admin_id, 'tc2_cligency_id': company.tc2_cligency_id},
@@ -719,7 +719,7 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True, tc2_admin_id=20
         )
-        headers = {'Authorization': f'Bearer {settings.tc2_api_key}'}
+        headers = {'Authorization': f'token {settings.tc2_api_key}'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': admin.tc2_admin_id, 'tc2_cligency_id': 10},
@@ -734,7 +734,7 @@ class SupportLinkTestCase(HermesTestCase):
         await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', tc2_cligency_id=10, sales_person=admin
         )
-        headers = {'Authorization': f'Bearer {settings.tc2_api_key}'}
+        headers = {'Authorization': f'token {settings.tc2_api_key}'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': 1, 'tc2_cligency_id': 10},
