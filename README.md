@@ -81,6 +81,11 @@ pd_base_url='https://seb-sandbox2.pipedrive.com'
 
 Run TC2 (`hermesv2` branch) on port 5000
 
+Add these ENV vars to TC2:
+```
+HERMES_URL = 'https://${your ngrok domain}'
+HERMES_API_KEY = ${tc2 api integration private key} (this should be the same as the tc2_api_key in hermes)
+```
 
 Add these custom fields to Meta Cligency (Client):
 ```
@@ -96,6 +101,10 @@ Add API Integration to META:
 
 Create a Meta Admin:
 check `Account Managers` and `is support person`, `is sales person`
+
+##### Deploy
+Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes.
+
 
 #### Pipedrive:
 
