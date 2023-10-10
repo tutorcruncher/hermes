@@ -1,5 +1,5 @@
 import json
-from typing import ClassVar, Literal, Optional
+from typing import ClassVar, Literal, Optional, Union
 
 from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
@@ -147,6 +147,7 @@ class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     primary_email: Optional[str] = ''
+    # email: Optional[list[dict[str, str]]] = None
     phone: Optional[str] = ''
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
@@ -171,6 +172,35 @@ class Person(PipedriveBaseModel):
         )
         obj = await cls.set_custom_field_vals(obj)
         return obj
+
+    def dict(
+            self,
+            *,
+            include: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
+            exclude: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
+            by_alias: bool = False,
+            skip_defaults: Optional[bool] = None,
+            exclude_unset: bool = False,
+            exclude_defaults: bool = False,
+            exclude_none: bool = False,
+    ) -> 'DictStrAny':
+        """
+        Override this method to remove the `primary_email` field from the dict. This is because have to post email as a list with a dict inside it, with a `primary` key.
+        """
+        result = super().dict(
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            skip_defaults=skip_defaults,
+            exclude_unset=exclude_unset,
+            exclude_defaults=exclude_defaults,
+            exclude_none=exclude_none,
+        )
+
+        result.pop('primary_email', None)
+        result['email'] = [{'value': self.primary_email, 'primary': True}]
+
+        return result
 
     @validator('phone', pre=True)
     def get_primary_attr(cls, v):
