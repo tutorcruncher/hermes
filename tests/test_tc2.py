@@ -25,6 +25,7 @@ def _client_data():
             'status': 'active',
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
+            'price_plan': '1-payg',
             'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },
         'associated_admin': {
@@ -118,7 +119,7 @@ class TC2CallbackTestCase(HermesTestCase):
         self.url = '/tc2/callback/'
 
     def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key, json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
 
     async def test_callback_invalid_api_key(self):
         r = await self.client.post(
@@ -401,7 +402,8 @@ class MockResponse:
 
 
 def fake_tc2_request(fake_tc2: FakeTC2):
-    def _tc2_request(*, url: str, method: str, data: dict, headers: dict):
+    def _tc2_request(*, url: str, method: str, json: dict, headers: dict):
+        data = json
         obj_type = re.search(r'/api/(.*?)(?:/|$)', url).group(1)
         if method == 'GET':
             obj_id = int(url.split(f'/{obj_type}/')[1].rstrip('/'))
@@ -446,7 +448,9 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_cligency(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
-        company = await Company.create(name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',
@@ -477,10 +481,10 @@ class TC2TasksTestCase(HermesTestCase):
                     },
                 ],
                 'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'pipedrive_id': 20,
                     'pipedrive_deal_stage': 'New',
                     'pipedrive_pipeline': 'payg',
-                    'pipedrive_url': 'https://seb-sandbox2.pipedrive.com/organizations/20/',
-                    'pipedrive_id': 20,
                 },
             }
         }

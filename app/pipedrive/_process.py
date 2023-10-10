@@ -1,7 +1,7 @@
 from typing import Optional
 
-from app.models import Deal, Pipeline, Stage, Contact, Company
-from app.pipedrive._schema import PDDeal, PDPipeline, PDStage, Person, Organisation
+from app.models import Company, Contact, Deal, Pipeline, Stage
+from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
 
 
@@ -12,11 +12,14 @@ async def _process_pd_organisation(
     Processes a Pipedrive Organisation/Company event. Creates the Organisation/Company if it didn't exist in Hermes,
     updates it if it did.
 
-    TODO: If we can't match the company by it's PD id, we should really try and match it by name also. However, as of
-    now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
+    TODO: If we can't match the company by it's hermes_id, we should really try and match it by name also. However, as
+    of now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
-    company = await Company.filter(pd_org_id=current_pd_org.id if current_pd_org else old_pd_org.id).first()
+    # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
+    c_company = current_pd_org.company if current_pd_org else None
+    o_company = old_pd_org.company if old_pd_org else None
+    company = c_company or o_company
     if company:
         if current_pd_org:
             # The org has been updated
@@ -28,12 +31,12 @@ async def _process_pd_organisation(
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
         else:
             # The org has been deleted
-            company = await Company.get(pd_org_id=old_pd_org.id)
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
         company = await Company.create(**await current_pd_org.company_dict())
+        # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
     return company
 
@@ -43,11 +46,13 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     Processes a Pipedrive Person/Contact event. Creates the Person/Contact if it didn't exist in Hermes,
     updates it if it did
 
-    TODO: If we can't match the contact by it's PD id, we should really try and match it by name also. However, I don't
-    care enough since Companies are really the only important part.
+    TODO: If we can't match the contact by it's hermes_id, we should really try and match it by name also. However, I
+    don't care enough since Companies are really the only important part.
     """
-    contact = await Contact.filter(pd_person_id=current_pd_person.id if current_pd_person else old_pd_person.id).first()
-
+    # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
+    c_contact = current_pd_person.contact if current_pd_person else None
+    o_contact = old_pd_person.contact if old_pd_person else None
+    contact = c_contact or o_contact
     if contact:
         if current_pd_person:
             # The person has been updated
@@ -59,7 +64,6 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
                 app_logger.info('Callback: updating Contact %s from Person %s', contact.id, current_pd_person.id)
         else:
             # The person has been deleted
-            contact = await Contact.get(pd_person_id=old_pd_person.id)
             await contact.delete()
             app_logger.info('Callback: deleting Contact %s from Person %s', contact.id, old_pd_person.id)
     elif current_pd_person:
@@ -82,20 +86,22 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
     """
-    deal = await Deal.filter(pd_deal_id=current_pd_deal.id if current_pd_deal else old_pd_deal.id).first()
-
+    # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
+    c_deal = current_pd_deal.deal if current_pd_deal else None
+    o_deal = old_pd_deal.deal if old_pd_deal else None
+    deal = c_deal or o_deal
     if deal:
         if current_pd_deal:
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
+
             if old_data != new_data:
                 await deal.update_from_dict(new_data)
                 await deal.save()
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
         else:
             # The deal has been deleted
-            deal = await Deal.get(pd_deal_id=old_pd_deal.id)
             await deal.delete()
             app_logger.info('Callback: deleting Deal %s from PDDeal %s', deal.id, old_pd_deal.id)
     elif current_pd_deal:

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from typing import TYPE_CHECKING
 
 import aioredis
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from app.models import Config
 
 settings = Settings()
+logger = logging.getLogger('utils')
 
 
 async def sign_args(*args):
@@ -40,17 +42,17 @@ async def get_config() -> 'Config':
         config = await Config.create()
 
     # When testing locally, you can add your own admin user here. Set the pd_owner_id to your own Pipedrive user ID.
+    from app.models import Admin
 
-    # from app.models import Admin
-    # if not await Admin.exists():
-    #     await Admin.create(
-    #         email='testing@tutorcruncher.com',
-    #         username='testing@tutorcruncher.com',
-    #         password='testing',
-    #         is_bdr_person=True,
-    #         is_sales_person=True,
-    #         tc2_admin_id=66,
-    #         pd_owner_id=15396545,
-    #     )
+    admin_exists = await Admin.exists()
+    if not settings.testing and settings.dev_mode and not admin_exists:
+        logger.info('Creating Testing admin user')
+        await Admin.create(
+            email='testing@tutorcruncher.com',
+            username='testing@tutorcruncher.com',
+            password='testing',
+            is_bdr_person=True,
+            is_sales_person=True,
+        )
 
     return config

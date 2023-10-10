@@ -4,8 +4,8 @@ from typing import Optional
 
 from pydantic import validator
 
-from app.base_schema import fk_field, HermesBaseModel
-from app.models import Company, Admin
+from app.base_schema import HermesBaseModel, fk_field
+from app.models import Admin, Company
 
 
 def _convert_to_utc(v: datetime) -> datetime:

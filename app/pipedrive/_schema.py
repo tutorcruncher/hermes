@@ -1,12 +1,12 @@
 import json
-from typing import Optional, ClassVar, Literal
+from typing import ClassVar, Literal, Optional
 
-from pydantic import Field, validator, root_validator
+from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
 from pydantic.main import BaseModel, validate_model
 
-from app.base_schema import fk_field, HermesBaseModel
-from app.models import Company, Contact, Deal, Meeting, Pipeline, Stage, Admin
+from app.base_schema import HermesBaseModel, fk_field
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
 from app.utils import get_redis_client
 
 
@@ -79,9 +79,15 @@ class PipedriveBaseModel(HermesBaseModel):
             field.alias = pd_field.key
 
         # Since we've set the field aliases, we can just re-validate the model to add the values
-        validate_model(obj.__class__, obj.__dict__)
+        validate_model(cls, obj.__dict__)
 
         return obj
+
+    async def a_validate(self):
+        # We need to set the custom field values before we validate
+        if await self._custom_fields():
+            await self.__class__.set_custom_field_vals(self)
+        await super().a_validate()
 
     class Config:
         allow_population_by_field_name = True
@@ -100,9 +106,12 @@ class Organisation(PipedriveBaseModel):
     has_signed_up: Optional[bool] = Field(False, custom=True)
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
+    hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
 
     _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
+
     obj_type: Literal['organization'] = Field('organization', exclude=True)
 
     @classmethod
@@ -118,6 +127,7 @@ class Organisation(PipedriveBaseModel):
                 has_signed_up=company.has_signed_up,
                 tc2_status=company.tc2_status,
                 tc2_cligency_url=company.tc2_cligency_url,
+                hermes_id=company.id,
             )
         )
         obj = await cls.set_custom_field_vals(obj)
@@ -138,24 +148,29 @@ class Person(PipedriveBaseModel):
     name: str
     primary_email: Optional[str] = ''
     phone: Optional[str] = ''
-    address_country: Optional[str] = None
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
 
+    # These are all custom fields
+    hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
+
     _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    custom_fields_pd_name: ClassVar[str] = 'personFields'
     obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
     async def from_contact(cls, contact: Contact):
         company: Company = await contact.company
-        return cls(
+        obj = cls(
             name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
             primary_email=contact.email,
             phone=contact.phone,
-            address_country=contact.country,
             org_id=company.pd_org_id,
+            hermes_id=contact.id,
         )
+        obj = await cls.set_custom_field_vals(obj)
+        return obj
 
     @validator('phone', pre=True)
     def get_primary_attr(cls, v):
@@ -185,7 +200,7 @@ class Person(PipedriveBaseModel):
 
 class Activity(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    due_dt: str
+    due_date: str
     due_time: str
     subject: str
     user_id: int
@@ -200,7 +215,7 @@ class Activity(PipedriveBaseModel):
         return cls(
             **_remove_nulls(
                 **{
-                    'due_dt': meeting.start_time.strftime('%Y-%m-%d'),
+                    'due_date': meeting.start_time.strftime('%Y-%m-%d'),
                     'due_time': meeting.start_time.strftime('%H:%M'),
                     'subject': meeting.name,
                     'user_id': (await meeting.admin).pd_owner_id,
@@ -222,6 +237,12 @@ class PDDeal(PipedriveBaseModel):
     pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
     stage_id: fk_field(Stage, 'pd_stage_id')
     status: str
+
+    # These are all custom fields
+    hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
+
+    _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
+    custom_fields_pd_name: ClassVar[str] = 'dealFields'
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
@@ -230,7 +251,7 @@ class PDDeal(PipedriveBaseModel):
         contact = deal.contact_id and await deal.contact
         pipeline = await deal.pipeline
         stage = await deal.stage
-        return cls(
+        obj = cls(
             **_remove_nulls(
                 title=deal.name,
                 org_id=company and company.pd_org_id,
@@ -238,9 +259,12 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
+                hermes_id=deal.id,
                 status=deal.status,
             )
         )
+        obj = await cls.set_custom_field_vals(obj)
+        return obj
 
     async def deal_dict(self) -> dict:
         return {

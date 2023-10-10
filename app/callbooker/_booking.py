@@ -49,8 +49,8 @@ async def create_meeting_gcal_event(meeting: Meeting):
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
     g_cal.create_cal_event(
-        description=meeting_template['description'].format(**meeting_templ_vars),
-        summary=meeting_template['summary'].format(**meeting_templ_vars),
+        description=meeting_template.format(**meeting_templ_vars),
+        summary=meeting.name,
         contact_email=contact.email,
         start=meeting.start_time,
         end=meeting.end_time,

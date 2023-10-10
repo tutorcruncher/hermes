@@ -4,8 +4,8 @@ from tortoise.expressions import Q
 
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
-from app.models import Company, Contact, Meeting, Deal
-from app.utils import settings, get_config
+from app.models import Company, Contact, Deal, Meeting
+from app.utils import get_config, settings
 
 
 async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall) -> Contact:
@@ -102,6 +102,7 @@ async def get_or_create_deal(company: Company, contact: Contact) -> Deal:
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')
+
         deal = await Deal.create(
             company_id=company.id,
             contact_id=contact.id,

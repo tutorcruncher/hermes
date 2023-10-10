@@ -64,6 +64,9 @@ class Stage(models.Model):
 
     deals: fields.ReverseRelation['Deal']
 
+    def __str__(self):
+        return self.name
+
 
 class Pipeline(models.Model):
     id = fields.IntField(pk=True)
@@ -72,6 +75,9 @@ class Pipeline(models.Model):
     dft_entry_stage = fields.ForeignKeyField('models.Stage', null=True)
 
     deals: fields.ReverseRelation['Deal']
+
+    def __str__(self):
+        return self.name
 
 
 class Admin(AbstractAdmin):
@@ -152,9 +158,9 @@ class Company(models.Model):
     STATUS_TERMINATED = 'terminated'
     STATUS_IN_ARREARS = 'in-arrears'
 
-    PP_PAYG = 'payg'
-    PP_STARTUP = 'startup'
-    PP_ENTERPRISE = 'enterprise'
+    PP_PAYG: str = 'payg'
+    PP_STARTUP: str = 'startup'
+    PP_ENTERPRISE: str = 'enterprise'
 
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
@@ -189,7 +195,7 @@ class Company(models.Model):
 
     @property
     def pd_org_url(self):
-        return f'{settings.pd_base_url}/organizations/{self.pd_org_id}/'
+        return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
 
     @property
     def tc2_cligency_url(self) -> str:
@@ -278,7 +284,7 @@ class Meeting(models.Model):
     @property
     def name(self):
         if self.meeting_type == Meeting.TYPE_SALES:
-            return f'Introductory call with {self.admin.name}'
+            return f'TutorCruncher demo with {self.admin.name}'
         else:
             assert self.meeting_type == Meeting.TYPE_SUPPORT
-            return f'Support call with {self.admin.name}'
+            return f'TutorCruncher support meeting with {self.admin.name}'

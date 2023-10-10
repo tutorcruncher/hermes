@@ -13,9 +13,7 @@ We want to create activities in pipedrive when:
 import requests
 
 from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive._schema import Activity
-from app.pipedrive._schema import PDDeal
-from app.pipedrive._schema import Organisation, Person
+from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
 from app.pipedrive._utils import app_logger
 from app.utils import settings
 
@@ -46,6 +44,7 @@ async def create_or_update_organisation(company: Company) -> Organisation:
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
+        # if company is not on pipedrive, create it
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
         pipedrive_org = Organisation(**created_org)
         company.pd_org_id = pipedrive_org.id
@@ -59,10 +58,10 @@ async def create_or_update_person(contact: Contact) -> Person:
     Create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.dict()
+    hermes_person_data = hermes_person.dict(by_alias=True)
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.dict():
+        if hermes_person_data != pipedrive_person.dict(by_alias=True):
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
@@ -79,8 +78,9 @@ async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     Creates a new deal if none exists within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
+    pd_deal_data = pd_deal.dict(by_alias=True)
     if not deal.pd_deal_id:
-        pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal.dict()))['data'])
+        pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal_data))['data'])
         deal.pd_deal_id = pd_deal.id
         await deal.save()
     return pd_deal

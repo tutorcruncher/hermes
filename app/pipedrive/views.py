@@ -3,10 +3,10 @@ from starlette.background import BackgroundTasks
 
 from app.pipedrive._process import (
     _process_pd_deal,
+    _process_pd_organisation,
+    _process_pd_person,
     _process_pd_pipeline,
     _process_pd_stage,
-    _process_pd_person,
-    _process_pd_organisation,
 )
 from app.pipedrive._schema import PipedriveEvent
 from app.pipedrive._utils import app_logger

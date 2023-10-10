@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Header
 from fastapi.exceptions import RequestValidationError
 
-from app.models import Company, Admin
+from app.models import Admin, Company
 
 main_router = APIRouter()
 

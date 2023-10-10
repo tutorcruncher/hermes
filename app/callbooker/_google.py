@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import uuid4
 
 from google.oauth2 import service_account
@@ -28,7 +28,7 @@ class AdminGoogleCalendar:
     def get_free_busy_slots(self, start: datetime, end: datetime) -> dict:
         q_data = {
             'timeMin': start.isoformat(),
-            'timeMax': (start + timedelta(days=1)).isoformat(),
+            'timeMax': end.isoformat(),
             'timeZone': 'utc',
             'groupExpansionMax': 100,
             'items': [{'id': self.admin_email}],

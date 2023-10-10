@@ -1,6 +1,5 @@
 from app.utils import settings
 
-
 logging_level = settings.log_level
 
 config = {

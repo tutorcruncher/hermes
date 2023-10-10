@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from pytz import utc
@@ -22,6 +22,7 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
+
     return created, company
 
 
@@ -55,6 +56,7 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
                 pipeline = await config.enterprise_pipeline
             case _:
                 raise ValueError(f'Unknown price plan {company.price_plan}')
+
         deal = await Deal.create(
             company_id=company.id,
             contact_id=contact and contact.id,
@@ -107,6 +109,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
         ):
             # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
             # be created.
+
             deal = await _get_or_create_deal(company, contact)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '

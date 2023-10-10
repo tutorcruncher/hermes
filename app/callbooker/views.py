@@ -9,16 +9,16 @@ from starlette.responses import JSONResponse
 
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
+    MeetingBookingError,
     book_meeting,
+    get_or_create_contact,
     get_or_create_contact_company,
     get_or_create_deal,
-    MeetingBookingError,
-    get_or_create_contact,
 )
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
 from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
-from app.utils import get_bearer, sign_args, settings
+from app.utils import get_bearer, settings, sign_args
 
 cb_router = APIRouter()
 
@@ -77,7 +77,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     """
     Endpoint to generate a support link for a company from within TC2
     """
-    if get_bearer(Authorization) != settings.tc2_api_key.decode():
+    if get_bearer(Authorization) != settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc2_admin_id=tc2_admin_id)
     company = await Company.get(tc2_cligency_id=tc2_cligency_id)

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseSettings, PostgresDsn, Field, Extra
+from pydantic import BaseSettings, Extra, Field, PostgresDsn, RedisDsn
 
 THIS_DIR = Path(__file__).parent.resolve()
 
@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
 
     # Redis
-    redis_dsn: str = 'redis://localhost:6379'
+    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDIS_URL', alias='redis_url')
 
     # Sentry
     sentry_dsn: str = ''
@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     host: str = '0.0.0.0'
     port: int = 8000
 
+    # Dev and Test settings
+    testing: bool = False
     dev_mode: bool = False
     log_level: str = 'INFO'
 
@@ -34,11 +36,11 @@ class Settings(BaseSettings):
     meeting_max_end: str = '17:30'
 
     #  TC2
-    tc2_api_key: bytes = b'test-key'
+    tc2_api_key: str = 'test-key'
     tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive
-    pd_api_key: str = 'test-key'
+    pd_api_key: str = '45fc768ccd3e73fbe1925e7849b7471bf64a54ac'
     pd_base_url: str = 'https://seb-sandbox2.pipedrive.com'
 
     # Google

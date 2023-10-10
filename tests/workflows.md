@@ -283,7 +283,7 @@ This consists of an index page and a page per salesperson. Salespersons are adde
       * User chooses Yes:
         * [ ] The user chooses a salesperson and gets redirected to the admin's callbooker
         * [ ] The logic above after **Callbooker calendar start** is followed except:
-        * [ ] The revenue bracket is not prefilled
+        * [ ] The revenue bracket is prefilled and is a selection of the revenue brackets
     * localStorage exists:
       * [ ] The user is redirected to the callbooker for the admin they had previously booked a call with
       * [ ] The logic above after **Callbooker calendar start** is followed except:
@@ -291,7 +291,7 @@ This consists of an index page and a page per salesperson. Salespersons are adde
 
 ## Support callbooker
 
-The user cannot navigate to this page thorugh the website. Instead the support admin will generate a link from the client's meta profilen (so this involves testing 3 systems...). We assume that all (live) Agencies inside TC have a Company object in Hermes.
+The user cannot navigate to this page through the website. Instead the support admin will generate a link from the client's meta profilen (so this involves testing 3 systems...). We assume that all (live) Agencies inside TC have a Company object in Hermes.
 
 * [ ] In TC2, admin clicks a link on the company's meta profile to generate a support link
 * [ ] The admin has a choice of an Express link or not (this affects availability below)
@@ -303,9 +303,10 @@ The user cannot navigate to this page thorugh the website. Instead the support a
   * [ ] If the company_id doesn't match a company, the user gets an error message
   * [ ] If the company does, then we use that information later
 * [ ] The admin's callbooker follows the logic above under **Callbooker calendar start** except:
-* [ ] If the admin has selected that the link is an Express link, the availability should show from now + 15mins
-* [ ] We only show the fields for Name, Company Name and Email
-* [ ] Company Name is prefilled
+  * [ ] If the admin has selected that the link is an Express link, the availability should show from now for the 15mins slots
+  * [ ] We only show the fields for Name, Company Name and Email
+  * [ ] Company Name is prefilled
+  * [ ] Company id is hidden and prefilled
 
 # TODO: 
 

@@ -7,7 +7,7 @@ from httpx import HTTPError
 from pytz import utc
 
 from app.models import Admin, Company, Contact, Meeting
-from app.utils import sign_args
+from app.utils import sign_args, settings
 from tests._common import HermesTestCase
 
 CB_MEETING_DATA = {
@@ -697,10 +697,11 @@ class SupportLinkTestCase(HermesTestCase):
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', tc2_cligency_id=10, sales_person=admin
         )
+        headers = {'Authorization': f'token {settings.tc2_api_key}', 'Content-Type': 'application/json'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': admin.tc2_admin_id, 'tc2_cligency_id': company.tc2_cligency_id},
-            headers={'Authorization': 'Bearer test-key'},
+            headers=headers,
         )
         assert r.status_code == 200, r.json()
         link = r.json()['link']
@@ -718,10 +719,11 @@ class SupportLinkTestCase(HermesTestCase):
         admin = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True, tc2_admin_id=20
         )
+        headers = {'Authorization': f'token {settings.tc2_api_key}'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': admin.tc2_admin_id, 'tc2_cligency_id': 10},
-            headers={'Authorization': 'Bearer test-key'},
+            headers=headers,
         )
         assert r.status_code == 404, r.json()
 
@@ -732,10 +734,11 @@ class SupportLinkTestCase(HermesTestCase):
         await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', tc2_cligency_id=10, sales_person=admin
         )
+        headers = {'Authorization': f'token {settings.tc2_api_key}'}
         r = await self.client.get(
             self.gen_url,
             params={'tc2_admin_id': 1, 'tc2_cligency_id': 10},
-            headers={'Authorization': 'Bearer test-key'},
+            headers=headers,
         )
         assert r.status_code == 404
 

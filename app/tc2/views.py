@@ -1,7 +1,7 @@
 import hashlib
 import hmac
-from typing import Optional
 from secrets import compare_digest
+from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
@@ -24,7 +24,7 @@ async def callback(
     Callback for TC2
     Updates Hermes and other systems based on events in TC2.
     """
-    expected_sig = hmac.new(settings.tc2_api_key, (await request.body()), hashlib.sha256).hexdigest()
+    expected_sig = hmac.new(settings.tc2_api_key.encode(), (await request.body()), hashlib.sha256).hexdigest()
     if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
