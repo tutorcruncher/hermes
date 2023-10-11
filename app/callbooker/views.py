@@ -80,7 +80,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     if get_bearer(Authorization) != settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
     admin = await Admin.get(tc2_admin_id=tc2_admin_id)
-    company = await Company.get(tc2_cligency_id=tc2_cligency_id)
+    company = await Company.get(tc2_cligency_id=tc2_cligency_id) # get or create?
     expiry = datetime.now() + timedelta(days=settings.support_ttl_days)
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': int(expiry.timestamp())}
     sig = await sign_args(*kwargs.values())
