@@ -55,6 +55,7 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1
             data['id'] = obj_id
+            debug(data)
             fake_pipedrive.db[obj_type][obj_id] = data
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         else:
@@ -133,7 +134,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -235,7 +236,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 10,
                 '123_hermes_id_456': contact.id,
@@ -367,7 +368,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -436,7 +437,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': 1,
@@ -484,7 +485,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -563,7 +564,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -597,7 +598,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -634,7 +635,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 'name': 'Brian Junes',
                 'owner_id': 99,
-                'primary_email': 'brain@junes.com',
+                'email': [{'value': 'brain@junes.com', 'primary': True}],
                 'phone': None,
                 'org_id': 1,
                 '123_hermes_id_456': contact.id,
@@ -677,7 +678,7 @@ def basic_pd_person_data():
             'owner_id': 10,
             'id': 30,
             'name': 'Brian Blessed',
-            'primary_email': '',
+            'email': [{'value': '', 'primary': True}],
             'phone': [{'value': '0208112555', 'primary': True}],
             'org_id': 20,
         },

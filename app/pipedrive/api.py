@@ -59,6 +59,8 @@ async def create_or_update_person(contact: Contact) -> Person:
     """
     hermes_person = await Person.from_contact(contact)
     hermes_person_data = hermes_person.dict(by_alias=True)
+    debug(hermes_person_data)
+    # hermes_person_data['email'] = [{'value': hermes_person_data['email'], 'primary': True}]
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
         if hermes_person_data != pipedrive_person.dict(by_alias=True):
