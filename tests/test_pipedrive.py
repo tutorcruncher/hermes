@@ -55,7 +55,6 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1
             data['id'] = obj_id
-            debug(data)
             fake_pipedrive.db[obj_type][obj_id] = data
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         else:

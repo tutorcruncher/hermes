@@ -1,5 +1,5 @@
 import json
-from typing import ClassVar, Literal, Optional, Union
+from typing import ClassVar, Literal, Optional, Union, Dict, Any, Set
 
 from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
@@ -173,18 +173,19 @@ class Person(PipedriveBaseModel):
         return obj
 
     def dict(
-            self,
-            *,
-            include: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
-            exclude: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
-            by_alias: bool = False,
-            skip_defaults: Optional[bool] = None,
-            exclude_unset: bool = False,
-            exclude_defaults: bool = False,
-            exclude_none: bool = False,
-    ) -> 'DictStrAny':
+        self,
+        *,
+        include: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
+        exclude: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
+        by_alias: bool = False,
+        skip_defaults: Optional[bool] = None,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+    ) -> Dict[str, Any]:
         """
-        Override this method to remove the `primary_email` field from the dict. This is because have to post email as a list with a dict inside it, with a `primary` key.
+        Override this method to remove the `primary_email` field from the dict. This is because have to post email as
+        a list with a dict inside it, with a `primary` key.
         """
         result = super().dict(
             include=include,
