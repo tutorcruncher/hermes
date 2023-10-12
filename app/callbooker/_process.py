@@ -24,18 +24,29 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
         contact = await Contact.create(company_id=company.id, **contact_data)
     return contact
 
-async def get_or_create_company(tc2_cligency_id) -> Company:
+
+async def get_or_create_company(tc2_cligency_id: int) -> Company:
     """
     Gets or creates a company based on the tc2_cligency_id.
     """
+    debug()
     company = await Company.get(tc2_cligency_id=tc2_cligency_id)
+
+    debug(company)
+
     if not company:
-        tc = TCClient(**await tc2_request(f'clients/{tc2_cligency_id}/'))
-        debug(tc)
+        # If the company does not exist, create it
+        tc_client_data = await tc2_request(f'clients/{tc2_cligency_id}/')
+        debug(tc_client_data)
+
+        # Assuming tc_client_data contains the necessary information to create a Company
+        # And Company.create() is an async function to create and save the company to the database
+        # company = await Company.create(**tc_client_data)
+
         # pass the data through here Create the company
-        # company, deal = await update_from_client_event(event.subject)
-        # if company:
-        #     tasks.add_task(pd_post_process_client_event, company, deal)
+        #     company, deal = await update_from_client_event(event.subject)
+        #     if company:
+        #         tasks.add_task(pd_post_process_client_event, company, deal)
     return company
 
 
