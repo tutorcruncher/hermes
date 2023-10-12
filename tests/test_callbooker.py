@@ -715,18 +715,6 @@ class SupportLinkTestCase(HermesTestCase):
         expected_sig = await sign_args(admin_id, company_id, int(expiry.timestamp()))
         assert sig == expected_sig
 
-    async def test_generate_support_link_company_doesnt_exist(self):
-        admin = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True, tc2_admin_id=20
-        )
-        headers = {'Authorization': f'token {settings.tc2_api_key}'}
-        r = await self.client.get(
-            self.gen_url,
-            params={'tc2_admin_id': admin.tc2_admin_id, 'tc2_cligency_id': 10},
-            headers=headers,
-        )
-        assert r.status_code == 404, r.json()
-
     async def test_generate_support_link_admin_doesnt_exist(self):
         admin = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True, tc2_admin_id=20

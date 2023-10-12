@@ -5,10 +5,9 @@ from tortoise.expressions import Q
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive import tasks
 from app.pipedrive.tasks import pd_post_process_client_event
 from app.tc2._process import update_from_client_event
-from app.tc2._schema import TCClient
+from app.tc2._schema import TCSubject
 from app.tc2.api import tc2_request
 from app.utils import get_config, settings
 
@@ -29,24 +28,25 @@ async def get_or_create_company(tc2_cligency_id: int) -> Company:
     """
     Gets or creates a company based on the tc2_cligency_id.
     """
-    debug()
-    company = await Company.get(tc2_cligency_id=tc2_cligency_id)
+    company = None
 
-    debug(company)
+    try:
+        company = await Company.get(tc2_cligency_id=tc2_cligency_id)
+    except Exception as e:
+        # Log the exception or handle it as appropriate for your application
+        print(f"An error occurred while getting the company: {e}")
 
     if not company:
         # If the company does not exist, create it
         tc_client_data = await tc2_request(f'clients/{tc2_cligency_id}/')
-        debug(tc_client_data)
+        # Format the data to match the TCSubject model
+        tc_client_data['model'] = 'Client'
+        tc_client = TCSubject(**tc_client_data)
 
-        # Assuming tc_client_data contains the necessary information to create a Company
-        # And Company.create() is an async function to create and save the company to the database
-        # company = await Company.create(**tc_client_data)
-
-        # pass the data through here Create the company
-        #     company, deal = await update_from_client_event(event.subject)
-        #     if company:
-        #         tasks.add_task(pd_post_process_client_event, company, deal)
+        # Create the Company the same way we would if it was a webhook
+        company, deal = await update_from_client_event(tc_client)
+        if company:
+            await pd_post_process_client_event(company, deal)
     return company
 
 
