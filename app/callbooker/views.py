@@ -75,6 +75,9 @@ async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
 
 @cb_router.get('/support-link/generate/tc2/')
 async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authorization: Optional[str] = Header(None)):
+    """
+    Endpoint to generate a support link for a company from within TC2
+    """
     if get_bearer(Authorization) != settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
 
