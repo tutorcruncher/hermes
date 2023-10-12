@@ -27,7 +27,6 @@ class _TCSimpleRole(HermesBaseModel):
     id: int = Field(exclude=True)
     first_name: Optional[str] = None
     last_name: str
-    email: Optional[str]
 
 
 class _TCAgency(HermesBaseModel):
@@ -62,8 +61,9 @@ class TCRecipient(_TCSimpleRole):
         return data
 
 
-class _TCUser(HermesBaseModel):
+class TCUser(HermesBaseModel):
     email: str
+    phone: Optional[str] = None
     first_name: Optional[str] = None
     last_name: str
 
@@ -71,7 +71,7 @@ class _TCUser(HermesBaseModel):
 class TCClient(HermesBaseModel):
     id: int = Field(exclude=True)
     meta_agency: _TCAgency = Field(exclude=True)
-    user: _TCUser
+    user: TCUser
     status: str
     sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
