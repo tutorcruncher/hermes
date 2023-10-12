@@ -1,5 +1,5 @@
 import json
-from typing import ClassVar, Literal, Optional
+from typing import ClassVar, Literal, Optional, Union, Dict, Any, Set
 
 from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
@@ -146,7 +146,7 @@ class Organisation(PipedriveBaseModel):
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
-    primary_email: Optional[str] = ''
+    email: Optional[str] = ''
     phone: Optional[str] = ''
     owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
     org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
@@ -164,7 +164,7 @@ class Person(PipedriveBaseModel):
         obj = cls(
             name=contact.name,
             owner_id=company.sales_person_id and (await company.sales_person).pd_owner_id,
-            primary_email=contact.email,
+            email=contact.email,
             phone=contact.phone,
             org_id=company.pd_org_id,
             hermes_id=contact.id,
@@ -172,7 +172,34 @@ class Person(PipedriveBaseModel):
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    @validator('phone', pre=True)
+    def dict(
+        self,
+        *,
+        include: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
+        exclude: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
+        by_alias: bool = False,
+        skip_defaults: Optional[bool] = None,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Override this method to remove the `primary_email` field from the dict. This is because have to post email as
+        a list with a dict inside it, with a `primary` key.
+        """
+        result = super().dict(
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            skip_defaults=skip_defaults,
+            exclude_unset=exclude_unset,
+            exclude_defaults=exclude_defaults,
+            exclude_none=exclude_none,
+        )
+        result['email'] = [{'value': result['email'], 'primary': True}]
+        return result
+
+    @validator('phone', 'email', pre=True)
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
@@ -192,7 +219,7 @@ class Person(PipedriveBaseModel):
             'pd_person_id': self.id,
             'first_name': first_name,
             'last_name': last_name,
-            'email': self.primary_email,
+            'email': self.email,
             'phone': self.phone,
             'company_id': self.company and self.company.id,  # noqa: F821 - Added in a_validate
         }

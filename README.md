@@ -51,9 +51,6 @@ use the given url as the webhook url in pipedrive and tc2
 Install the dependencies with `make install`. 
 You may need to create the database with `make reset-db`.
 
-The first time you run the server, you'll need to create an admin user.
-run `export CREATE_TESTING_ADMIN=True` in terminal.
-
 Then run the server with `python -m uvicorn app.main:app --reload`
 
 You'll be able to view the admin interface at http://localhost:8000/. 

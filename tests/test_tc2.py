@@ -466,6 +466,7 @@ class TC2TasksTestCase(HermesTestCase):
             10: {
                 'user': {
                     'email': 'mary@booth.com',
+                    'phone': None,
                     'first_name': 'Mary',
                     'last_name': 'Booth',
                 },
@@ -477,7 +478,6 @@ class TC2TasksTestCase(HermesTestCase):
                     {
                         'first_name': 'Mary',
                         'last_name': 'Booth',
-                        'email': 'mary@booth.com',
                     },
                 ],
                 'extra_attrs': {

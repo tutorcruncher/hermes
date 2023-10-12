@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from pytz import utc
 
 from app.models import Company, Contact, Deal
-from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
+from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole, TCUser
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 from app.utils import get_config
@@ -26,12 +26,14 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     return created, company
 
 
-async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tuple[bool, Contact]:
+async def _create_or_update_contact(tc2_sr: TCRecipient, tc2_user: TCUser, company: Company) -> tuple[bool, Contact]:
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     contact_data = tc2_sr.contact_dict()
     contact_data['company_id'] = company.id
+    contact_data['email'] = tc2_user.email
+    contact_data['phone'] = tc2_user.phone
     contact_id = contact_data.pop('tc2_sr_id')
     contact, created = await Contact.get_or_create(tc2_sr_id=contact_id, defaults=contact_data)
     if not created:
@@ -94,7 +96,7 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
         company_created, company = await _create_or_update_company(tc2_client)
         contacts_created, contacts_updated = [], []
         for recipient in tc2_client.paid_recipients:
-            contact_created, contact = await _create_or_update_contact(recipient, company=company)
+            contact_created, contact = await _create_or_update_contact(recipient, tc2_client.user, company=company)
             if contact_created:
                 contacts_created.append(contact)
             else:
@@ -109,7 +111,6 @@ async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(
         ):
             # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
             # be created.
-
             deal = await _get_or_create_deal(company, contact)
         app_logger.info(
             f'Company {company} {"created" if company_created else "updated"}:, '
