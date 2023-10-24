@@ -18,8 +18,8 @@ from app.settings import Settings
 from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 _app_settings = Settings()
+redis = aioredis.from_url(_app_settings.redis_dsn)
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
@@ -48,7 +48,6 @@ app.mount('/', admin_app)
 
 @app.on_event('startup')
 async def startup():
-    redis = await aioredis.from_url(_app_settings.redis_dsn)
     from app.models import Admin
 
     await admin_app.configure(

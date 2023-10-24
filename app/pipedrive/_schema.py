@@ -199,14 +199,23 @@ class Person(PipedriveBaseModel):
         result['email'] = [result['email']]
         return result
 
-    @validator('phone', 'email', pre=True)
+    @validator('phone', pre=True)
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
         """
         if isinstance(v, list):
             item = next((i for i in v if i['primary']), v[0])
-            v = item['value']
+            v = item['value'].replace('(' or ')', '')
+        return v
+
+    @validator('email', pre=True)
+    def get_email_attr(cls, v):
+        """
+        When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
+        """
+        if len(v) and not isinstance(v, str):
+            return v[0]
         return v
 
     async def contact_dict(self) -> dict:
