@@ -196,7 +196,7 @@ class Person(PipedriveBaseModel):
             exclude_defaults=exclude_defaults,
             exclude_none=exclude_none,
         )
-        result['email'] = [{'value': result['email']}]
+        result['email'] = [result['email']]
         return result
 
     @validator('phone', 'email', pre=True)

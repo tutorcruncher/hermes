@@ -35,7 +35,9 @@ async def _process_pd_organisation(
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        company = await Company.create(**await current_pd_org.company_dict())
+        company_dict = await current_pd_org.company_dict()
+        app_logger.info(f'Company dict: {company_dict}')
+        company = await Company.create(**company_dict)
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
     return company
