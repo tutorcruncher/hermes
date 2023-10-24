@@ -1,5 +1,6 @@
 import logging.config
 import os
+from urllib.parse import urlparse
 
 import aioredis
 import sentry_sdk
@@ -19,7 +20,9 @@ from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
-redis = aioredis.from_url(_app_settings.redis_dsn)
+
+url = urlparse(os.environ.get("REDIS_URL"))
+r = aioredis.Redis(host=url.hostname, port=url.port, password=url.password, ssl=True, ssl_cert_reqs='none')
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
