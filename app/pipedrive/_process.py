@@ -56,7 +56,9 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     o_contact = old_pd_person.contact if old_pd_person else None
     contact = c_contact or o_contact
     if contact:
+        app_logger.info(f'Processing PD Person for contact: {contact}')
         if current_pd_person:
+            app_logger.info('Updating contact from PD Person')
             # The person has been updated
             old_data = old_pd_person and await old_pd_person.contact_dict()
             new_data = await current_pd_person.contact_dict()
@@ -65,10 +67,12 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
                 await contact.save()
                 app_logger.info('Callback: updating Contact %s from Person %s', contact.id, current_pd_person.id)
         else:
+            app_logger.info('Deleting contact from PD Person')
             # The person has been deleted
             await contact.delete()
             app_logger.info('Callback: deleting Contact %s from Person %s', contact.id, old_pd_person.id)
     elif current_pd_person:
+        app_logger.info('Creating contact from PD Person')
         # The person has just been created
         contact_data = await current_pd_person.contact_dict()
         if contact_data['company_id']:

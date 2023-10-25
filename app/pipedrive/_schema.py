@@ -205,9 +205,11 @@ class Person(PipedriveBaseModel):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
         """
+        app_logger.info('Primary Attr: %r', v)
         if isinstance(v, list):
             item = next((i for i in v if i['primary']), v[0])
             v = item['value'].replace('(' or ')', '')
+        app_logger.info('Primary Attr: %r', v)
         return v
 
     @validator('email', pre=True)
@@ -223,6 +225,7 @@ class Person(PipedriveBaseModel):
                 v = item['value'].replace('(' or ')', '')
             else:
                 v = v[0]
+        app_logger.info('Email is now: %r', v)
         return v
 
     async def contact_dict(self) -> dict:
