@@ -7,6 +7,7 @@ from pydantic.main import BaseModel, validate_model
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
+from app.pipedrive._utils import app_logger
 from app.utils import get_redis_client
 
 
@@ -214,6 +215,7 @@ class Person(PipedriveBaseModel):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
         """
+        app_logger.debug('Email: %r', v)
         if len(v) and not isinstance(v, str):
             email_data = v[0]
             if isinstance(email_data, dict):
