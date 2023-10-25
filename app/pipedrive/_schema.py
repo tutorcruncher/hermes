@@ -215,7 +215,7 @@ class Person(PipedriveBaseModel):
         """
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
         """
-        app_logger.debug('Email: %r', v)
+        app_logger.info('Email: %r', v)
         if len(v) and not isinstance(v, str):
             email_data = v[0]
             if isinstance(email_data, dict):
