@@ -215,7 +215,12 @@ class Person(PipedriveBaseModel):
         When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
         """
         if len(v) and not isinstance(v, str):
-            return v[0]
+            email_data = v[0]
+            if isinstance(email_data, dict):
+                item = next((i for i in v if i['primary']), v[0])
+                v = item['value'].replace('(' or ')', '')
+            else:
+                v = v[0]
         return v
 
     async def contact_dict(self) -> dict:
