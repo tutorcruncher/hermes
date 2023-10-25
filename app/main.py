@@ -21,8 +21,11 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
 
-url = urlparse(_app_settings.redis_dsn)
-redis = aioredis.Redis(host=url.hostname, port=url.port, password=url.password, ssl=True, ssl_cert_reqs='none')
+if _app_settings.testing:
+    redis = aioredis.from_url(_app_settings.redis_dsn)
+else:
+    url = urlparse(_app_settings.redis_dsn)
+    redis = aioredis.Redis(host=url.hostname, port=url.port, password=url.password, ssl=True, ssl_cert_reqs='none')
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)

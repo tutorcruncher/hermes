@@ -167,7 +167,7 @@ class Company(models.Model):
 
     tc2_agency_id = fields.IntField(unique=True, null=True)
     tc2_cligency_id = fields.IntField(unique=True, null=True)
-    tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF)
+    tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF, null=True)
 
     pd_org_id = fields.IntField(unique=True, null=True)
 

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Dev and Test settings
-    testing: bool = False
+    testing: bool = True
     dev_mode: bool = False
     log_level: str = 'INFO'
 
