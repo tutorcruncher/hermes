@@ -10,7 +10,7 @@ httpx==0.24.1
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
-google-api-core==2.11.1
+google-api-core==2.12.0
 google-api-python-client==2.95.0
 google-auth==2.22.0
 google-auth-httplib2==0.1.0
