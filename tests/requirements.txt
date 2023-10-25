@@ -4,4 +4,4 @@ ruff==0.0.278
 pytest==7.4.0
 pytest-aiohttp==1.0.4
 pytest-cov==4.1.0
-coverage==7.2.7
+coverage==7.3.2
