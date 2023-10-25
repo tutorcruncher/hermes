@@ -21,7 +21,9 @@ async def _process_pd_organisation(
     o_company = old_pd_org.company if old_pd_org else None
     company = c_company or o_company
     if company:
+        app_logger.info(f'Processing PD Org for company: {company}')
         if current_pd_org:
+            app_logger.info('Updating company from PD Org')
             # The org has been updated
             old_data = old_pd_org and await old_pd_org.company_dict()
             new_data = await current_pd_org.company_dict()
@@ -30,6 +32,7 @@ async def _process_pd_organisation(
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
         else:
+            app_logger.info('Deleting company from PD Org')
             # The org has been deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
@@ -75,6 +78,7 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
         app_logger.info('Creating contact from PD Person')
         # The person has just been created
         contact_data = await current_pd_person.contact_dict()
+        app_logger.info(f'Contact dict: {contact_data}')
         if contact_data['company_id']:
             contact = await Contact.create(**contact_data)
             app_logger.info('Callback: creating Contact %s from Person %s', contact.id, current_pd_person.id)
@@ -97,7 +101,9 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     o_deal = old_pd_deal.deal if old_pd_deal else None
     deal = c_deal or o_deal
     if deal:
+        app_logger.info(f'Processing PD Deal for deal: {deal}')
         if current_pd_deal:
+            app_logger.info('Updating deal from PD Deal')
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
@@ -107,12 +113,14 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 await deal.save()
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
         else:
+            app_logger.info('Deleting deal from PD Deal')
             # The deal has been deleted
             await deal.delete()
             app_logger.info('Callback: deleting Deal %s from PDDeal %s', deal.id, old_pd_deal.id)
     elif current_pd_deal:
         # The deal has just been created
         deal = await Deal.create(**await current_pd_deal.deal_dict())
+        app_logger.info(f'Contact dict: {deal}')
         app_logger.info('Callback: creating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
     return deal
 
