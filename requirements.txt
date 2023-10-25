@@ -1,5 +1,5 @@
 tortoise-orm[asyncpg]==0.19.3
-fastapi==0.100.1
+fastapi==0.104.0
 pydantic==1.10.10
 uvicorn==0.23.1
 requests==2.31.0
