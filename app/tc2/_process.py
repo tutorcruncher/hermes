@@ -126,5 +126,7 @@ async def update_from_invoice_event(tc2_subject: TCSubject):
     As above, but we also check when an invoice changes in some way (as we have the paid_invoice_count on a Company).
     """
     tc2_invoice = TCInvoice(**tc2_subject.dict())
-    tc2_client_subject = TCSubject(**await tc2_request(f'clients/{tc2_invoice.client.id}'))
+    tc2_client_data = await tc2_request(f'clients/{tc2_invoice.client.id}')
+    tc2_client_data['model'] = 'Client'
+    tc2_client_subject = TCSubject(**tc2_client_data)
     return await update_from_client_event(tc2_client_subject)

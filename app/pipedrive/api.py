@@ -65,8 +65,10 @@ async def create_or_update_person(contact: Contact) -> Person:
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
-        created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
-        pipedrive_person = Person(**created_person)
+        created_person = await pipedrive_request('persons', method='POST', data=hermes_person_data)
+        app_logger.info('Created person %s', created_person)
+        created_person_data = created_person['data']
+        pipedrive_person = Person(**created_person_data)
         contact.pd_person_id = pipedrive_person.id
         await contact.save()
         app_logger.info('Created person %s from contact %s', contact.pd_person_id, contact.id)
