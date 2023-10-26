@@ -23,7 +23,7 @@ async def _process_pd_organisation(
     if company:
         app_logger.info(f'Processing PD Org for company: {company}')
         if current_pd_org:
-            app_logger.info(f'Updating company from PD Org')
+            app_logger.info('Updating company from PD Org')
             # The org has been updated
             old_data = old_pd_org and await old_pd_org.company_dict()
             new_data = await current_pd_org.company_dict()
@@ -32,7 +32,7 @@ async def _process_pd_organisation(
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
         else:
-            app_logger.info(f'Deleting company from PD Org')
+            app_logger.info('Deleting company from PD Org')
             # The org has been deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
@@ -103,7 +103,7 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if deal:
         app_logger.info(f'Processing PD Deal for deal: {deal}')
         if current_pd_deal:
-            app_logger.info(f'Updating deal from PD Deal')
+            app_logger.info('Updating deal from PD Deal')
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
@@ -113,7 +113,7 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 await deal.save()
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
         else:
-            app_logger.info(f'Deleting deal from PD Deal')
+            app_logger.info('Deleting deal from PD Deal')
             # The deal has been deleted
             await deal.delete()
             app_logger.info('Callback: deleting Deal %s from PDDeal %s', deal.id, old_pd_deal.id)
