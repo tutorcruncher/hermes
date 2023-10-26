@@ -9,7 +9,10 @@ async def update_client_from_company(company: Company):
     """
     if cligency_id := company.tc2_cligency_id:
         client_data = TCClient(**await tc2_request(f'clients/{cligency_id}/')).dict()
-        extra_attrs = {f['machine_name']: f['value'] for f in client_data['extra_attrs']}
+        extra_attrs = {
+            f['machine_name']: f['value'].lower() if not f['value'].startswith('---') else ''
+            for f in client_data['extra_attrs']
+        }
         extra_attrs.update(pipedrive_url=company.pd_org_url, pipedrive_id=company.pd_org_id)
         deal = await Deal.filter(company=company, status=Deal.STATUS_OPEN).first()
         if deal:
