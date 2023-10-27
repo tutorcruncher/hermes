@@ -52,7 +52,7 @@ def _client_data():
         'extra_attrs': [
             {'machine_name': 'pipedrive_url', 'value': 'https://example.pipedrive.com/organization/10'},
             {'machine_name': 'how_did_you_hear_about_us_1', 'value': '----'},
-            {'machine_name': 'who_are_you_trying_to_reach', 'value': 'Support'},
+            {'machine_name': 'who_are_you_trying_to_reach', 'value': ' Support'},
         ],
         'user': {
             'email': 'mary@booth.com',
