@@ -7,10 +7,10 @@ THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
+    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL')
 
     # Redis
-    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDIS_URL', alias='redis_url')
+    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDISCLOUD_URL')
 
     # Sentry
     sentry_dsn: Optional[str] = None
