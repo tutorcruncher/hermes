@@ -17,13 +17,11 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
-    c_company = current_pd_org.company if current_pd_org else None
-    o_company = old_pd_org.company if old_pd_org else None
-    company = c_company or o_company
+    current_company = current_pd_org.company if current_pd_org else None
+    old_company = old_pd_org.company if old_pd_org else None
+    company = current_company or old_company
     if company:
-        app_logger.info(f'Processing PD Org for company: {company}')
         if current_pd_org:
-            app_logger.info('Updating company from PD Org')
             # The org has been updated
             old_data = old_pd_org and await old_pd_org.company_dict()
             new_data = await current_pd_org.company_dict()
@@ -32,15 +30,12 @@ async def _process_pd_organisation(
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
         else:
-            app_logger.info('Deleting company from PD Org')
             # The org has been deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        company_dict = await current_pd_org.company_dict()
-        app_logger.info(f'Company dict: {company_dict}')
-        company = await Company.create(**company_dict)
+        company = await Company.create(**await current_pd_org.company_dict())
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
     return company
@@ -55,13 +50,11 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     don't care enough since Companies are really the only important part.
     """
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
-    c_contact = current_pd_person.contact if current_pd_person else None
-    o_contact = old_pd_person.contact if old_pd_person else None
-    contact = c_contact or o_contact
+    current_contact = current_pd_person.contact if current_pd_person else None
+    old_contact = old_pd_person.contact if old_pd_person else None
+    contact = current_contact or old_contact
     if contact:
-        app_logger.info(f'Processing PD Person for contact: {contact}')
         if current_pd_person:
-            app_logger.info('Updating contact from PD Person')
             # The person has been updated
             old_data = old_pd_person and await old_pd_person.contact_dict()
             new_data = await current_pd_person.contact_dict()
@@ -70,15 +63,12 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
                 await contact.save()
                 app_logger.info('Callback: updating Contact %s from Person %s', contact.id, current_pd_person.id)
         else:
-            app_logger.info('Deleting contact from PD Person')
             # The person has been deleted
             await contact.delete()
             app_logger.info('Callback: deleting Contact %s from Person %s', contact.id, old_pd_person.id)
     elif current_pd_person:
-        app_logger.info('Creating contact from PD Person')
         # The person has just been created
         contact_data = await current_pd_person.contact_dict()
-        app_logger.info(f'Contact dict: {contact_data}')
         if contact_data['company_id']:
             contact = await Contact.create(**contact_data)
             app_logger.info('Callback: creating Contact %s from Person %s', contact.id, current_pd_person.id)
@@ -97,13 +87,11 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if it's been removed.
     """
     # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
-    c_deal = current_pd_deal.deal if current_pd_deal else None
-    o_deal = old_pd_deal.deal if old_pd_deal else None
-    deal = c_deal or o_deal
+    current_deal = current_pd_deal.deal if current_pd_deal else None
+    old_deal = old_pd_deal.deal if old_pd_deal else None
+    deal = current_deal or old_deal
     if deal:
-        app_logger.info(f'Processing PD Deal for deal: {deal}')
         if current_pd_deal:
-            app_logger.info('Updating deal from PD Deal')
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
@@ -113,14 +101,12 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 await deal.save()
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
         else:
-            app_logger.info('Deleting deal from PD Deal')
             # The deal has been deleted
             await deal.delete()
             app_logger.info('Callback: deleting Deal %s from PDDeal %s', deal.id, old_pd_deal.id)
     elif current_pd_deal:
         # The deal has just been created
         deal = await Deal.create(**await current_pd_deal.deal_dict())
-        app_logger.info(f'Contact dict: {deal}')
         app_logger.info('Callback: creating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
     return deal
 

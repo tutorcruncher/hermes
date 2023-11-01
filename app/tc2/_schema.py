@@ -55,6 +55,8 @@ class _TCAgency(HermesBaseModel):
 
 
 class TCRecipient(_TCSimpleRole):
+    email: Optional[str] = None
+
     def contact_dict(self, *args, **kwargs):
         data = super().dict(*args, **kwargs)
         data['tc2_sr_id'] = self.id
@@ -68,6 +70,15 @@ class TCUser(HermesBaseModel):
     last_name: str
 
 
+class TCClientExtraAttr(HermesBaseModel):
+    machine_name: str
+    value: str
+
+    @validator('value')
+    def validate_value(cls, v):
+        return v.lower().strip().strip('-')
+
+
 class TCClient(HermesBaseModel):
     id: int = Field(exclude=True)
     meta_agency: _TCAgency = Field(exclude=True)
@@ -77,7 +88,11 @@ class TCClient(HermesBaseModel):
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
-    extra_attrs: list[dict] = Field(default_factory=list)
+    extra_attrs: Optional[list[TCClientExtraAttr]]
+
+    @validator('extra_attrs')
+    def remove_null_attrs(cls, v: list[TCClientExtraAttr]):
+        return [attr for attr in v if attr.value]
 
     @root_validator(pre=True)
     def parse_admins(cls, values):

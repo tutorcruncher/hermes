@@ -478,12 +478,12 @@ class TC2TasksTestCase(HermesTestCase):
                 'bdr_person_id': None,
                 'paid_recipients': [
                     {
+                        'email': 'mary@booth.com',
                         'first_name': 'Mary',
                         'last_name': 'Booth',
                     },
                 ],
                 'extra_attrs': {
-                    'how_did_you_hear_about_us_1': '',
                     'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
                     'pipedrive_id': 20,
                     'pipedrive_deal_stage': 'New',

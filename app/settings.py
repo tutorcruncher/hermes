@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive
-    pd_api_key: str = '45fc768ccd3e73fbe1925e7849b7471bf64a54ac'
-    pd_base_url: str = 'https://seb-sandbox2.pipedrive.com'
+    pd_api_key: str = 'test-key'
+    pd_base_url: str = 'https://tutorcruncher-sandbox.pipedrive.com'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'

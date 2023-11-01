@@ -1,5 +1,6 @@
 import json
-from typing import ClassVar, Literal, Optional, Union, Dict, Any, Set
+import re
+from typing import ClassVar, Literal, Optional, Any
 
 from pydantic import Field, root_validator, validator
 from pydantic.fields import ModelField
@@ -7,7 +8,6 @@ from pydantic.main import BaseModel, validate_model
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive._utils import app_logger
 from app.utils import get_redis_client
 
 
@@ -144,6 +144,10 @@ class Organisation(PipedriveBaseModel):
         }
 
 
+# Used to get only alphanumeric characters & whitespace for client entering phone numbers
+PHONE_RE = re.compile(r'[^A-Za-z0-9\s]')
+
+
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
@@ -173,59 +177,34 @@ class Person(PipedriveBaseModel):
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    def dict(
-        self,
-        *,
-        include: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
-        exclude: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
-        by_alias: bool = False,
-        skip_defaults: Optional[bool] = None,
-        exclude_unset: bool = False,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
-    ) -> Dict[str, Any]:
+    def dict(self, **kwargs) -> dict[str, Any]:
         """
-        Override this method to remove the `primary_email` field from the dict. This is because have to post email as
-        a list with a dict inside it, with a `primary` key.
+        This is really annoying; it seems the only way to post `email` is as a list of strs.
         """
-        result = super().dict(
-            include=include,
-            exclude=exclude,
-            by_alias=by_alias,
-            skip_defaults=skip_defaults,
-            exclude_unset=exclude_unset,
-            exclude_defaults=exclude_defaults,
-            exclude_none=exclude_none,
-        )
-        result['email'] = [result['email']]
-        return result
+        data = super().dict(**kwargs)
+        data['email'] = [data['email']]
+        return data
 
-    @validator('phone', pre=True)
+    @validator('phone', 'email', pre=True)
     def get_primary_attr(cls, v):
         """
-        When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
+        When coming in from a webhook, email is a list of dicts where one is the 'primary'.
+        Apparently data can apparently come in 3 formats:
+        'email': [{'label': 'work', 'value': '1234567890', 'primary': True}]
+        'email': '1234567890'
+        'email': ['1234567890']
+        TODO: Check that this is True
         """
-        app_logger.info('Primary Attr: %r', v)
+        if not v:
+            return
         if isinstance(v, list):
-            item = next((i for i in v if i['primary']), v[0])
-            v = item['value'].replace('(' or ')', '')
-        app_logger.info('Primary Attr: %r', v)
-        return v
-
-    @validator('email', pre=True)
-    def get_email_attr(cls, v):
-        """
-        When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
-        """
-        app_logger.info('Email: %r', v)
-        if len(v) and not isinstance(v, str):
-            email_data = v[0]
-            if isinstance(email_data, dict):
+            if isinstance(v[0], dict):
                 item = next((i for i in v if i['primary']), v[0])
-                v = item['value'].replace('(' or ')', '')
-            else:
+                v = item['value']
+            elif isinstance(v[0], str):
                 v = v[0]
-        app_logger.info('Email is now: %r', v)
+        else:
+            assert isinstance(v, str)
         return v
 
     async def contact_dict(self) -> dict:

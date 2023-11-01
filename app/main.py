@@ -1,8 +1,5 @@
 import logging.config
 import os
-from urllib.parse import urlparse
-
-import aioredis
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
@@ -21,18 +18,12 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
 
-if _app_settings.testing:
-    redis = aioredis.from_url(_app_settings.redis_dsn)
-else:
-    url = urlparse(_app_settings.redis_dsn)
-    redis = aioredis.Redis(host=url.hostname, port=url.port, password=url.password, ssl=True, ssl_cert_reqs='none')
-
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
 
 
 app = FastAPI()
-allowed_origins = ['https://tutorcruncher.com/', 'https://tutorcruncher.com']
+allowed_origins = ['https://tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
@@ -55,12 +46,13 @@ app.mount('/', admin_app)
 @app.on_event('startup')
 async def startup():
     from app.models import Admin
+    from app.utils import get_redis_client
 
     await admin_app.configure(
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
         providers=[AuthProvider(Admin)],
         language_switch=False,
-        redis=redis,
+        redis=get_redis_client(),
         admin_path='',
     )
     from app.utils import get_config

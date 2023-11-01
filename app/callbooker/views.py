@@ -14,11 +14,11 @@ from app.callbooker._process import (
     get_or_create_contact,
     get_or_create_contact_company,
     get_or_create_deal,
-    get_or_create_company,
 )
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Admin, Company
 from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
+from app.tc2.api import get_or_create_company
 from app.utils import get_bearer, settings, sign_args
 
 cb_router = APIRouter()
