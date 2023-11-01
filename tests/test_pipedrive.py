@@ -737,7 +737,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         self.url = '/pipedrive/callback/'
         await (await get_redis_client()).delete('organizationFields-custom-fields')
 
-    async def test_org_create(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         r = await self.client.post(self.url, json=basic_pd_org_data())
         assert r.status_code == 200, r.json()
@@ -745,7 +747,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.name == 'Test company'
         assert company.sales_person_id == self.admin.id
 
-    async def test_org_create_owner_doesnt_exist(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_owner_doesnt_exist(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_org_data())
         data['current']['owner_id'] = 999
         r = await self.client.post(self.url, json=data)
@@ -754,7 +758,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
             'detail': [{'loc': ['owner_id'], 'msg': 'Admin with pd_owner_id 999 does not exist', 'type': 'value_error'}]
         }
 
-    async def test_org_delete(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_delete(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
@@ -764,7 +770,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
 
-    async def test_org_update(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
@@ -787,7 +795,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.get()
         assert company.name == 'Old test company'
 
-    async def test_org_update_doesnt_exist(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_doesnt_exist(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='New test company')
@@ -796,7 +806,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.get()
         assert company.name == 'New test company'
 
-    async def test_person_create(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_create(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert not await Contact.exists()
         r = await self.client.post(self.url, json=basic_pd_person_data())
@@ -807,14 +819,18 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await contact.company == company
         assert contact.phone == '0208112555'
 
-    async def test_person_create_company_doesnt_exist(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_create_company_doesnt_exist(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_person_data())
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Contact.exists()
         assert not await Company.exists()
 
-    async def test_person_delete(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_delete(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='Brian', last_name='Blessed', company=company)
         assert await Contact.exists()
@@ -825,7 +841,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         assert not await Contact.exists()
 
-    async def test_person_update(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
@@ -837,7 +855,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         contact = await Contact.get()
         assert contact.name == 'Jessica Jones'
 
-    async def test_person_update_no_changes(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_no_changes(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
@@ -848,7 +868,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         contact = await Contact.get()
         assert contact.name == 'John Smith'
 
-    async def test_person_update_doesnt_exist(self):
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_doesnt_exist(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
         await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])

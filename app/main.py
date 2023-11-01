@@ -52,7 +52,7 @@ async def startup():
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
         providers=[AuthProvider(Admin)],
         language_switch=False,
-        redis=get_redis_client(),
+        redis=await get_redis_client(),
         admin_path='',
     )
     from app.utils import get_config

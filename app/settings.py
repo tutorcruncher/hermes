@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseSettings, Extra, Field, PostgresDsn, RedisDsn
 
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDIS_URL', alias='redis_url')
 
     # Sentry
-    sentry_dsn: str = ''
+    sentry_dsn: Optional[str] = None
 
     dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
