@@ -5,7 +5,7 @@ uvicorn==0.23.2
 requests==2.31.0
 aioredis==2.0.1
 fastapi-admin==1.0.4
-sentry-sdk[fastapi]==1.32.0
+sentry-sdk[fastapi]==1.33.1
 httpx==0.25.0
 
 # Look at all the Google libraries we need to install.
