@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Sentry
     sentry_dsn: Optional[str] = None
 
-    dft_timezone = 'Europe/London'
+    dft_timezone: str = 'Europe/London'
     signing_key: str = 'test-key'
     host: str = '0.0.0.0'
     port: int = 8000

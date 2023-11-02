@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import field_validator, model_validator, ConfigDict, Field
 
-from app.base_schema import HermesBaseModel, fk_field
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company
 
 
@@ -58,7 +58,7 @@ class TCRecipient(_TCSimpleRole):
     email: Optional[str] = None
 
     def contact_dict(self, *args, **kwargs):
-        data = super().dict(*args, **kwargs)
+        data = super().model_dump(*args, **kwargs)
         data['tc2_sr_id'] = self.id
         return data
 
@@ -85,30 +85,42 @@ class TCClient(HermesBaseModel):
     meta_agency: _TCAgency = Field(exclude=True)
     user: TCUser
     status: str
-    sales_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='sales_person')] = None
-    associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
-    bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
+
+    sales_person_id: Optional[int] = ForeignKeyField(
+        None, model=Admin, fk_field_name='tc2_admin_id', serialization_alias='sales_person'
+    )
+    associated_admin_id: Optional[int] = ForeignKeyField(
+        None, model=Admin, fk_field_name='tc2_admin_id', serialization_alias='support_person'
+    )
+    bdr_person_id: Optional[int] = ForeignKeyField(
+        None, model=Admin, fk_field_name='tc2_admin_id', serialization_alias='bdr_person'
+    )
+
+    # sales_person_id: Optional[int] = Field(None, serialization_alias='sales_person')
+    # associated_admin_id: Optional[int] = Field(None, serialization_alias='support_person')
+    # bdr_person_id: Optional[int] = Field(None, serialization_alias='bdr_person')
+
     paid_recipients: list[TCRecipient]
     extra_attrs: Optional[list[TCClientExtraAttr]] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def parse_admins(cls, data):
+        """
+        Since we don't care about the other details on the admin, we can just get the nested IDs and set attributes.
+        """
+        if associated_admin := data.pop('associated_admin', None):
+            data['associated_admin_id'] = associated_admin['id']
+        if bdr_person := data.pop('bdr_person', None):
+            data['bdr_person_id'] = bdr_person['id']
+        if sales_person := data.pop('sales_person', None):
+            data['sales_person_id'] = sales_person['id']
+        return data
 
     @field_validator('extra_attrs')
     @classmethod
     def remove_null_attrs(cls, v: list[TCClientExtraAttr]):
         return [attr for attr in v if attr.value]
-
-    @model_validator(mode='before')
-    @classmethod
-    def parse_admins(cls, values):
-        """
-        Since we don't care about the other details on the admin, we can just get the nested IDs and set attributes.
-        """
-        if associated_admin := values.pop('associated_admin', None):
-            values['associated_admin_id'] = associated_admin['id']
-        if bdr_person := values.pop('bdr_person', None):
-            values['bdr_person_id'] = bdr_person['id']
-        if sales_person := values.pop('sales_person', None):
-            values['sales_person_id'] = sales_person['id']
-        return values
 
     def company_dict(self):
         return dict(

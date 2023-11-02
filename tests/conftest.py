@@ -21,5 +21,5 @@ def fix_settings():
 @pytest.fixture(scope='module', autouse=True)
 def initialize_tests(request, settings):
     # Autouse means this is always called. Used to initialise tortoise.
-    initializer(['app.models'], db_url=settings.pg_dsn)
+    initializer(['app.models'], db_url=str(settings.pg_dsn))
     request.addfinalizer(finalizer)

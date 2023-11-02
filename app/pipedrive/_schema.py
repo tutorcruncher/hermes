@@ -3,10 +3,11 @@ import re
 from typing import ClassVar, Literal, Optional, Any
 
 from pydantic import field_validator, model_validator, ConfigDict, Field
-from pydantic.main import BaseModel, validate_model
+from pydantic.main import BaseModel
+from pydantic.v1 import validate_model
 from pydantic_core.core_schema import ModelField
 
-from app.base_schema import HermesBaseModel, fk_field
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
 from app.utils import get_redis_client
 
@@ -48,7 +49,7 @@ class PipedriveBaseModel(HermesBaseModel):
     @classmethod
     async def _custom_fields(cls) -> dict[str, ModelField]:
         """Get all fields that have the 'custom' attribute"""
-        return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
+        return {n: f for n, f in cls.model_fields.items() if f.metadata.get('custom')}
 
     @classmethod
     async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
@@ -76,7 +77,7 @@ class PipedriveBaseModel(HermesBaseModel):
         # TODO: Move to post_model_init in v2
         custom_field_lu = await cls._get_pd_custom_fields()
         for field_name, pd_field in custom_field_lu.items():
-            field = cls.__fields__[field_name]
+            field = cls.model_fields[field_name]
             field.alias = pd_field.key
 
         # Since we've set the field aliases, we can just re-validate the model to add the values
@@ -97,7 +98,7 @@ class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     address_country: Optional[str] = None
-    owner_id: fk_field(Admin, 'pd_owner_id')
+    owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
 
     # These are all custom fields
     website: Optional[str] = Field('', custom=True)
@@ -106,7 +107,7 @@ class Organisation(PipedriveBaseModel):
     has_signed_up: Optional[bool] = Field(False, custom=True)
     tc2_status: Optional[str] = Field('', custom=True)
     tc2_cligency_url: Optional[str] = Field('', custom=True)
-    hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
+    hermes_id: Optional[int] = ForeignKeyField(model=Company)
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
@@ -152,11 +153,11 @@ class Person(PipedriveBaseModel):
     name: str
     email: Optional[str] = ''
     phone: Optional[str] = ''
-    owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
-    org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
+    owner_id: Optional[int] = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    org_id: Optional[int] = ForeignKeyField(model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
 
     # These are all custom fields
-    hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
+    hermes_id: Optional[int] = ForeignKeyField(model=Contact)
 
     _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'personFields'
@@ -180,7 +181,7 @@ class Person(PipedriveBaseModel):
         """
         This is really annoying; it seems the only way to post `email` is as a list of strs.
         """
-        data = super().dict(**kwargs)
+        data = super().model_dump(**kwargs)
         data['email'] = [data['email']]
         return data
 
@@ -256,15 +257,15 @@ class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     title: str
     org_id: int
-    person_id: Optional[fk_field(Contact, 'pd_person_id', null_if_invalid=True)] = None
-    org_id: fk_field(Company, 'pd_org_id')
-    user_id: fk_field(Admin, 'pd_owner_id')
-    pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
-    stage_id: fk_field(Stage, 'pd_stage_id')
+    person_id: Optional[int] = ForeignKeyField(None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True)
+    org_id: int = ForeignKeyField(model=Company, fk_field_name='pd_org_id')
+    user_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    pipeline_id: int = ForeignKeyField(model=Pipeline, fk_field_name='pd_pipeline_id')
+    stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
     status: str
 
     # These are all custom fields
-    hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
+    hermes_id: Optional[int] = ForeignKeyField(None, model=Deal, null_if_invalid=True)
 
     _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'dealFields'
