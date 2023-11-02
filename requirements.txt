@@ -1,17 +1,18 @@
-tortoise-orm[asyncpg]==0.19.3
-fastapi==0.104.0
-pydantic==1.10.10
+tortoise-orm[asyncpg]==0.20.0
+fastapi==0.104.1
+pydantic==2.4.2
+pydantic-settings==2.0.3
 uvicorn==0.23.2
 requests==2.31.0
 aioredis==2.0.1
 fastapi-admin==1.0.4
-sentry-sdk[fastapi]==1.32.0
+sentry-sdk[fastapi]==1.33.1
 httpx==0.25.0
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
 google-api-core==2.12.0
-google-api-python-client==2.105.0
-google-auth==2.23.3
+google-api-python-client==2.106.0
+google-auth==2.23.4
 google-auth-httplib2==0.1.1
 googleapis-common-protos==1.61.0

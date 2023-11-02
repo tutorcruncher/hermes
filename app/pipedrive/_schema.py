@@ -2,9 +2,9 @@ import json
 import re
 from typing import ClassVar, Literal, Optional, Any
 
-from pydantic import Field, root_validator, validator
-from pydantic.fields import ModelField
+from pydantic import field_validator, model_validator, ConfigDict, Field
 from pydantic.main import BaseModel, validate_model
+from pydantic_core.core_schema import ModelField
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
@@ -90,8 +90,7 @@ class PipedriveBaseModel(HermesBaseModel):
             await self.__class__.set_custom_field_vals(self)
         await super().a_validate()
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Organisation(PipedriveBaseModel):
@@ -109,7 +108,7 @@ class Organisation(PipedriveBaseModel):
     tc2_cligency_url: Optional[str] = Field('', custom=True)
     hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
 
-    _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
 
@@ -159,7 +158,7 @@ class Person(PipedriveBaseModel):
     # These are all custom fields
     hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
 
-    _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'personFields'
     obj_type: Literal['person'] = Field('person', exclude=True)
 
@@ -185,7 +184,8 @@ class Person(PipedriveBaseModel):
         data['email'] = [data['email']]
         return data
 
-    @validator('phone', 'email', pre=True)
+    @classmethod
+    @field_validator('phone', 'email', mode='before')
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, email is a list of dicts where one is the 'primary'.
@@ -266,7 +266,7 @@ class PDDeal(PipedriveBaseModel):
     # These are all custom fields
     hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
 
-    _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'dealFields'
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
@@ -335,7 +335,8 @@ class PipedriveEvent(HermesBaseModel):
     current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
     previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
 
-    @root_validator(pre=True)
+    @classmethod
+    @model_validator(mode='before')
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
         for f in ['current', 'previous']:

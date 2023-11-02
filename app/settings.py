@@ -1,16 +1,17 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings, Extra, Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic_settings import SettingsConfigDict, BaseSettings
 
 THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL')
+    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL')
 
     # Redis
-    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDISCLOUD_URL')
+    redis_dsn: RedisDsn = Field('redis://localhost:6379', validation_alias='REDISCLOUD_URL')
 
     # Sentry
     sentry_dsn: Optional[str] = None
@@ -72,6 +73,4 @@ class Settings(BaseSettings):
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
 
-    class Config:
-        env_file = '.env'
-        extra = Extra.allow
+    model_config = SettingsConfigDict(env_file='.env', extra='allow')

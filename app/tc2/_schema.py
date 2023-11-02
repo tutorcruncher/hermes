@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import Field, root_validator, validator
+from pydantic import field_validator, model_validator, ConfigDict, Field
 
 from app.base_schema import HermesBaseModel, fk_field
 from app.models import Admin, Company
@@ -14,9 +14,7 @@ class TCSubject(HermesBaseModel):
 
     model: str
     id: int
-
-    class Config:
-        extra = 'allow'
+    model_config = ConfigDict(extra='allow')
 
 
 class _TCSimpleRole(HermesBaseModel):
@@ -39,7 +37,8 @@ class _TCAgency(HermesBaseModel):
     created: datetime = Field(exclude=True)
     price_plan: str
 
-    @validator('price_plan')
+    @field_validator('price_plan')
+    @classmethod
     def _price_plan(cls, v):
         # Extract the part after the hyphen
         plan = v.split('-')[-1]
@@ -49,7 +48,8 @@ class _TCAgency(HermesBaseModel):
             raise ValueError(f'Invalid price plan {v}')
         return plan
 
-    @validator('country')
+    @field_validator('country')
+    @classmethod
     def country_to_code(cls, v):
         return v.split(' ')[-1].strip('()')
 
@@ -74,7 +74,8 @@ class TCClientExtraAttr(HermesBaseModel):
     machine_name: str
     value: str
 
-    @validator('value')
+    @field_validator('value')
+    @classmethod
     def validate_value(cls, v):
         return v.lower().strip().strip('-')
 
@@ -88,13 +89,15 @@ class TCClient(HermesBaseModel):
     associated_admin_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='support_person')] = None
     bdr_person_id: Optional[fk_field(Admin, 'tc2_admin_id', alias='bdr_person')] = None
     paid_recipients: list[TCRecipient]
-    extra_attrs: Optional[list[TCClientExtraAttr]]
+    extra_attrs: Optional[list[TCClientExtraAttr]] = None
 
-    @validator('extra_attrs')
+    @field_validator('extra_attrs')
+    @classmethod
     def remove_null_attrs(cls, v: list[TCClientExtraAttr]):
         return [attr for attr in v if attr.value]
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
+    @classmethod
     def parse_admins(cls, values):
         """
         Since we don't care about the other details on the admin, we can just get the nested IDs and set attributes.
