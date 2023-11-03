@@ -2,11 +2,10 @@ import json
 import re
 from typing import ClassVar, Literal, Optional, Any
 
-from pydantic import Field, root_validator, validator
-from pydantic.fields import ModelField
-from pydantic.main import BaseModel, validate_model
+from pydantic import field_validator, model_validator, ConfigDict, Field
+from pydantic.main import BaseModel
 
-from app.base_schema import HermesBaseModel, fk_field
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
 from app.utils import get_redis_client
 
@@ -46,9 +45,9 @@ class PipedriveBaseModel(HermesBaseModel):
     """
 
     @classmethod
-    async def _custom_fields(cls) -> dict[str, ModelField]:
+    def _custom_fields(cls) -> list[str]:
         """Get all fields that have the 'custom' attribute"""
-        return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
+        return [n for n, f in cls.model_fields.items() if f.json_schema_extra and f.json_schema_extra.get('custom')]
 
     @classmethod
     async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
@@ -65,51 +64,51 @@ class PipedriveBaseModel(HermesBaseModel):
             pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
             await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
         field_lu = {}
-        custom_fields = await cls._custom_fields()
+        custom_fields = cls._custom_fields()
         for pd_field in pd_fields_data:
-            if custom_field := custom_fields.get(_slugify(pd_field['name'])):
-                field_lu[custom_field.name] = PDExtraField(**pd_field)
+            field_name = _slugify(pd_field['name'])
+            if field_name in custom_fields:
+                field_lu[field_name] = PDExtraField(**pd_field)
         return field_lu
 
     @classmethod
     async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
-        # TODO: Move to post_model_init in v2
+        # TODO: Move to post_model_init?
         custom_field_lu = await cls._get_pd_custom_fields()
         for field_name, pd_field in custom_field_lu.items():
-            field = cls.__fields__[field_name]
-            field.alias = pd_field.key
+            field = cls.model_fields[field_name]
+            field.serialization_alias = pd_field.key
 
-        # Since we've set the field aliases, we can just re-validate the model to add the values
-        validate_model(cls, obj.__dict__)
-
+        # Since we've set the field aliases, we now need to rebuild the schema for the model.
+        cls.model_rebuild(force=True)
+        obj = cls(**obj.__dict__)
         return obj
 
     async def a_validate(self):
         # We need to set the custom field values before we validate
-        if await self._custom_fields():
+        if self._custom_fields():
             await self.__class__.set_custom_field_vals(self)
         await super().a_validate()
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     address_country: Optional[str] = None
-    owner_id: fk_field(Admin, 'pd_owner_id')
+    owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
 
     # These are all custom fields
-    website: Optional[str] = Field('', custom=True)
-    paid_invoice_count: Optional[int] = Field(0, custom=True)
-    has_booked_call: Optional[bool] = Field(False, custom=True)
-    has_signed_up: Optional[bool] = Field(False, custom=True)
-    tc2_status: Optional[str] = Field('', custom=True)
-    tc2_cligency_url: Optional[str] = Field('', custom=True)
-    hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
+    website: Optional[str] = Field('', json_schema_extra={'custom': True})
+    paid_invoice_count: Optional[int] = Field(0, json_schema_extra={'custom': True})
+    has_booked_call: Optional[bool] = Field(False, json_schema_extra={'custom': True})
+    has_signed_up: Optional[bool] = Field(False, json_schema_extra={'custom': True})
+    tc2_status: Optional[str] = Field('', json_schema_extra={'custom': True})
+    tc2_cligency_url: Optional[str] = Field('', json_schema_extra={'custom': True})
+    hermes_id: Optional[int] = ForeignKeyField(None, model=Company, custom=True)
 
-    _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
     custom_fields_pd_name: ClassVar[str] = 'organizationFields'
 
@@ -153,13 +152,13 @@ class Person(PipedriveBaseModel):
     name: str
     email: Optional[str] = ''
     phone: Optional[str] = ''
-    owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
-    org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
+    owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+    org_id: Optional[int] = ForeignKeyField(None, model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
 
     # These are all custom fields
-    hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
+    hermes_id: Optional[int] = ForeignKeyField(None, model=Contact, custom=True)
 
-    _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'personFields'
     obj_type: Literal['person'] = Field('person', exclude=True)
 
@@ -177,15 +176,16 @@ class Person(PipedriveBaseModel):
         obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    def dict(self, **kwargs) -> dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         """
         This is really annoying; it seems the only way to post `email` is as a list of strs.
         """
-        data = super().dict(**kwargs)
+        data = super().model_dump(**kwargs)
         data['email'] = [data['email']]
         return data
 
-    @validator('phone', 'email', pre=True)
+    @field_validator('phone', 'email', mode='before')
+    @classmethod
     def get_primary_attr(cls, v):
         """
         When coming in from a webhook, email is a list of dicts where one is the 'primary'.
@@ -256,17 +256,17 @@ class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     title: str
     org_id: int
-    person_id: Optional[fk_field(Contact, 'pd_person_id', null_if_invalid=True)] = None
-    org_id: fk_field(Company, 'pd_org_id')
-    user_id: fk_field(Admin, 'pd_owner_id')
-    pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
-    stage_id: fk_field(Stage, 'pd_stage_id')
+    person_id: Optional[int] = ForeignKeyField(None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True)
+    org_id: int = ForeignKeyField(model=Company, fk_field_name='pd_org_id')
+    user_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    pipeline_id: int = ForeignKeyField(model=Pipeline, fk_field_name='pd_pipeline_id')
+    stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
     status: str
 
     # These are all custom fields
-    hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
+    hermes_id: Optional[int] = ForeignKeyField(None, model=Deal, null_if_invalid=True, custom=True)
 
-    _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
+    _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
     custom_fields_pd_name: ClassVar[str] = 'dealFields'
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
@@ -335,7 +335,8 @@ class PipedriveEvent(HermesBaseModel):
     current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
     previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
+    @classmethod
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
         for f in ['current', 'previous']:

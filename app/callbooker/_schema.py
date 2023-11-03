@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 from functools import cached_property
 from typing import Optional
 
-from pydantic import validator
+from pydantic import field_validator
 
-from app.base_schema import HermesBaseModel, fk_field
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company
 
 
@@ -31,25 +31,26 @@ def _to_title(v: str) -> str:
 
 
 class CBSalesCall(HermesBaseModel):
-    admin_id: fk_field(Admin)
-    company_id: Optional[fk_field(Company)] = None
+    admin_id: int = ForeignKeyField(model=Admin)
+    company_id: Optional[int] = ForeignKeyField(None, model=Company)
     name: str
-    website: Optional[str]
+    website: Optional[str] = None
     email: str
     country: str
-    phone: Optional[str]
+    phone: Optional[str] = None
     company_name: str
-    estimated_income: str
+    estimated_income: str | int
     currency: str
     meeting_dt: datetime
     price_plan: str
 
-    _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
-    _strip = validator('name', 'company_name', 'website', 'country', allow_reuse=True)(_strip)
-    _to_lower = validator('email', allow_reuse=True)(_to_lower)
-    _to_title = validator('name', allow_reuse=True)(_to_title)
+    _convert_to_utc = field_validator('meeting_dt')(_convert_to_utc)
+    _strip = field_validator('name', 'company_name', 'website', 'country')(_strip)
+    _to_lower = field_validator('email')(_to_lower)
+    _to_title = field_validator('name')(_to_title)
 
-    @validator('price_plan')
+    @field_validator('price_plan')
+    @classmethod
     def _price_plan(cls, v):
         assert v in (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
         return v
@@ -94,16 +95,16 @@ class CBSupportCall(HermesBaseModel):
     reuse the code if we wanted to, but I think it's better to keep them separate for now.
     """
 
-    company_id: fk_field(Company)
-    admin_id: fk_field(Admin)
+    company_id: int = ForeignKeyField(model=Company)
+    admin_id: int = ForeignKeyField(model=Admin)
     meeting_dt: datetime
     email: str
     name: str
 
-    _convert_to_utc = validator('meeting_dt', allow_reuse=True)(_convert_to_utc)
-    _strip = validator('name', allow_reuse=True)(_strip)
-    _to_lower = validator('email', allow_reuse=True)(_to_lower)
-    _to_title = validator('name', allow_reuse=True)(_to_title)
+    _convert_to_utc = field_validator('meeting_dt')(_convert_to_utc)
+    _strip = field_validator('name')(_strip)
+    _to_lower = field_validator('email')(_to_lower)
+    _to_title = field_validator('name')(_to_title)
 
     @cached_property
     def _name_split(self):

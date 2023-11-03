@@ -16,6 +16,6 @@ async def update_client_from_company(company: Company):
             extra_attrs.update(
                 pipedrive_deal_stage=(await deal.stage).name, pipedrive_pipeline=(await deal.pipeline).name
             )
-        client_data = tc_client.dict()
+        client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
         await tc2_request('clients/', method='POST', data=client_data)

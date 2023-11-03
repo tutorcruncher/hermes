@@ -77,12 +77,12 @@ async def update_from_client_event(
     """
     if isinstance(tc2_subject, TCSubject):
         try:
-            tc2_client = TCClient(**tc2_subject.dict())
+            tc2_client = TCClient(**tc2_subject.model_dump())
         except ValidationError as e:
             # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
             # we know to delete their details from our database.
             try:
-                tc2_client = _TCSimpleRole(**tc2_subject.dict())
+                tc2_client = _TCSimpleRole(**tc2_subject.model_dump())
             except ValidationError:
                 raise e
             else:
@@ -133,6 +133,6 @@ async def update_from_invoice_event(tc2_subject: TCSubject):
     """
     As above, but we also check when an invoice changes in some way (as we have the paid_invoice_count on a Company).
     """
-    tc2_invoice = TCInvoice(**tc2_subject.dict())
+    tc2_invoice = TCInvoice(**tc2_subject.model_dump())
     tc2_client_subject = TCSubject(**await tc2_request(f'clients/{tc2_invoice.client.id}'))
     return await update_from_client_event(tc2_client_subject)

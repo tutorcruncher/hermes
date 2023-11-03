@@ -1,5 +1,7 @@
 import logging.config
 import os
+from contextlib import asynccontextmanager
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
@@ -43,8 +45,7 @@ app.include_router(main_router, prefix='')
 app.mount('/', admin_app)
 
 
-@app.on_event('startup')
-async def startup():
+async def _startup():
     from app.models import Admin
     from app.utils import get_redis_client
 
@@ -58,3 +59,9 @@ async def startup():
     from app.utils import get_config
 
     await get_config()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _startup()
+    yield
