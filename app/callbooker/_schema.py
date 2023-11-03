@@ -39,7 +39,7 @@ class CBSalesCall(HermesBaseModel):
     country: str
     phone: Optional[str] = None
     company_name: str
-    estimated_income: str
+    estimated_income: str | int
     currency: str
     meeting_dt: datetime
     price_plan: str
@@ -49,8 +49,8 @@ class CBSalesCall(HermesBaseModel):
     _to_lower = field_validator('email')(_to_lower)
     _to_title = field_validator('name')(_to_title)
 
-    @classmethod
     @field_validator('price_plan')
+    @classmethod
     def _price_plan(cls, v):
         assert v in (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
         return v

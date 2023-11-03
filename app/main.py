@@ -45,8 +45,7 @@ app.include_router(main_router, prefix='')
 app.mount('/', admin_app)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _startup():
     from app.models import Admin
     from app.utils import get_redis_client
 
@@ -60,4 +59,9 @@ async def lifespan(app: FastAPI):
     from app.utils import get_config
 
     await get_config()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _startup()
     yield

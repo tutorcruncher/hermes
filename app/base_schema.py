@@ -6,7 +6,9 @@ from pydantic._internal._model_construction import object_setattr
 from tortoise.exceptions import DoesNotExist
 
 
-def ForeignKeyField(*args, model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, **kwargs):
+def ForeignKeyField(
+    *args, model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, custom: bool = False, **kwargs
+):
     """
     Generates a custom field type for Pydantic that allows us to validate a foreign key by querying the db using the
     a_validate method below, then add the related object to the model as an attribute.
@@ -14,7 +16,7 @@ def ForeignKeyField(*args, model: Any, fk_field_name: str = 'id', null_if_invali
     For example, an Organisation has an owner_id which links to an Admin, so we define
 
     class Organisation:
-        owner_id: fk_field(Admin, 'pd_owner_id', alias='admin')
+        owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id', alias='admin')
 
     Then when we validate the Organisation, we'll query the db to check that an Admin with the `pd_owner_id=owner_id`,
     and if it does, we'll add it to the Organisation as an attribute using `alias` as the field name.
@@ -27,6 +29,7 @@ def ForeignKeyField(*args, model: Any, fk_field_name: str = 'id', null_if_invali
         'fk_field_name': fk_field_name,
         'alias': kwargs.get('serialization_alias') or field_info.serialization_alias or model.__name__.lower(),
         'null_if_invalid': null_if_invalid,
+        'custom': custom,
     }
     return field_info
 
@@ -43,12 +46,13 @@ class HermesBaseModel(BaseModel):
             if extra_schema.get('is_fk_field'):
                 model = extra_schema['model']
                 fk_field_name = extra_schema['fk_field_name']
+                alias = extra_schema['alias']
                 if v:
                     try:
                         related_obj = await model.get(**{fk_field_name: v})
                     except DoesNotExist:
                         if extra_schema['null_if_invalid']:
-                            object_setattr(self, field_info.serialization_alias, None)
+                            object_setattr(self, alias, None)
                         else:
                             raise RequestValidationError(
                                 [
@@ -60,9 +64,9 @@ class HermesBaseModel(BaseModel):
                                 ]
                             )
                     else:
-                        object_setattr(self, field_info.serialization_alias, related_obj)
+                        object_setattr(self, alias, related_obj)
                 else:
-                    object_setattr(self, field_info.serialization_alias, None)
+                    object_setattr(self, alias, None)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()
 
