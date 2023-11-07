@@ -8,7 +8,7 @@ from unittest import mock
 
 from requests import HTTPError
 
-from app.models import Admin, Company, Contact, Deal
+from app.models import Admin, Company, Contact, Deal, CustomField
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
@@ -305,6 +305,52 @@ class TC2CallbackTestCase(HermesTestCase):
         assert contact_b.tc2_sr_id == 41
         assert contact_b.first_name == 'Rudy'
         assert contact_b.last_name == 'Jones'
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_with_custom_fields(self, mock_add_task):
+        """
+        Create a new company with custom field values
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        await CustomField.create(
+            name='Source',
+            field_type=CustomField.TYPE_STR,
+            tc2_machine_name='source_campaign',
+            linked_object_type='Company',
+        )
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['extra_attrs'].append({'machine_name': 'source_campaign', 'value': 'Google'})
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert company.country == 'GB'
+        assert company.paid_invoice_count == 0
+        assert await company.support_person == await company.sales_person == admin
+
+        assert not company.estimated_income
+        assert not company.bdr_person
+
+        assert await Contact.all().count() == 0
+        deal = await Deal.get()
+        assert deal.name == 'MyTutors'
+        assert await deal.pipeline == self.pipeline
+        assert not deal.contact
+        assert await deal.stage == self.stage
 
     async def test_cb_client_deleted_no_linked_data(self):
         """

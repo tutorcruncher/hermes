@@ -3,12 +3,12 @@ import re
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
+from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField, CustomFieldValue
 from app.pipedrive.tasks import (
     pd_post_process_sales_call,
     pd_post_process_support_call,
     pd_post_process_client_event,
-    build_custom_field_schema,
 )
 from tests._common import HermesTestCase
 
@@ -254,6 +254,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'org_id': 1,
             },
         }
+
         await website_field.delete()
         await build_custom_field_schema()
 
@@ -799,6 +800,60 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.sales_person_id == self.admin.id
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_custom_hermes_field(self, mock_request):
+        website_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_website_456',
+            hermes_field_name='website',
+            tc2_machine_name='website',
+            name='Website',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        assert not await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+        data['current']['123_website_456'] = 'https://junes.com'
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
+        assert company.website == 'https://junes.com'
+        assert not await CustomFieldValue.all().count()
+
+        await website_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_custom_field_val(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        assert not await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+        data['current']['123_source_456'] = 'Google'
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
+        cf_val = await CustomFieldValue.get()
+        assert cf_val.value == 'Google'
+        assert await cf_val.custom_field == source_field
+        assert await cf_val.company == company
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_owner_doesnt_exist(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_org_data())
@@ -822,6 +877,33 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Company.exists()
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_delete_with_custom_field_val(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+
+        await CustomFieldValue.create(custom_field=source_field, company=company, value='Bing')
+
+        assert await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = data.pop('current')
+        data['previous']['hermes_id'] = company.id
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert not await Company.exists()
+
+        assert not await CustomFieldValue.exists()
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
@@ -835,11 +917,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.name == 'New test company'
 
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_org_update_custom_field(self, mock_request):
-        mock_request.side_effect = fake_pd_request(self.pipedrive)
-        company = await Company.create(name='Old test company', sales_person=self.admin)
-        data = copy.deepcopy(basic_pd_org_data())
-        data['previous'] = copy.deepcopy(data['current'])
+    async def test_org_update_with_custom_hermes_field(self, mock_request):
         website_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_website_456',
@@ -849,14 +927,106 @@ class PipedriveCallbackTestCase(HermesTestCase):
             field_type='str',
         )
         await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
         data['previous'].update(hermes_id=company.id)
-        data['current'].update(name='New test company', website='https://newjunes.com')
+        data['current'].update(**{'name': 'New test company', '123_website_456': 'https://newjunes.com'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
         assert company.name == 'New test company'
         assert company.website == 'https://newjunes.com'
+
         await website_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_custom_field_val_created(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'].update(hermes_id=company.id)
+        data['current'].update(**{'name': 'New test company', '123_source_456': 'Google'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+        cf_val = await CustomFieldValue.get()
+        assert cf_val.value == 'Google'
+        assert await cf_val.custom_field == source_field
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_custom_field_val_updated(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+
+        await CustomFieldValue.create(custom_field=source_field, company=company, value='Bing')
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'].update(hermes_id=company.id)
+        data['current'].update(**{'name': 'New test company', '123_source_456': 'Google'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+        cf_val = await CustomFieldValue.get()
+        assert cf_val.value == 'Google'
+        assert await cf_val.custom_field == source_field
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_custom_field_val_deleted(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+
+        await CustomFieldValue.create(custom_field=source_field, company=company, value='Bing')
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'].update(hermes_id=company.id)
+        data['current'].update(**{'name': 'New test company'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+        assert not await CustomFieldValue.exists()
+
+        await source_field.delete()
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')

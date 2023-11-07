@@ -1,10 +1,13 @@
-from typing import Any
+from typing import Any, TYPE_CHECKING, Type
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic._internal._model_construction import object_setattr
 from pydantic.fields import FieldInfo
 from tortoise.exceptions import DoesNotExist
+
+if TYPE_CHECKING:  # noqa
+    from app.models import CustomField
 
 
 def fk_json_schema_extra(
@@ -89,3 +92,33 @@ class HermesBaseModel(BaseModel):
                 await v.a_validate()
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
+
+
+async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **field_kwargs) -> FieldInfo:
+    from app.models import CustomField
+
+    field_kwargs = {
+        'title': field.name,
+        'default': None,
+        'required': False,
+        'json_schema_extra': {'custom': True},
+        **field_kwargs,
+    }
+    if field.field_type == CustomField.TYPE_INT:
+        field_kwargs['annotation'] = int
+    elif field.field_type == CustomField.TYPE_STR:
+        field_kwargs['annotation'] = str
+    elif field.field_type == CustomField.TYPE_BOOL:
+        field_kwargs['annotation'] = bool
+    elif field.field_type == CustomField.TYPE_FK_FIELD:
+        field_kwargs.update(annotation=int, json_schema_extra=fk_json_schema_extra(model, custom=True))
+    return FieldInfo(**field_kwargs)
+
+
+async def build_custom_field_schema():
+    from app.pipedrive.tasks import pd_rebuild_schema_with_custom_fields
+    from app.tc2.tasks import tc2_rebuild_schema_with_custom_fields
+
+    py_models = list(await pd_rebuild_schema_with_custom_fields()) + list(await tc2_rebuild_schema_with_custom_fields())
+    for model in py_models:
+        model.model_rebuild(force=True)

@@ -13,7 +13,7 @@ from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
 from app.logging import config
-from app.pipedrive.tasks import build_custom_field_schema
+from app.base_schema import build_custom_field_schema
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router

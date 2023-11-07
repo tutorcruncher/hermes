@@ -303,22 +303,23 @@ def _slugify(name: str) -> str:
 
 class CustomField(models.Model):
     """
-    Used to store the custom fields that we have in Pipedrive and link them to TC. Currently only available on a Company
+    Used to store the custom fields that we have in Pipedrive and link them to TC. When the app is started, we run
+    build_custom_field_schema() to add the custom fields to the relevant models.
     """
 
     TYPE_INT = 'int'
     TYPE_STR = 'str'
+    TYPE_BOOL = 'bool'
     TYPE_FK_FIELD = 'fk_field'
 
     id = fields.IntField(pk=True)
 
     name = fields.CharField(max_length=255)
     machine_name = fields.CharField(max_length=255, null=True)
-    field_type = fields.CharField(max_length=255)
-    options = fields.JSONField(null=True)
+    field_type = fields.CharField(max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD))
 
     hermes_field_name = fields.CharField(max_length=255, null=True)
-    tc2_machine_name = fields.CharField(max_length=255)
+    tc2_machine_name = fields.CharField(max_length=255, null=True)
     pd_field_id = fields.CharField(max_length=255, unique=True)
     linked_object_type = fields.CharField(max_length=255)
 
@@ -328,10 +329,6 @@ class CustomField(models.Model):
         if not self.machine_name:
             self.machine_name = _slugify(self.name)
         return await super().save(*args, **kwargs)
-
-    @property
-    def is_hermes_id(self):
-        return self.machine_name == 'hermes_id'
 
     def __str__(self):
         return self.name
@@ -348,10 +345,13 @@ class CustomFieldValue(models.Model):
 
     custom_field = fields.ForeignKeyField('models.CustomField', related_name='values')
 
-    company = fields.ForeignKeyField('models.Company', related_name='custom_field_values', null=True)
+    company = fields.ForeignKeyField(
+        'models.Company', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
+    )
     contact = fields.ForeignKeyField('models.Contact', related_name='custom_field_values', null=True)
     deal = fields.ForeignKeyField('models.Deal', related_name='custom_field_values', null=True)
     meeting = fields.ForeignKeyField('models.Meeting', related_name='custom_field_values', null=True)
+
     value = fields.CharField(max_length=255)
 
     def validate(self):
@@ -359,7 +359,7 @@ class CustomFieldValue(models.Model):
             raise ValueError('Must have a company, contact, deal or meeting')
 
     def __str__(self):
-        return f'{self.custom_field.name}: {self.value}'
+        return f'{self.custom_field}: {self.value}'
 
     def __repr__(self):
         return str(self)

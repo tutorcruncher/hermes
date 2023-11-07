@@ -44,32 +44,26 @@ class PipedriveBaseModel(HermesBaseModel):
     """
 
     @classmethod
-    async def get_custom_field_vals(cls, obj):
-        """
-        When creating a Pipedrive object from a model, gets the custom field values from the pd object and returns them
-        in a dict.
-        """
+    async def get_custom_fields(cls, obj):
         model = obj.__class__
-        custom_fields = await CustomField.filter(linked_object_type=model.__name__).prefetch_related(
+        return await CustomField.filter(linked_object_type=model.__name__).prefetch_related(
             Prefetch('values', queryset=CustomFieldValue.filter(**{model.__name__.lower(): obj}))
         )
+
+    @classmethod
+    async def get_custom_field_vals(cls, obj) -> dict:
+        """
+        When creating a model from a Pipedrive object, gets the custom field values from the model.
+        """
+        custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
+
         for cf in custom_fields:
             if cf.hermes_field_name:
                 val = getattr(obj, cf.hermes_field_name, None)
             else:
                 val = cf.values[0].value
             cf_data[cf.machine_name] = val
-        return cf_data
-
-    async def get_cf_hermes_fields_data(self) -> dict:
-        """
-        When creating a model from a Pipedrive object, gets the custom field values from the model.
-        """
-        cf_fields = await CustomField.filter(linked_object_type='Company', hermes_field_name__isnull=False)
-        cf_data = {}
-        for cf in cf_fields:
-            cf_data[cf.machine_name] = getattr(self, cf.hermes_field_name, None)
         return cf_data
 
 
@@ -96,13 +90,26 @@ class Organisation(PipedriveBaseModel):
             ),
         )
 
-    async def company_dict(self) -> dict:
+    async def company_dict(self, custom_fields: list[CustomField]) -> dict:
+        cf_data_from_hermes = {
+            c.hermes_field_name: getattr(self, c.machine_name)
+            for c in custom_fields
+            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
+        }
         return {
             'pd_org_id': self.id,
             'name': self.name,
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
-            **await self.get_cf_hermes_fields_data(),
+            **cf_data_from_hermes,
         }
+
+    async def custom_field_values(self, custom_fields: list[CustomField]) -> dict:
+        """
+        When updating an Organisation from a Pipedrive webhook, we need to get the custom field values from the
+        Organisation model.
+        """
+        cf_vals_data = {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
+        return cf_vals_data
 
 
 # Used to get only alphanumeric characters & whitespace for client entering phone numbers
@@ -177,7 +184,6 @@ class Person(PipedriveBaseModel):
             'email': self.email,
             'phone': self.phone,
             'company_id': self.company and self.company.id,  # noqa: F821 - Added in a_validate
-            **await self.get_cf_hermes_fields_data(),
         }
 
 
@@ -256,7 +262,6 @@ class PDDeal(PipedriveBaseModel):
             'contact_id': self.contact and self.contact.id,  # noqa: F821 - Added in a_validate
             'pipeline_id': self.pipeline.id,  # noqa: F821 - Added in a_validate
             'stage_id': self.stage.id,  # noqa: F821 - Added in a_validate
-            **await self.get_cf_hermes_fields_data(),
         }
 
 

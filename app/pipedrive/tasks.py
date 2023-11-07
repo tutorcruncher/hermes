@@ -1,7 +1,8 @@
-from app.base_schema import fk_json_schema_extra
-from pydantic.fields import FieldInfo
+from typing import Type
+
+from app.base_schema import get_custom_fieldinfo
 from app.models import Company, Contact, Deal, Meeting, CustomField
-from app.pipedrive._schema import Organisation, Person, PDDeal, Activity
+from app.pipedrive._schema import Organisation, Person, PDDeal, Activity, PipedriveBaseModel
 from app.pipedrive.api import (
     create_activity,
     create_or_update_organisation,
@@ -43,28 +44,17 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
 MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Activity}
 
 
-async def build_custom_field_schema():
+async def pd_rebuild_schema_with_custom_fields() -> list[Type[PipedriveBaseModel]]:
+    models_to_rebuild = []
     for model, pd_model in MODEL_PD_LU.items():
         custom_fields = await CustomField.filter(linked_object_type=model.__name__)
         # First we reset the custom fields
         pd_model.model_fields = {
             k: v for k, v in pd_model.model_fields.items() if not (v.json_schema_extra or {}).get('custom')
         }
-        if custom_fields:
-            for field in custom_fields:
-                field_kwargs = {
-                    'title': field.name,
-                    'default': None,
-                    'required': False,
-                    'serialization_alias': field.pd_field_id,
-                    'validation_alias': field.pd_field_id,
-                    'json_schema_extra': {'custom': True},
-                }
-                if field.field_type == CustomField.TYPE_INT:
-                    field_kwargs['annotation'] = int
-                elif field.field_type == CustomField.TYPE_STR:
-                    field_kwargs['annotation'] = str
-                elif field.field_type == CustomField.TYPE_FK_FIELD:
-                    field_kwargs.update(annotation=int, json_schema_extra=fk_json_schema_extra(model, custom=True))
-                pd_model.model_fields[field.machine_name] = FieldInfo(**field_kwargs)
-        pd_model.model_rebuild(force=True)
+        for field in custom_fields:
+            pd_model.model_fields[field.machine_name] = await get_custom_fieldinfo(
+                field, model, serialization_alias=field.pd_field_id, validation_alias=field.pd_field_id
+            )
+        models_to_rebuild.append(pd_model)
+    return models_to_rebuild

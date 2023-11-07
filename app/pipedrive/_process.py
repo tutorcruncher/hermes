@@ -1,8 +1,18 @@
 from typing import Optional
 
-from app.models import Company, Contact, Deal, Pipeline, Stage
+from app.models import Company, Contact, Deal, Pipeline, Stage, CustomField, CustomFieldValue
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
+
+
+async def _process_custom_field_vals(old_cf_vals, new_cf_vals, company: Company):
+    updated_created_vals = {k: v for k, v in new_cf_vals.items() if k not in old_cf_vals and v is not None}
+    updated_created_vals |= {k: new_cf_vals[k] for k, v in old_cf_vals.items() if v != new_cf_vals[k]}
+    deleted_vals = [k for k, v in old_cf_vals.items() if not v and not new_cf_vals.get(k)]
+
+    for cf_id, cf_val in updated_created_vals.items():
+        await CustomFieldValue.update_or_create(custom_field_id=cf_id, company=company, defaults={'value': cf_val})
+    await CustomFieldValue.filter(custom_field_id__in=deleted_vals, company=company).delete()
 
 
 async def _process_pd_organisation(
@@ -20,24 +30,38 @@ async def _process_pd_organisation(
     current_company = current_pd_org.company if current_pd_org else None
     old_company = old_pd_org.company if old_pd_org else None
     company = current_company or old_company
+    org_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
         if current_pd_org:
             # The org has been updated
-            old_data = old_pd_org and await old_pd_org.company_dict()
-            new_data = await current_pd_org.company_dict()
-            if old_data != new_data:
-                await company.update_from_dict(new_data)
+            old_org_data = old_pd_org and await old_pd_org.company_dict(org_custom_fields)
+            new_org_data = await current_pd_org.company_dict(org_custom_fields)
+            if old_org_data != new_org_data:
+                await company.update_from_dict(new_org_data)
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
+            old_org_cf_vals = old_pd_org and await old_pd_org.custom_field_values(org_custom_fields)
+            new_org_cf_vals = await current_pd_org.custom_field_values(org_custom_fields)
+            cfs_updated = await _process_custom_field_vals(old_org_cf_vals, new_org_cf_vals, company)
+            if cfs_updated:
+                app_logger.info(
+                    'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+                )
         else:
-            # The org has been deleted
+            # The org has been deleted. The linked custom fields will also be deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        company = await Company.create(**await current_pd_org.company_dict())
+        company = await Company.create(**await current_pd_org.company_dict(org_custom_fields))
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
+        new_org_cf_vals = await current_pd_org.custom_field_values(org_custom_fields)
+        cfs_created = await _process_custom_field_vals({}, new_org_cf_vals, company)
+        if cfs_created:
+            app_logger.info(
+                'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+            )
     return company
 
 
