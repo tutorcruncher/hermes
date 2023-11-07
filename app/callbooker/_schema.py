@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import field_validator
 
-from app.base_schema import HermesBaseModel, ForeignKeyField
+from app.base_schema import HermesBaseModel, ForeignKeyFieldInfo
 from app.models import Admin, Company
 
 
@@ -31,8 +31,8 @@ def _to_title(v: str) -> str:
 
 
 class CBSalesCall(HermesBaseModel):
-    admin_id: int = ForeignKeyField(model=Admin)
-    company_id: Optional[int] = ForeignKeyField(None, model=Company)
+    admin_id: int = ForeignKeyFieldInfo(model=Admin)
+    company_id: Optional[int] = ForeignKeyFieldInfo(None, model=Company)
     name: str
     website: Optional[str] = None
     email: str
@@ -95,8 +95,8 @@ class CBSupportCall(HermesBaseModel):
     reuse the code if we wanted to, but I think it's better to keep them separate for now.
     """
 
-    company_id: int = ForeignKeyField(model=Company)
-    admin_id: int = ForeignKeyField(model=Admin)
+    company_id: int = ForeignKeyFieldInfo(model=Company)
+    admin_id: int = ForeignKeyFieldInfo(model=Admin)
     meeting_dt: datetime
     email: str
     name: str

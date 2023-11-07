@@ -3,31 +3,19 @@ import re
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call, pd_post_process_client_event
-from app.utils import get_redis_client
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField, CustomFieldValue
+from app.pipedrive.tasks import (
+    pd_post_process_sales_call,
+    pd_post_process_support_call,
+    pd_post_process_client_event,
+    build_custom_field_schema,
+)
 from tests._common import HermesTestCase
 
 
 class FakePipedrive:
     def __init__(self):
-        self.db = {
-            'organizations': {},
-            'persons': {},
-            'deals': {},
-            'activities': {},
-            'organizationFields': {
-                'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'},
-                'website': {'name': 'website', 'key': '123_website_456'},
-                'tc2_status': {'name': 'TC2 status', 'key': '123_tc2_status_456'},
-                'has_booked_call': {'name': 'Has booked call', 'key': '123_has_booked_call_456'},
-                'has_signed_up': {'name': 'Has signed up', 'key': '123_has_signed_up_456'},
-                'tc2_cligency_url': {'name': 'TC2 cligency URL', 'key': '123_tc2_cligency_url_456'},
-                'paid_invoice_count': {'name': 'Paid Invoice Count', 'key': '123_paid_invoice_count_456'},
-            },
-            'personFields': {'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'}},
-            'dealFields': {'hermes_id': {'name': 'Hermes ID', 'key': '123_hermes_id_456'}},
-        }
+        self.db = {'organizations': {}, 'persons': {}, 'deals': {}, 'activities': {}}
 
 
 class MockResponse:
@@ -72,7 +60,16 @@ class PipedriveTasksTestCase(HermesTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        await (await get_redis_client()).delete('organizationFields-custom-fields')
+        kwargs = dict(
+            tc2_machine_name='hermes_id',
+            name='Hermes ID',
+            hermes_field_name='id',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await CustomField.create(linked_object_type='Company', pd_field_id='123_hermes_id_456', **kwargs)
+        await CustomField.create(linked_object_type='Contact', pd_field_id='234_hermes_id_567', **kwargs)
+        await CustomField.create(linked_object_type='Deal', pd_field_id='345_hermes_id_678', **kwargs)
+        await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_sales_call_booked(self, mock_request):
@@ -90,7 +87,103 @@ class PipedriveTasksTestCase(HermesTestCase):
             tc2_admin_id=20,
             pd_owner_id=99,
         )
-        company = await Company.create(name='Julies Ltd', website='https://junes.com', country='GB', sales_person=admin)
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                'id': 1,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 99,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+        assert (await Deal.get()).pd_deal_id == 1
+        assert self.pipedrive.db['activities'] == {
+            1: {
+                'id': 1,
+                'due_date': '2023-01-01',
+                'due_time': '00:00',
+                'subject': 'TutorCruncher demo with Steve Jobs',
+                'user_id': 99,
+                'deal_id': 1,
+                'person_id': 1,
+                'org_id': 1,
+            },
+        }
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_sales_call_booked_with_custom_field(self, mock_request):
+        """
+        Test that the sales call flow creates the org, person, deal and activity in pipedrive. None of the objects
+        already exist so should create one of each in PD.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        website_field = await CustomField.create(
+            tc2_machine_name='website',
+            pd_field_id='123_website_456',
+            name='Website',
+            field_type='str',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        await CustomFieldValue.create(custom_field=website_field, company=company, value='https://junes.com')
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
         )
@@ -120,11 +213,6 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                '123_tc2_status_456': 'pending_email_conf',
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
-                '123_paid_invoice_count_456': 0,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -136,7 +224,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -150,7 +238,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'status': 'open',
                 'id': 1,
                 'user_id': 99,
-                '123_hermes_id_456': deal.id,
+                '345_hermes_id_678': deal.id,
             }
         }
         assert (await Deal.get()).pd_deal_id == 1
@@ -166,6 +254,8 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'org_id': 1,
             },
         }
+        await website_field.delete()
+        await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_support_call_booked_org_exists(self, mock_request):
@@ -192,13 +282,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
-                '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         contact = await Contact.create(
@@ -220,13 +304,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
-                '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 10
@@ -238,7 +316,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 10,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -316,13 +394,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Junes Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
-                '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         contact = await Contact.create(
@@ -353,13 +425,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
-                '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         assert self.pipedrive.db['persons'] == {
@@ -370,7 +436,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert self.pipedrive.db['deals'] == {}
@@ -421,13 +487,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': 1,
-                '123_website_456': 'https://junes.com',
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -439,92 +499,85 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': 1,
+                '234_hermes_id_567': 1,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
 
-    # TODO: Wait for custom fields to be properly done
-    # @mock.patch('app.pipedrive.api.session.request')
-    # async def test_org_person_dont_need_update(self, mock_request):
-    #     """
-    #     This is basically testing that if the data in PD and the DB are up to date, we don't do the update request
-    #     """
-    #     mock_request.side_effect = fake_pd_request(self.pipedrive)
-    #     admin = await Admin.create(
-    #         first_name='Steve',
-    #         last_name='Jobs',
-    #         username='climan@example.com',
-    #         is_sales_person=True,
-    #         tc2_admin_id=20,
-    #         pd_owner_id=99,
-    #     )
-    #     company = await Company.create(
-    #         name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1, sales_person=admin
-    #     )
-    #     self.pipedrive.db['organizations'] = {
-    #         1: {
-    #             'id': 1,
-    #             'name': 'Julies Ltd',
-    #             'address_country': 'GB',
-    #             'owner_id': 99,
-    #             '123_tc2_status_456': 'pending_email_conf',
-    #             '123_hermes_id_456': company.id,
-    #             '123_website_456': 'https://junes.com',
-    #             '123_paid_invoice_count_456': 0,
-    #             '123_has_booked_call_456': False,
-    #             '123_has_signed_up_456': False,
-    #             '123_tc2_cligency_url_456': '',
-    #         },
-    #     }
-    #     contact = await Contact.create(
-    #         first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id, pd_person_id=1
-    #     )
-    #     self.pipedrive.db['persons'] = {
-    #         1: {
-    #             'id': 1,
-    #             'name': 'Brian Junes',
-    #             'owner_id': 99,
-    #             'email': ['brain@junes.com'],
-    #             'phone': None,
-    #             'org_id': 1,
-    #             '123_hermes_id_456': contact.id,
-    #         },
-    #     }
-    #     start = datetime(2023, 1, 1, tzinfo=timezone.utc)
-    #     meeting = await Meeting.create(
-    #         company=company,
-    #         contact=contact,
-    #         meeting_type=Meeting.TYPE_SALES,
-    #         start_time=start,
-    #         end_time=start + timedelta(hours=1),
-    #         admin=admin,
-    #     )
-    #     deal = await Deal.create(
-    #         name='A deal with Julies Ltd',
-    #         company=company,
-    #         contact=contact,
-    #         pipeline=self.pipeline,
-    #         stage=self.stage,
-    #         admin=admin,
-    #         pd_deal_id=17,
-    #     )
-    #     self.pipedrive.db['deals'] = {
-    #         1: {
-    #             'id': 1,
-    #             'title': 'A deal with Julies Ltd',
-    #             'org_id': 1,
-    #             'person_id': 1,
-    #             'user_id': 99,
-    #             'pipeline_id': 1,
-    #             'stage_id': 1,
-    #             'status': 'open',
-    #             '123_hermes_id_456': deal.id,
-    #         }
-    #     }
-    #     await pd_post_process_sales_call(company, contact, meeting, deal)
-    #     call_args = mock_request.call_args_list
-    #     assert not any('PUT' in str(call) for call in call_args)
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_person_dont_need_update(self, mock_request):
+        """
+        This is basically testing that if the data in PD and the DB are up to date, we don't do the update request
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1, sales_person=admin
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id, pd_person_id=1
+        )
+        self.pipedrive.db['persons'] = {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=17,
+        )
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+        call_args = mock_request.call_args_list
+        assert not any('PUT' in str(call) for call in call_args)
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event(self, mock_request):
@@ -549,13 +602,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': company.id,
-                '123_website_456': 'https://junes.com',
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -567,7 +614,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -601,7 +648,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         deal = await Deal.create(
@@ -620,13 +667,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_tc2_status_456': 'pending_email_conf',
                 '123_hermes_id_456': company.id,
-                '123_website_456': 'https://junes.com',
-                '123_paid_invoice_count_456': 0,
-                '123_has_booked_call_456': False,
-                '123_has_signed_up_456': False,
-                '123_tc2_cligency_url_456': '',
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -638,7 +679,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '123_hermes_id_456': contact.id,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert (await Contact.get()).pd_person_id == 1
@@ -652,7 +693,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'stage_id': 1,
                 'status': 'open',
                 'id': 1,
-                '123_hermes_id_456': deal.id,
+                '345_hermes_id_678': deal.id,
             },
         }
         assert (await Deal.get()).pd_deal_id == 1
@@ -736,7 +777,16 @@ class PipedriveCallbackTestCase(HermesTestCase):
         self.pipedrive = FakePipedrive()
         self.admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         self.url = '/pipedrive/callback/'
-        await (await get_redis_client()).delete('organizationFields-custom-fields')
+        kwargs = dict(
+            tc2_machine_name='hermes_id',
+            name='Hermes ID',
+            hermes_field_name='id',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await CustomField.create(linked_object_type='Company', pd_field_id='123_hermes_id_456', **kwargs)
+        await CustomField.create(linked_object_type='Contact', pd_field_id='234_hermes_id_567', **kwargs)
+        await CustomField.create(linked_object_type='Deal', pd_field_id='345_hermes_id_678', **kwargs)
+        await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create(self, mock_request):
@@ -777,12 +827,37 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['previous']['hermes_id'] = company.id
+        data['previous'].update(hermes_id=company.id)
         data['current'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
         assert company.name == 'New test company'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_custom_field(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        website_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_website_456',
+            hermes_field_name='website',
+            tc2_machine_name='website',
+            name='Website',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+        data['previous'].update(hermes_id=company.id)
+        data['current'].update(name='New test company', website='https://newjunes.com')
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+        assert company.website == 'https://newjunes.com'
+        await website_field.delete()
+        await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_no_changes(self, mock_request):

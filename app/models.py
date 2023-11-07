@@ -189,6 +189,7 @@ class Company(models.Model):
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']
     meetings: fields.ReverseRelation['Meeting']
+    custom_field_values: fields.ReverseRelation['CustomFieldValue']
 
     def __str__(self):
         return self.name
@@ -225,6 +226,8 @@ class Contact(models.Model):
 
     company = fields.ForeignKeyField('models.Company', related_name='contacts')
 
+    custom_field_values: fields.ReverseRelation['CustomFieldValue']
+
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
 
@@ -255,6 +258,8 @@ class Deal(models.Model):
     company = fields.ForeignKeyField('models.Company', related_name='deals')
     contact = fields.ForeignKeyField('models.Contact', related_name='deals', null=True)
 
+    custom_field_values: fields.ReverseRelation['CustomFieldValue']
+
     def __str__(self):
         return self.name
 
@@ -281,6 +286,8 @@ class Meeting(models.Model):
     contact = fields.ForeignKeyField('models.Contact', related_name='meetings')
     deal = fields.ForeignKeyField('models.Deal', related_name='meetings', null=True, on_delete=fields.SET_NULL)
 
+    custom_field_values: fields.ReverseRelation['CustomFieldValue']
+
     @property
     def name(self):
         if self.meeting_type == Meeting.TYPE_SALES:
@@ -288,3 +295,71 @@ class Meeting(models.Model):
         else:
             assert self.meeting_type == Meeting.TYPE_SUPPORT
             return f'TutorCruncher support meeting with {self.admin.name}'
+
+
+def _slugify(name: str) -> str:
+    return name.lower().replace(' ', '_')
+
+
+class CustomField(models.Model):
+    """
+    Used to store the custom fields that we have in Pipedrive and link them to TC. Currently only available on a Company
+    """
+
+    TYPE_INT = 'int'
+    TYPE_STR = 'str'
+    TYPE_FK_FIELD = 'fk_field'
+
+    id = fields.IntField(pk=True)
+
+    name = fields.CharField(max_length=255)
+    machine_name = fields.CharField(max_length=255, null=True)
+    field_type = fields.CharField(max_length=255)
+    options = fields.JSONField(null=True)
+
+    hermes_field_name = fields.CharField(max_length=255, null=True)
+    tc2_machine_name = fields.CharField(max_length=255)
+    pd_field_id = fields.CharField(max_length=255, unique=True)
+    linked_object_type = fields.CharField(max_length=255)
+
+    values: fields.ReverseRelation['CustomFieldValue']
+
+    async def save(self, *args, **kwargs) -> None:
+        if not self.machine_name:
+            self.machine_name = _slugify(self.name)
+        return await super().save(*args, **kwargs)
+
+    @property
+    def is_hermes_id(self):
+        return self.machine_name == 'hermes_id'
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return str(self)
+
+    class Meta:
+        unique_together = ('machine_name', 'linked_object_type')
+
+
+class CustomFieldValue(models.Model):
+    id = fields.IntField(pk=True)
+
+    custom_field = fields.ForeignKeyField('models.CustomField', related_name='values')
+
+    company = fields.ForeignKeyField('models.Company', related_name='custom_field_values', null=True)
+    contact = fields.ForeignKeyField('models.Contact', related_name='custom_field_values', null=True)
+    deal = fields.ForeignKeyField('models.Deal', related_name='custom_field_values', null=True)
+    meeting = fields.ForeignKeyField('models.Meeting', related_name='custom_field_values', null=True)
+    value = fields.CharField(max_length=255)
+
+    def validate(self):
+        if not (self.company or self.contact or self.deal or self.meeting):
+            raise ValueError('Must have a company, contact, deal or meeting')
+
+    def __str__(self):
+        return f'{self.custom_field.name}: {self.value}'
+
+    def __repr__(self):
+        return str(self)
