@@ -15,7 +15,7 @@ def fk_json_schema_extra(
     model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, custom: bool = False, to_field: str = None
 ):
     """
-    Generates a json schema for a ForeignKeyFieldInfo field.
+    Generates a json schema for a ForeignKeyField field.
     """
     return {
         'is_fk_field': True,
@@ -27,7 +27,7 @@ def fk_json_schema_extra(
     }
 
 
-def ForeignKeyFieldInfo(
+def ForeignKeyField(
     *args,
     model: Any,
     fk_field_name: str = 'id',
@@ -43,7 +43,7 @@ def ForeignKeyFieldInfo(
     For example, an Organisation has an owner_id which links to an Admin, so we define
 
     class Organisation:
-        owner_id: int = ForeignKeyFieldInfo(model=Admin, fk_field_name='pd_owner_id', alias='admin')
+        owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id', alias='admin')
 
     Then when we validate the Organisation, we'll query the db to check that an Admin with the `pd_owner_id=owner_id`,
     and if it does, we'll add it to the Organisation as an attribute using `alias` as the field name.
@@ -128,6 +128,9 @@ class HermesBaseModel(BaseModel):
 
 
 async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **field_kwargs) -> FieldInfo:
+    """
+    Generates the FieldInfo object for custom fields.
+    """
     from app.models import CustomField
 
     field_kwargs = {
@@ -149,6 +152,9 @@ async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel
 
 
 async def build_custom_field_schema():
+    """
+    Adds extra fields to the schema for the Pydantic models based on CustomFields in the DB
+    """
     from app.pipedrive.tasks import pd_rebuild_schema_with_custom_fields
     from app.tc2.tasks import tc2_rebuild_schema_with_custom_fields
 

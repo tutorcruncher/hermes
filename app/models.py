@@ -322,25 +322,86 @@ def _slugify(name: str) -> str:
 
 class CustomField(models.Model):
     """
-    Used to store the custom fields that we have in Pipedrive and link them to TC. When the app is started, we run
+    Used to store the custom fields that we have in Pipedrive/TC. When the app is started, we run
     build_custom_field_schema() to add the custom fields to the relevant models.
+
+    There are different ways CustomFields are linked to the Hermes Model they relate to, best explained with examples.
+
+    Example 1: We want to record 'Source' to track where a signup has come from (Google etc).
+    This field doesn't exist on the Company model. We create a AttributeDefinition in TC2 with the machine_name `source`
+    We also create a custom field in Pipedrive; the ID of that field is 123_source_456. Lastly, we create a CustomField
+    with the attributes:
+
+        name='Source',
+        machine_name='source',  # Although this is created automatically on save)
+        field_type=CustomField.TYPE_STR,
+        hermes_field_name=null,  # This is null because the field doesn't exist on the model
+        tc2_machine_name=source,
+        pd_field_id=123_source_456,
+        linked_object_type=Company.__name__.
+
+    When the app starts, `build_custom_field_schema` will add a field to the Organisation model. The field has the name
+    `source` and has an alias for `123_source_456` (aliases in Pydantic mean we can refer to them by that name
+    instead. Check the docs for details.) When a webhook comes in from PD we can do validation on the field value.
+    This is especially useful when combined with the ForeignKeyField. See ForeignKeyField for details.
+
+    When the webhook from PD comes through, the field `source` will be set on the model as it comes from PD with the
+    key `123_source_456` and we've used an alias to tell Pydantic to fill from that field. If the webhook was coming
+    from TC2 then we'd check for an `extra_attr` with the `machine_name` equal to the CustomField's `tc2_machine_name`.
+
+    When the Object, in this case a Company object, is saved to the DB, we create or update a CustomFieldValue linked
+    to the CustomField object with the attributes:
+
+        custom_field=the_custom_field_created_above,
+        company=the_company_object,
+        value="Google"
+
+    Example 2: We want to record the estimated income of a Company. This field exists on the Company model as it is one
+    of the fields available from the Callbooker.
+    First, we create a custom field in Pipedrive for estimated_income; the ID of that field is 123_income_456. We also
+    create the AttDef in TC2. We then create a CustomField with the attributes:
+
+        name='Estimated income',
+        machine_name='estimated_income',  # Although this is created automatically on save)
+        field_type=CustomField.TYPE_STR,
+        hermes_field_name=estimated_income,  # We use the name of the field on the model
+        tc2_machine_name=estimated_income,
+        pd_field_id=123_income_456,
+        linked_object_type=Company.__name__.
+
+    The logic is similar to above, except that when the object is saved to the DB we look at the CustomField's
+    `hermes_field_name` and fill the value to that field. No CustomFieldValue is created.
     """
 
     TYPE_INT = 'int'
     TYPE_STR = 'str'
     TYPE_BOOL = 'bool'
     TYPE_FK_FIELD = 'fk_field'
+    TYPE_CHOICES = (
+        (TYPE_INT, 'Integer'),
+        (TYPE_STR, 'String'),
+        (TYPE_BOOL, 'Boolean'),
+        (TYPE_FK_FIELD, 'Foreign Key'),
+    )
 
     id = fields.IntField(pk=True)
 
     name = fields.CharField(max_length=255)
     machine_name = fields.CharField(max_length=255, null=True)
-    field_type = fields.CharField(max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD))
+    field_type = fields.CharField(
+        max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD), description='The type of field.'
+    )
 
-    hermes_field_name = fields.CharField(max_length=255, null=True)
-    tc2_machine_name = fields.CharField(max_length=255, null=True)
-    pd_field_id = fields.CharField(max_length=255, null=True)
-    linked_object_type = fields.CharField(max_length=255)
+    hermes_field_name = fields.CharField(
+        max_length=255,
+        null=True,
+        description='If this is connected to data from the Hermes model, this is the field name. Eg: `website`',
+    )
+    tc2_machine_name = fields.CharField(
+        max_length=255, null=True, description='The machine name of the Custom Field in TC2, if not in the normal data.'
+    )
+    pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
+    linked_object_type = fields.CharField(max_length=255, description='The name of the model this is linked to')
 
     values: fields.ReverseRelation['CustomFieldValue']
 

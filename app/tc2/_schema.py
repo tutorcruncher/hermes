@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import field_validator, model_validator, ConfigDict, Field
 
-from app.base_schema import HermesBaseModel, ForeignKeyFieldInfo
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company, CustomField
 
 
@@ -86,13 +86,13 @@ class TCClient(HermesBaseModel):
     user: TCUser
     status: str
 
-    sales_person_id: Optional[int] = ForeignKeyFieldInfo(
+    sales_person_id: Optional[int] = ForeignKeyField(
         None, model=Admin, fk_field_name='tc2_admin_id', to_field='sales_person'
     )
-    associated_admin_id: Optional[int] = ForeignKeyFieldInfo(
+    associated_admin_id: Optional[int] = ForeignKeyField(
         None, model=Admin, fk_field_name='tc2_admin_id', to_field='support_person'
     )
-    bdr_person_id: Optional[int] = ForeignKeyFieldInfo(
+    bdr_person_id: Optional[int] = ForeignKeyField(
         None, model=Admin, fk_field_name='tc2_admin_id', to_field='bdr_person'
     )
 

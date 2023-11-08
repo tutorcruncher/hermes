@@ -4,7 +4,7 @@ from typing import Literal, Optional, Any
 from pydantic import field_validator, model_validator, Field
 from pydantic.main import BaseModel
 
-from app.base_schema import HermesBaseModel, ForeignKeyFieldInfo
+from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField
 
 
@@ -50,7 +50,7 @@ class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     address_country: Optional[str] = None
-    owner_id: int = ForeignKeyFieldInfo(model=Admin, fk_field_name='pd_owner_id')
+    owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
@@ -92,8 +92,8 @@ class Person(PipedriveBaseModel):
     name: str
     email: Optional[str] = ''
     phone: Optional[str] = ''
-    owner_id: Optional[int] = ForeignKeyFieldInfo(None, model=Admin, fk_field_name='pd_owner_id')
-    org_id: Optional[int] = ForeignKeyFieldInfo(None, model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
+    owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+    org_id: Optional[int] = ForeignKeyField(None, model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
 
     _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     obj_type: Literal['person'] = Field('person', exclude=True)
@@ -191,13 +191,11 @@ class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     title: str
     org_id: int
-    person_id: Optional[int] = ForeignKeyFieldInfo(
-        None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True
-    )
-    org_id: int = ForeignKeyFieldInfo(model=Company, fk_field_name='pd_org_id')
-    user_id: int = ForeignKeyFieldInfo(model=Admin, fk_field_name='pd_owner_id')
-    pipeline_id: int = ForeignKeyFieldInfo(model=Pipeline, fk_field_name='pd_pipeline_id')
-    stage_id: int = ForeignKeyFieldInfo(model=Stage, fk_field_name='pd_stage_id')
+    person_id: Optional[int] = ForeignKeyField(None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True)
+    org_id: int = ForeignKeyField(model=Company, fk_field_name='pd_org_id')
+    user_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    pipeline_id: int = ForeignKeyField(model=Pipeline, fk_field_name='pd_pipeline_id')
+    stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
     status: str
 
     _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)

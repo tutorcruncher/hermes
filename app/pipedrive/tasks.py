@@ -45,6 +45,9 @@ MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Ac
 
 
 async def pd_rebuild_schema_with_custom_fields() -> list[Type[PipedriveBaseModel]]:
+    """
+    Adds extra fields to the schema for the Pipedrive models based on CustomFields in the DB
+    """
     models_to_rebuild = []
     for model, pd_model in MODEL_PD_LU.items():
         custom_fields = await CustomField.filter(linked_object_type=model.__name__)
