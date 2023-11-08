@@ -53,8 +53,10 @@ You may need to create the database with `make reset-db`.
 
 Then run the server with `python -m uvicorn app.main:app --reload`
 
-You'll be able to view the admin interface at http://localhost:8000/. 
-To login, go to /login. You need to have an admin already created;
+You'll be able to view the admin interface at http://localhost:8000/
+you will first need to navigate to /init to create an admin
+then go to login, go to /login. You need to have an admin already created
+then you will have to manually navigate back to http://localhost:8000/
 
 set `.env` vars:
 ```
