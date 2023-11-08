@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic._internal._model_construction import object_setattr
 from pydantic.fields import FieldInfo
 from tortoise.exceptions import DoesNotExist
+from tortoise.query_utils import Prefetch
 
 if TYPE_CHECKING:  # noqa
     from app.models import CustomField
@@ -90,6 +91,38 @@ class HermesBaseModel(BaseModel):
                     object_setattr(self, to_field, None)
             elif hasattr(v, 'a_validate'):
                 await v.a_validate()
+
+    @classmethod
+    async def get_custom_fields(cls, obj):
+        from app.models import CustomField, CustomFieldValue
+
+        model = obj.__class__
+        return await CustomField.filter(linked_object_type=model.__name__).prefetch_related(
+            Prefetch('values', queryset=CustomFieldValue.filter(**{model.__name__.lower(): obj}))
+        )
+
+    async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
+        """
+        When updating a Hermes model from a Pipedrive/TC2 webhook,, we need to get the custom field values from the
+        Pipedrive/TC2 model.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    async def get_custom_field_vals(cls, obj) -> dict:
+        """
+        When creating a Hermes model from a Pipedrive/TC2 object, gets the custom field values from the model.
+        """
+        custom_fields = await cls.get_custom_fields(obj)
+        cf_data = {}
+
+        for cf in custom_fields:
+            if cf.hermes_field_name:
+                val = getattr(obj, cf.hermes_field_name, None)
+            else:
+                val = cf.values[0].value
+            cf_data[cf.machine_name] = val
+        return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 

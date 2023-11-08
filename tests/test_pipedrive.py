@@ -488,7 +488,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                '123_hermes_id_456': 1,
+                '123_hermes_id_456': company.id,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -500,7 +500,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'email': ['brain@junes.com'],
                 'phone': None,
                 'org_id': 1,
-                '234_hermes_id_567': 1,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert (await Contact.get()).pd_person_id == 1

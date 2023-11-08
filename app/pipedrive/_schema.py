@@ -3,10 +3,9 @@ from typing import Literal, Optional, Any
 
 from pydantic import field_validator, model_validator, Field
 from pydantic.main import BaseModel
-from tortoise.query_utils import Prefetch
 
 from app.base_schema import HermesBaseModel, ForeignKeyFieldInfo
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField, CustomFieldValue
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField
 
 
 def _remove_nulls(**kwargs):
@@ -39,32 +38,12 @@ class PDExtraField(BaseModel):
 
 
 class PipedriveBaseModel(HermesBaseModel):
-    """
-    All of this logic is basically here to deal with Pipedrive's horrible custom fields.
-    """
-
-    @classmethod
-    async def get_custom_fields(cls, obj):
-        model = obj.__class__
-        return await CustomField.filter(linked_object_type=model.__name__).prefetch_related(
-            Prefetch('values', queryset=CustomFieldValue.filter(**{model.__name__.lower(): obj}))
-        )
-
-    @classmethod
-    async def get_custom_field_vals(cls, obj) -> dict:
+    async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When creating a model from a Pipedrive object, gets the custom field values from the model.
+        When updating a Hermes model from a Pipedrive webhook,, we need to get the custom field values from the
+        Pipedrive model.
         """
-        custom_fields = await cls.get_custom_fields(obj)
-        cf_data = {}
-
-        for cf in custom_fields:
-            if cf.hermes_field_name:
-                val = getattr(obj, cf.hermes_field_name, None)
-            else:
-                val = cf.values[0].value
-            cf_data[cf.machine_name] = val
-        return cf_data
+        return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
 class Organisation(PipedriveBaseModel):
@@ -102,14 +81,6 @@ class Organisation(PipedriveBaseModel):
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
             **cf_data_from_hermes,
         }
-
-    async def custom_field_values(self, custom_fields: list[CustomField]) -> dict:
-        """
-        When updating an Organisation from a Pipedrive webhook, we need to get the custom field values from the
-        Organisation model.
-        """
-        cf_vals_data = {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
-        return cf_vals_data
 
 
 # Used to get only alphanumeric characters & whitespace for client entering phone numbers

@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import field_validator, model_validator, ConfigDict, Field
 
 from app.base_schema import HermesBaseModel, ForeignKeyFieldInfo
-from app.models import Admin, Company
+from app.models import Admin, Company, CustomField
 
 
 class TCSubject(HermesBaseModel):
@@ -118,7 +118,22 @@ class TCClient(HermesBaseModel):
     def remove_null_attrs(cls, v: list[TCClientExtraAttr]):
         return [attr for attr in v if attr.value]
 
-    def company_dict(self):
+    async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
+        """
+        When updating a Hermes Company from a TCClient,, we need to get the custom field values from the `extra_attrs`
+        on the TCClient.
+        """
+        cf_val_lu = {}
+        for cf in [c for c in custom_fields if not c.hermes_field_name]:
+            if extra_attr := next((ea for ea in self.extra_attrs if ea.machine_name == cf.tc2_machine_name), None):
+                cf_val_lu[cf.id] = extra_attr.value
+        return cf_val_lu
+
+    def company_dict(self, custom_fields: list[CustomField]) -> dict:
+        cf_data_from_hermes = {}
+        for cf in [c for c in custom_fields if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD]:
+            if extra_attr := next((ea for ea in self.extra_attrs if ea.machine_name == cf.tc2_machine_name), None):
+                cf_data_from_hermes[cf.hermes_field_name] = extra_attr.value
         return dict(
             tc2_agency_id=self.meta_agency.id,
             tc2_cligency_id=self.id,
@@ -131,6 +146,7 @@ class TCClient(HermesBaseModel):
             bdr_person=self.bdr_person,  # noqa: F821 - Added in validation
             paid_invoice_count=self.meta_agency.paid_invoice_count,
             price_plan=self.meta_agency.price_plan,
+            **cf_data_from_hermes,
         )
 
 

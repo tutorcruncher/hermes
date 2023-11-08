@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 from pytz import utc
 
-from app.models import Company, Contact, Deal
+from app.models import Company, Contact, Deal, CustomField
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
@@ -16,13 +16,15 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
 
     TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
-    company_data = tc2_client.company_dict()
+    company_custom_fields = await CustomField.filter(linked_object_type='Company')
+    company_data = tc2_client.company_dict(company_custom_fields)
     company_id = company_data.pop('tc2_agency_id')
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
-
+    # TC2 doesn't tell us which custom fields have been updated, so we have to check them all.
+    await company.process_custom_field_vals({}, await tc2_client.custom_field_values(company_custom_fields))
     return created, company
 
 

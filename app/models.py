@@ -142,7 +142,26 @@ class Admin(AbstractAdmin):
         )
 
 
-class Company(models.Model):
+class HermesModel(models.Model):
+    async def process_custom_field_vals(self, old_cf_vals, new_cf_vals) -> tuple[int, int, int]:
+        updated_created_vals = {k: v for k, v in new_cf_vals.items() if k not in old_cf_vals and v is not None}
+        updated_created_vals |= {k: new_cf_vals[k] for k, v in old_cf_vals.items() if v != new_cf_vals[k]}
+        deleted_vals = [k for k, v in old_cf_vals.items() if not v and not new_cf_vals.get(k)]
+        created, updated, deleted = 0, 0, 0
+        linked_obj_name = self.__class__.__name__.lower()
+        for cf_id, cf_val in updated_created_vals.items():
+            _, created = await CustomFieldValue.update_or_create(
+                **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
+            )
+            if created:
+                created += 1
+            else:
+                updated += 1
+        deleted = await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
+        return created, updated, deleted
+
+
+class Company(HermesModel):
     """
     Represents a company.
     In TC this is a mix between a meta Client and an Agency.
@@ -206,7 +225,7 @@ class Company(models.Model):
             return ''
 
 
-class Contact(models.Model):
+class Contact(HermesModel):
     """
     Represents a contact, an individual who works at a company.
     In TC this is a mix between a meta Client and SR.
@@ -238,7 +257,7 @@ class Contact(models.Model):
         return self.last_name
 
 
-class Deal(models.Model):
+class Deal(HermesModel):
     STATUS_OPEN = 'open'
     STATUS_WON = 'won'
     STATUS_LOST = 'lost'
@@ -264,7 +283,7 @@ class Deal(models.Model):
         return self.name
 
 
-class Meeting(models.Model):
+class Meeting(HermesModel):
     STATUS_PLANNED = 'PLANNED'
     STATUS_CANCELED = 'CANCELED'
     STATUS_NO_SHOW = 'NO_SHOW'
@@ -320,7 +339,7 @@ class CustomField(models.Model):
 
     hermes_field_name = fields.CharField(max_length=255, null=True)
     tc2_machine_name = fields.CharField(max_length=255, null=True)
-    pd_field_id = fields.CharField(max_length=255, unique=True)
+    pd_field_id = fields.CharField(max_length=255, null=True)
     linked_object_type = fields.CharField(max_length=255)
 
     values: fields.ReverseRelation['CustomFieldValue']
@@ -348,9 +367,15 @@ class CustomFieldValue(models.Model):
     company = fields.ForeignKeyField(
         'models.Company', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
     )
-    contact = fields.ForeignKeyField('models.Contact', related_name='custom_field_values', null=True)
-    deal = fields.ForeignKeyField('models.Deal', related_name='custom_field_values', null=True)
-    meeting = fields.ForeignKeyField('models.Meeting', related_name='custom_field_values', null=True)
+    contact = fields.ForeignKeyField(
+        'models.Contact', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
+    )
+    deal = fields.ForeignKeyField(
+        'models.Deal', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
+    )
+    meeting = fields.ForeignKeyField(
+        'models.Meeting', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
+    )
 
     value = fields.CharField(max_length=255)
 
