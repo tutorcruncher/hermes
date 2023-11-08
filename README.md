@@ -46,6 +46,10 @@ run ngrok on port 8000
 
 use the given url as the webhook url in pipedrive and tc2
 
+in TC create a new API integration:
+`{your custom domain or domain provided}/tc2/callback`
+This will give you a private key, use this private key in the hermes `.env` `tc2_api_key` and TC `localsettings.py` `HERMES_API_KEY`
+
 #### Hermes:
 
 Install the dependencies with `make install`. 
