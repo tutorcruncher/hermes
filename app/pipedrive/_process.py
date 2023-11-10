@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.models import Company, Contact, Deal, Pipeline, Stage
+from app.models import Company, Contact, Deal, Pipeline, Stage, CustomField
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
 
@@ -17,27 +17,41 @@ async def _process_pd_organisation(
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
     """
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
-    current_company = current_pd_org.company if current_pd_org else None
-    old_company = old_pd_org.company if old_pd_org else None
+    current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
+    old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
     company = current_company or old_company
+    company_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
         if current_pd_org:
             # The org has been updated
-            old_data = old_pd_org and await old_pd_org.company_dict()
-            new_data = await current_pd_org.company_dict()
-            if old_data != new_data:
-                await company.update_from_dict(new_data)
+            old_org_data = old_pd_org and await old_pd_org.company_dict(company_custom_fields)
+            new_org_data = await current_pd_org.company_dict(company_custom_fields)
+            if old_org_data != new_org_data:
+                await company.update_from_dict(new_org_data)
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
+            old_company_cf_vals = await old_pd_org.custom_field_values(company_custom_fields) if old_org_data else {}
+            new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
+            cfs_updated = await company.process_custom_field_vals(old_company_cf_vals, new_company_cf_vals)
+            if cfs_updated:
+                app_logger.info(
+                    'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+                )
         else:
-            # The org has been deleted
+            # The org has been deleted. The linked custom fields will also be deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        company = await Company.create(**await current_pd_org.company_dict())
+        company = await Company.create(**await current_pd_org.company_dict(company_custom_fields))
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
+        new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
+        cfs_created = await company.process_custom_field_vals({}, new_company_cf_vals)
+        if cfs_created:
+            app_logger.info(
+                'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+            )
     return company
 
 
@@ -50,8 +64,8 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     don't care enough since Companies are really the only important part.
     """
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
-    current_contact = current_pd_person.contact if current_pd_person else None
-    old_contact = old_pd_person.contact if old_pd_person else None
+    current_contact = getattr(current_pd_person, 'contact', None) if current_pd_person else None
+    old_contact = getattr(old_pd_person, 'contact', None) if old_pd_person else None
     contact = current_contact or old_contact
     if contact:
         if current_pd_person:
@@ -87,8 +101,8 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if it's been removed.
     """
     # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
-    current_deal = current_pd_deal.deal if current_pd_deal else None
-    old_deal = old_pd_deal.deal if old_pd_deal else None
+    current_deal = getattr(current_pd_deal, 'deal', None) if current_pd_deal else None
+    old_deal = getattr(old_pd_deal, 'deal', None) if old_pd_deal else None
     deal = current_deal or old_deal
     if deal:
         if current_pd_deal:

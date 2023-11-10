@@ -8,6 +8,13 @@ THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
+    # Dev and Test settings
+    testing: bool = True
+    dev_mode: bool = False
+    log_level: str = 'INFO'
+
+    # Postgres
+    pg_dsn_test: PostgresDsn = Field('postgres://postgres@localhost:5432/hermestest', validation_alias='DATABASE_URL')
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL')
 
     # Redis
@@ -20,11 +27,6 @@ class Settings(BaseSettings):
     signing_key: str = 'test-key'
     host: str = '0.0.0.0'
     port: int = 8000
-
-    # Dev and Test settings
-    testing: bool = True
-    dev_mode: bool = False
-    log_level: str = 'INFO'
 
     # Call booker
     callbooker_base_url: str = 'https://tutorcruncher.com/book-a-call'

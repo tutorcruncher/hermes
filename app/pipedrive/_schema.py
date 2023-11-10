@@ -1,13 +1,11 @@
-import json
 import re
-from typing import ClassVar, Literal, Optional, Any
+from typing import Literal, Optional, Any
 
-from pydantic import field_validator, model_validator, ConfigDict, Field
+from pydantic import field_validator, model_validator, Field
 from pydantic.main import BaseModel
 
 from app.base_schema import HermesBaseModel, ForeignKeyField
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.utils import get_redis_client
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField
 
 
 def _remove_nulls(**kwargs):
@@ -40,57 +38,12 @@ class PDExtraField(BaseModel):
 
 
 class PipedriveBaseModel(HermesBaseModel):
-    """
-    All of this logic is basically here to deal with Pipedrive's horrible custom fields.
-    """
-
-    @classmethod
-    def _custom_fields(cls) -> list[str]:
-        """Get all fields that have the 'custom' attribute"""
-        return [n for n, f in cls.model_fields.items() if f.json_schema_extra and f.json_schema_extra.get('custom')]
-
-    @classmethod
-    async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
+    async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        Gets the custom fields from Pipedrive that match to the custom fields on the model. This is cached for 5 minutes
+        When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
+        Pipedrive model.
         """
-        from app.pipedrive.api import pipedrive_request
-
-        cache_key = f'{cls.custom_fields_pd_name}-custom-fields'
-        redis = await get_redis_client()
-        if cached_pd_fields_data := await redis.get(cache_key):
-            pd_fields_data = json.loads(cached_pd_fields_data)
-        else:
-            pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
-            await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
-        field_lu = {}
-        custom_fields = cls._custom_fields()
-        for pd_field in pd_fields_data:
-            field_name = _slugify(pd_field['name'])
-            if field_name in custom_fields:
-                field_lu[field_name] = PDExtraField(**pd_field)
-        return field_lu
-
-    @classmethod
-    async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
-        # TODO: Move to post_model_init?
-        custom_field_lu = await cls._get_pd_custom_fields()
-        for field_name, pd_field in custom_field_lu.items():
-            field = cls.model_fields[field_name]
-            field.serialization_alias = pd_field.key
-
-        # Since we've set the field aliases, we now need to rebuild the schema for the model.
-        cls.model_rebuild(force=True)
-        obj = cls(**obj.__dict__)
-        return obj
-
-    async def a_validate(self):
-        # We need to set the custom field values before we validate
-        if self._custom_fields():
-            await self.__class__.set_custom_field_vals(self)
-        await super().a_validate()
-
-    model_config = ConfigDict(populate_by_name=True)
+        return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
 class Organisation(PipedriveBaseModel):
@@ -99,47 +52,34 @@ class Organisation(PipedriveBaseModel):
     address_country: Optional[str] = None
     owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
 
-    # These are all custom fields
-    website: Optional[str] = Field('', json_schema_extra={'custom': True})
-    paid_invoice_count: Optional[int] = Field(0, json_schema_extra={'custom': True})
-    has_booked_call: Optional[bool] = Field(False, json_schema_extra={'custom': True})
-    has_signed_up: Optional[bool] = Field(False, json_schema_extra={'custom': True})
-    tc2_status: Optional[str] = Field('', json_schema_extra={'custom': True})
-    tc2_cligency_url: Optional[str] = Field('', json_schema_extra={'custom': True})
-    hermes_id: Optional[int] = ForeignKeyField(None, model=Company, custom=True)
-
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
-
-    custom_fields_pd_name: ClassVar[str] = 'organizationFields'
 
     obj_type: Literal['organization'] = Field('organization', exclude=True)
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
-        obj = cls(
-            **_remove_nulls(
-                name=company.name,
-                owner_id=(await company.sales_person).pd_owner_id,
-                address_country=company.country,
-                website=company.website,
-                paid_invoice_count=company.paid_invoice_count,
-                has_booked_call=company.has_booked_call,
-                has_signed_up=company.has_signed_up,
-                tc2_status=company.tc2_status,
-                tc2_cligency_url=company.tc2_cligency_url,
-                hermes_id=company.id,
-            )
+        cls_kwargs = dict(
+            name=company.name,
+            owner_id=(await company.sales_person).pd_owner_id,
+            tc2_status=company.tc2_status,
+            tc2_cligency_url=company.tc2_cligency_url,
+            address_country=company.country,
         )
-        obj = await cls.set_custom_field_vals(obj)
-        return obj
+        cls_kwargs.update(await cls.get_custom_field_vals(company))
+        final_kwargs = _remove_nulls(**cls_kwargs)
+        return cls(**final_kwargs)
 
-    async def company_dict(self) -> dict:
+    async def company_dict(self, custom_fields: list[CustomField]) -> dict:
+        cf_data_from_hermes = {
+            c.hermes_field_name: getattr(self, c.machine_name)
+            for c in custom_fields
+            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
+        }
         return {
             'pd_org_id': self.id,
             'name': self.name,
-            'tc2_status': self.tc2_status,
-            'website': self.website,
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
+            **cf_data_from_hermes,
         }
 
 
@@ -155,11 +95,7 @@ class Person(PipedriveBaseModel):
     owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
     org_id: Optional[int] = ForeignKeyField(None, model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
 
-    # These are all custom fields
-    hermes_id: Optional[int] = ForeignKeyField(None, model=Contact, custom=True)
-
     _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
-    custom_fields_pd_name: ClassVar[str] = 'personFields'
     obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
@@ -171,9 +107,8 @@ class Person(PipedriveBaseModel):
             email=contact.email,
             phone=contact.phone,
             org_id=company.pd_org_id,
-            hermes_id=contact.id,
+            **await cls.get_custom_field_vals(contact),
         )
-        obj = await cls.set_custom_field_vals(obj)
         return obj
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
@@ -263,11 +198,7 @@ class PDDeal(PipedriveBaseModel):
     stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
     status: str
 
-    # These are all custom fields
-    hermes_id: Optional[int] = ForeignKeyField(None, model=Deal, null_if_invalid=True, custom=True)
-
     _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
-    custom_fields_pd_name: ClassVar[str] = 'dealFields'
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
@@ -284,11 +215,10 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
-                hermes_id=deal.id,
                 status=deal.status,
+                **await cls.get_custom_field_vals(deal),
             )
         )
-        obj = await cls.set_custom_field_vals(obj)
         return obj
 
     async def deal_dict(self) -> dict:
@@ -332,8 +262,8 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -345,3 +275,25 @@ class PipedriveEvent(HermesBaseModel):
             else:
                 values.pop(f, None)
         return values
+
+    @field_validator('current', 'previous', mode='before')
+    @classmethod
+    def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
+        """
+        It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
+        rebuild the model when adding custom fields.
+        """
+        if v['obj_type'] == 'organization':
+            return Organisation(**v)
+        elif v['obj_type'] == 'person':
+            return Person(**v)
+        elif v['obj_type'] == 'deal':
+            return PDDeal(**v)
+        elif v['obj_type'] == 'pipeline':
+            return PDPipeline(**v)
+        elif v['obj_type'] == 'stage':
+            return PDStage(**v)
+        elif v['obj_type'] == 'activity':
+            return Activity(**v)
+        else:
+            raise ValueError(f'Unknown object type {v["obj_type"]}')

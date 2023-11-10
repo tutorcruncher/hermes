@@ -1,6 +1,5 @@
 import logging.config
 import os
-from contextlib import asynccontextmanager
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -13,6 +12,7 @@ from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
 from app.logging import config
+from app.base_schema import build_custom_field_schema
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
@@ -32,7 +32,7 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=
 logging.config.dictConfig(config)
 register_tortoise(
     app,
-    db_url=_app_settings.pg_dsn,
+    db_url=str(_app_settings.pg_dsn),
     modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
@@ -45,6 +45,7 @@ app.include_router(main_router, prefix='')
 app.mount('/', admin_app)
 
 
+@app.on_event('startup')
 async def _startup():
     from app.models import Admin
     from app.utils import get_redis_client
@@ -59,9 +60,4 @@ async def _startup():
     from app.utils import get_config
 
     await get_config()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await _startup()
-    yield
+    await build_custom_field_schema()
