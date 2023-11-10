@@ -1,9 +1,11 @@
 import logging.config
 import os
 
+import logfire
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
@@ -25,10 +27,12 @@ if _app_settings.sentry_dsn:
 
 
 app = FastAPI()
+
 allowed_origins = ['https://tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
+app.add_middleware(OpenTelemetryMiddleware)
 logging.config.dictConfig(config)
 register_tortoise(
     app,
@@ -43,6 +47,10 @@ app.include_router(pipedrive_router, prefix='/pipedrive')
 app.include_router(main_router, prefix='')
 # Has to go last otherwise it will override other routes
 app.mount('/', admin_app)
+
+COMMIT = os.getenv('HEROKU_SLUG_COMMIT', '-')[:7]
+RELEASE_CREATED_AT = os.getenv('HEROKU_RELEASE_CREATED_AT', '-')
+logfire.info('starting app {commit=} {release_created_at=}', commit=COMMIT, release_created_at=RELEASE_CREATED_AT)
 
 
 @app.on_event('startup')

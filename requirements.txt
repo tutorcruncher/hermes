@@ -8,6 +8,9 @@ aioredis==2.0.1
 fastapi-admin==1.0.4
 sentry-sdk[fastapi]==1.33.1
 httpx==0.25.0
+opentelemetry-instrumentation-fastapi==0.42b0
+--extra-index-url https://files.logfire.dev/NOdO2jZhxNh8ert5YFYfWkFa9IBVsT7Jher4y8sh6YlXSb9V1d/wheels/
+logfire[asgi]==0.5.6
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
