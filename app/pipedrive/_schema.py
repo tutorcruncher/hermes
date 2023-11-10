@@ -40,7 +40,7 @@ class PDExtraField(BaseModel):
 class PipedriveBaseModel(HermesBaseModel):
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When updating a Hermes model from a Pipedrive webhook,, we need to get the custom field values from the
+        When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
         Pipedrive model.
         """
         return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
@@ -58,16 +58,16 @@ class Organisation(PipedriveBaseModel):
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
-        return cls(
-            **_remove_nulls(
-                name=company.name,
-                owner_id=(await company.sales_person).pd_owner_id,
-                tc2_status=company.tc2_status,
-                tc2_cligency_url=company.tc2_cligency_url,
-                address_country=company.country,
-                **await cls.get_custom_field_vals(company),
-            ),
+        cls_kwargs = dict(
+            name=company.name,
+            owner_id=(await company.sales_person).pd_owner_id,
+            tc2_status=company.tc2_status,
+            tc2_cligency_url=company.tc2_cligency_url,
+            address_country=company.country,
         )
+        cls_kwargs.update(await cls.get_custom_field_vals(company))
+        final_kwargs = _remove_nulls(**cls_kwargs)
+        return cls(**final_kwargs)
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:
         cf_data_from_hermes = {

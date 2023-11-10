@@ -1,6 +1,5 @@
 import logging.config
 import os
-from contextlib import asynccontextmanager
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -33,7 +32,7 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=
 logging.config.dictConfig(config)
 register_tortoise(
     app,
-    db_url=_app_settings.pg_dsn,
+    db_url=str(_app_settings.pg_dsn),
     modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
@@ -46,6 +45,7 @@ app.include_router(main_router, prefix='')
 app.mount('/', admin_app)
 
 
+@app.on_event('startup')
 async def _startup():
     from app.models import Admin
     from app.utils import get_redis_client
@@ -61,9 +61,3 @@ async def _startup():
 
     await get_config()
     await build_custom_field_schema()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await _startup()
-    yield

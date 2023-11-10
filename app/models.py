@@ -378,10 +378,10 @@ class CustomField(models.Model):
     TYPE_BOOL = 'bool'
     TYPE_FK_FIELD = 'fk_field'
     TYPE_CHOICES = (
-        (TYPE_INT, 'Integer'),
-        (TYPE_STR, 'String'),
-        (TYPE_BOOL, 'Boolean'),
-        (TYPE_FK_FIELD, 'Foreign Key'),
+        (TYPE_INT, TYPE_INT),
+        (TYPE_STR, TYPE_STR),
+        (TYPE_BOOL, TYPE_BOOL),
+        (TYPE_FK_FIELD, TYPE_FK_FIELD),
     )
 
     id = fields.IntField(pk=True)
@@ -401,7 +401,10 @@ class CustomField(models.Model):
         max_length=255, null=True, description='The machine name of the Custom Field in TC2, if not in the normal data.'
     )
     pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
-    linked_object_type = fields.CharField(max_length=255, description='The name of the model this is linked to')
+    linked_object_type = fields.CharField(
+        max_length=255,
+        description='The name of the model this is linked to, ' '("Company", "Contact", "Deal", "Meeting")',
+    )
 
     values: fields.ReverseRelation['CustomFieldValue']
 

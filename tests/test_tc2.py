@@ -647,3 +647,61 @@ class TC2TasksTestCase(HermesTestCase):
         await pipedrive_id_field.delete()
         await domain_field.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_custom_fields_none(self, mock_request):
+        """
+        Update a company with custom fields, with no CustomFieldValue
+        """
+
+        mock_request.side_effect = fake_tc2_request(self.tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+
+        pipedrive_id_field = await CustomField.create(
+            name='Pipedrive ID',
+            field_type=CustomField.TYPE_INT,
+            linked_object_type='Company',
+            hermes_field_name='pd_org_id',
+            tc2_machine_name='pipedrive_id',
+        )
+        domain_field = await CustomField.create(
+            name='Domain',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Company',
+            tc2_machine_name='company_domain',
+        )
+
+        await update_client_from_company(company)
+        assert self.tc2.db['clients'] == {
+            10: {
+                'user': {
+                    'email': 'mary@booth.com',
+                    'phone': None,
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person_id': 30,
+                'associated_admin_id': 30,
+                'bdr_person_id': None,
+                'paid_recipients': [
+                    {
+                        'email': 'mary@booth.com',
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                    },
+                ],
+                'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'pipedrive_id': 20,
+                    'who_are_you_trying_to_reach': 'support',
+                    'company_domain': None,
+                },
+            }
+        }
+        await pipedrive_id_field.delete()
+        await domain_field.delete()
+        await build_custom_field_schema()

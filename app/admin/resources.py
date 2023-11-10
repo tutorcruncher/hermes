@@ -227,14 +227,17 @@ class CustomFieldResource(Model):
         'hermes_field_name',
         'tc2_machine_name',
         'pd_field_id',
-        Field(
-            'linked_object_type',
-            input_=Select(options=((M.__name__, M.__name__.lower()) for M in [Company, Contact, Deal, Meeting])),
-        ),
+        'linked_object_type',
+        # Field(
+        #     'linked_object_type',
+        #     input_=Select(options=((M.__name__, M.__name__) for M in [Company, Contact, Deal, Meeting])),
+        # ),
     ]
 
     async def get_toolbar_actions(self, request: Request):
-        return []
+        return [
+            Action(label='Add', icon='fa fa-plus', name='create', method=Method.GET, ajax=False),
+        ]
 
     async def get_actions(self, request: Request) -> list[Action]:
         return [

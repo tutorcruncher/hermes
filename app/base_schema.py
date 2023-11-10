@@ -1,4 +1,4 @@
-from typing import Any, TYPE_CHECKING, Type
+from typing import Any, TYPE_CHECKING, Type, Optional
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
@@ -103,7 +103,7 @@ class HermesBaseModel(BaseModel):
 
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When updating a Hermes model from a Pipedrive/TC2 webhook,, we need to get the custom field values from the
+        When updating a Hermes model from a Pipedrive/TC2 webhook, we need to get the custom field values from the
         Pipedrive/TC2 model.
         """
         raise NotImplementedError
@@ -115,19 +115,18 @@ class HermesBaseModel(BaseModel):
         """
         custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
-
         for cf in custom_fields:
             if cf.hermes_field_name:
                 val = getattr(obj, cf.hermes_field_name, None)
             else:
-                val = cf.values[0].value
+                val = cf.values[0].value if cf.values else None
             cf_data[cf.machine_name] = val
         return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
 
-async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **field_kwargs) -> FieldInfo:
+async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **extra_field_kwargs) -> FieldInfo:
     """
     Generates the FieldInfo object for custom fields.
     """
@@ -138,16 +137,16 @@ async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel
         'default': None,
         'required': False,
         'json_schema_extra': {'custom': True},
-        **field_kwargs,
+        **extra_field_kwargs,
     }
     if field.field_type == CustomField.TYPE_INT:
-        field_kwargs['annotation'] = int
+        field_kwargs['annotation'] = Optional[int]
     elif field.field_type == CustomField.TYPE_STR:
-        field_kwargs['annotation'] = str
+        field_kwargs['annotation'] = Optional[str]
     elif field.field_type == CustomField.TYPE_BOOL:
-        field_kwargs['annotation'] = bool
+        field_kwargs['annotation'] = Optional[bool]
     elif field.field_type == CustomField.TYPE_FK_FIELD:
-        field_kwargs.update(annotation=int, json_schema_extra=fk_json_schema_extra(model, custom=True))
+        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True))
     return FieldInfo(**field_kwargs)
 
 

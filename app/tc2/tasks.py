@@ -28,7 +28,7 @@ async def update_client_from_company(company: Company):
             if cf.hermes_field_name:
                 val = getattr(company, cf.hermes_field_name, None)
             else:
-                val = cf.values[0].value
+                val = cf.values[0].value if cf.values else None
             extra_attrs[cf.tc2_machine_name] = val
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
