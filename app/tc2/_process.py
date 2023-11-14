@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 from pytz import utc
 
-from app.models import Company, Contact, Deal, CustomField
-from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
+from app.models import Company, Contact, Deal
+from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole, TCUser
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
 from app.utils import get_config
@@ -16,24 +16,24 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
 
     TODO: We should try and match companies on their name/contact email address rather than creating a new one.
     """
-    company_custom_fields = await CustomField.filter(linked_object_type='Company')
-    company_data = tc2_client.company_dict(company_custom_fields)
+    company_data = tc2_client.company_dict()
     company_id = company_data.pop('tc2_agency_id')
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
-    # TC2 doesn't tell us which custom fields have been updated, so we have to check them all.
-    await company.process_custom_field_vals({}, await tc2_client.custom_field_values(company_custom_fields))
+
     return created, company
 
 
-async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tuple[bool, Contact]:
+async def _create_or_update_contact(tc2_sr: TCRecipient, tc2_user: TCUser, company: Company) -> tuple[bool, Contact]:
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     contact_data = tc2_sr.contact_dict()
     contact_data['company_id'] = company.id
+    contact_data['email'] = tc2_user.email
+    contact_data['phone'] = tc2_user.phone
     contact_id = contact_data.pop('tc2_sr_id')
     contact, created = await Contact.get_or_create(tc2_sr_id=contact_id, defaults=contact_data)
     if not created:
@@ -70,71 +70,63 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
     return deal
 
 
-async def update_from_client_event(
-    tc2_subject: TCSubject | TCClient, create_deal: bool = True
-) -> tuple[(Company | None), (Deal | None)]:
+async def update_from_client_event(tc2_subject: TCSubject | TCClient) -> tuple[(Company | None), (Deal | None)]:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db.
     """
-    if isinstance(tc2_subject, TCSubject):
+    try:
+        tc2_client = TCClient(**tc2_subject.dict())
+    except ValidationError as e:
+        # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
+        # we know to delete their details from our database.
         try:
-            tc2_client = TCClient(**tc2_subject.model_dump())
-        except ValidationError as e:
-            # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
-            # we know to delete their details from our database.
-            try:
-                tc2_client = _TCSimpleRole(**tc2_subject.model_dump())
-            except ValidationError:
-                raise e
-            else:
-                company = await Company.get_or_none(tc2_cligency_id=tc2_client.id)
-                if company:
-                    await company.delete()
-                    app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
-                return None, None
-    else:
-        tc2_client = tc2_subject
-    deal, contact = None, None
-    await tc2_client.a_validate()
-    company_created, company = await _create_or_update_company(tc2_client)
-    contacts_created, contacts_updated = [], []
-    for i, recipient in enumerate(tc2_client.paid_recipients):
-        # If the company has just been created, TC2 will not set the email address of the primary user to be the
-        # same as the company email address, so we set it here.
-        if i == 0 and company_created and not recipient.email:
-            recipient.email = tc2_client.user.email
-        contact_created, contact = await _create_or_update_contact(recipient, company=company)
-        if contact_created:
-            contacts_created.append(contact)
+            tc2_client = _TCSimpleRole(**tc2_subject.dict())
+        except ValidationError:
+            raise e
         else:
-            contacts_updated.append(contact)
-    tc2_agency = tc2_client.meta_agency
-    should_create_deal = (
-        create_deal
-        and tc2_agency
-        and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
-        and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
-        and tc2_agency.paid_invoice_count == 0
-        and tc2_client.sales_person
-    )
-    if should_create_deal:
-        # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
-        # be created.
-        deal = await _get_or_create_deal(company, contact)
-    app_logger.info(
-        f'Company {company} {"created" if company_created else "updated"}:, '
-        f'Contacts created: {contacts_created}, '
-        f'Contacts updated: {contacts_updated}'
-        f'Deal created: {deal}'
-    )
-    return company, deal
+            company = await Company.get_or_none(tc2_cligency_id=tc2_client.id)
+            if company:
+                await company.delete()
+                app_logger.info(f'Company {company} and related contacts/deals/meetings deleted')
+            return None, None
+    else:
+        deal, contact = None, None
+        await tc2_client.a_validate()
+        company_created, company = await _create_or_update_company(tc2_client)
+        contacts_created, contacts_updated = [], []
+        for recipient in tc2_client.paid_recipients:
+            contact_created, contact = await _create_or_update_contact(recipient, tc2_client.user, company=company)
+            if contact_created:
+                contacts_created.append(contact)
+            else:
+                contacts_updated.append(contact)
+        tc2_agency = tc2_client.meta_agency
+        if (
+            tc2_agency
+            and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
+            and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
+            and tc2_agency.paid_invoice_count == 0
+            and tc2_client.sales_person
+        ):
+            # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
+            # be created.
+            deal = await _get_or_create_deal(company, contact)
+        app_logger.info(
+            f'Company {company} {"created" if company_created else "updated"}:, '
+            f'Contacts created: {contacts_created}, '
+            f'Contacts updated: {contacts_updated}'
+            f'Deal created: {deal}'
+        )
+        return company, deal
 
 
 async def update_from_invoice_event(tc2_subject: TCSubject):
     """
     As above, but we also check when an invoice changes in some way (as we have the paid_invoice_count on a Company).
     """
-    tc2_invoice = TCInvoice(**tc2_subject.model_dump())
-    tc2_client_subject = TCSubject(**await tc2_request(f'clients/{tc2_invoice.client.id}'))
+    tc2_invoice = TCInvoice(**tc2_subject.dict())
+    tc2_client_data = await tc2_request(f'clients/{tc2_invoice.client.id}')
+    tc2_client_data['model'] = 'Client'
+    tc2_client_subject = TCSubject(**tc2_client_data)
     return await update_from_client_event(tc2_client_subject)

@@ -37,10 +37,10 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     Create or update an organisation within Pipedrive.
     """
     hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.model_dump(by_alias=True)
+    hermes_org_data = hermes_org.dict(by_alias=True)
     if company.pd_org_id:
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
-        if hermes_org_data != pipedrive_org.model_dump(by_alias=True):
+        if hermes_org_data != pipedrive_org.dict(by_alias=True):
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
@@ -58,15 +58,17 @@ async def create_or_update_person(contact: Contact) -> Person:
     Create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.model_dump(by_alias=True)
+    hermes_person_data = hermes_person.dict(by_alias=True)
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.model_dump(by_alias=True):
+        if hermes_person_data != pipedrive_person.dict(by_alias=True):
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
-        created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
-        pipedrive_person = Person(**created_person)
+        created_person = await pipedrive_request('persons', method='POST', data=hermes_person_data)
+        app_logger.info('Created person %s', created_person)
+        created_person_data = created_person['data']
+        pipedrive_person = Person(**created_person_data)
         contact.pd_person_id = pipedrive_person.id
         await contact.save()
         app_logger.info('Created person %s from contact %s', contact.pd_person_id, contact.id)
@@ -78,7 +80,7 @@ async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     Creates a new deal if none exists within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
-    pd_deal_data = pd_deal.model_dump(by_alias=True)
+    pd_deal_data = pd_deal.dict(by_alias=True)
     if not deal.pd_deal_id:
         pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal_data))['data'])
         deal.pd_deal_id = pd_deal.id
@@ -91,7 +93,7 @@ async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Ac
     Creates a new activity within Pipedrive.
     """
     hermes_activity = await Activity.from_meeting(meeting)
-    hermes_activity_data = hermes_activity.model_dump()
+    hermes_activity_data = hermes_activity.dict()
     if pipedrive_deal:
         hermes_activity_data['deal_id'] = pipedrive_deal.id
     created_activity = (await pipedrive_request('activities/', method='POST', data=hermes_activity_data))['data']
