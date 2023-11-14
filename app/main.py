@@ -21,10 +21,11 @@ from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
+logfire_active = bool(_app_settings.logfire_token)
+logfire.configure(send_to_logfire=logfire_active, token=_app_settings.logfire_token)
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
-
 
 app = FastAPI()
 
@@ -32,8 +33,11 @@ allowed_origins = ['https://tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
-app.add_middleware(OpenTelemetryMiddleware)
+if logfire_active:
+    app.add_middleware(OpenTelemetryMiddleware)
+
 logging.config.dictConfig(config)
+
 register_tortoise(
     app,
     db_url=str(_app_settings.pg_dsn),

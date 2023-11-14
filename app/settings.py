@@ -9,12 +9,13 @@ THIS_DIR = Path(__file__).parent.resolve()
 
 class Settings(BaseSettings):
     # Dev and Test settings
-    testing: bool = True
+    testing: bool = False
     dev_mode: bool = False
     log_level: str = 'INFO'
 
+    logfire_token: Optional[str] = None
+
     # Postgres
-    pg_dsn_test: PostgresDsn = Field('postgres://postgres@localhost:5432/hermestest', validation_alias='DATABASE_URL')
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL')
 
     # Redis

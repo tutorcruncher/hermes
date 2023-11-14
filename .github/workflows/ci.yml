@@ -30,6 +30,8 @@ jobs:
 
     env:
       DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/hermes_test'
+      LOGFIRE_SEND_TO_LOGFIRE: ''
+      TESTING: 'true'
 
     steps:
     - uses: actions/checkout@v2
