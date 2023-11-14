@@ -142,26 +142,7 @@ class Admin(AbstractAdmin):
         )
 
 
-class HermesModel(models.Model):
-    async def process_custom_field_vals(self, old_cf_vals, new_cf_vals) -> tuple[int, int, int]:
-        updated_created_vals = {k: v for k, v in new_cf_vals.items() if k not in old_cf_vals and v is not None}
-        updated_created_vals |= {k: new_cf_vals[k] for k, v in old_cf_vals.items() if v != new_cf_vals[k]}
-        deleted_vals = [k for k, v in old_cf_vals.items() if not v and not new_cf_vals.get(k)]
-        created, updated, deleted = 0, 0, 0
-        linked_obj_name = self.__class__.__name__.lower()
-        for cf_id, cf_val in updated_created_vals.items():
-            _, created = await CustomFieldValue.update_or_create(
-                **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
-            )
-            if created:
-                created += 1
-            else:
-                updated += 1
-        deleted = await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
-        return created, updated, deleted
-
-
-class Company(HermesModel):
+class Company(models.Model):
     """
     Represents a company.
     In TC this is a mix between a meta Client and an Agency.
@@ -208,7 +189,6 @@ class Company(HermesModel):
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']
     meetings: fields.ReverseRelation['Meeting']
-    custom_field_values: fields.ReverseRelation['CustomFieldValue']
 
     def __str__(self):
         return self.name
@@ -225,7 +205,7 @@ class Company(HermesModel):
             return ''
 
 
-class Contact(HermesModel):
+class Contact(models.Model):
     """
     Represents a contact, an individual who works at a company.
     In TC this is a mix between a meta Client and SR.
@@ -245,8 +225,6 @@ class Contact(HermesModel):
 
     company = fields.ForeignKeyField('models.Company', related_name='contacts')
 
-    custom_field_values: fields.ReverseRelation['CustomFieldValue']
-
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
 
@@ -257,7 +235,7 @@ class Contact(HermesModel):
         return self.last_name
 
 
-class Deal(HermesModel):
+class Deal(models.Model):
     STATUS_OPEN = 'open'
     STATUS_WON = 'won'
     STATUS_LOST = 'lost'
@@ -277,13 +255,11 @@ class Deal(HermesModel):
     company = fields.ForeignKeyField('models.Company', related_name='deals')
     contact = fields.ForeignKeyField('models.Contact', related_name='deals', null=True)
 
-    custom_field_values: fields.ReverseRelation['CustomFieldValue']
-
     def __str__(self):
         return self.name
 
 
-class Meeting(HermesModel):
+class Meeting(models.Model):
     STATUS_PLANNED = 'PLANNED'
     STATUS_CANCELED = 'CANCELED'
     STATUS_NO_SHOW = 'NO_SHOW'
@@ -305,8 +281,6 @@ class Meeting(HermesModel):
     contact = fields.ForeignKeyField('models.Contact', related_name='meetings')
     deal = fields.ForeignKeyField('models.Deal', related_name='meetings', null=True, on_delete=fields.SET_NULL)
 
-    custom_field_values: fields.ReverseRelation['CustomFieldValue']
-
     @property
     def name(self):
         if self.meeting_type == Meeting.TYPE_SALES:
@@ -314,141 +288,3 @@ class Meeting(HermesModel):
         else:
             assert self.meeting_type == Meeting.TYPE_SUPPORT
             return f'TutorCruncher support meeting with {self.admin.name}'
-
-
-def _slugify(name: str) -> str:
-    return name.lower().replace(' ', '_')
-
-
-class CustomField(models.Model):
-    """
-    Used to store the custom fields that we have in Pipedrive/TC. When the app is started, we run
-    build_custom_field_schema() to add the custom fields to the relevant models.
-
-    There are different ways CustomFields are linked to the Hermes Model they relate to, best explained with examples.
-
-    Example 1: We want to record 'Source' to track where a signup has come from (Google etc).
-    This field doesn't exist on the Company model. We create a AttributeDefinition in TC2 with the machine_name `source`
-    We also create a custom field in Pipedrive; the ID of that field is 123_source_456. Lastly, we create a CustomField
-    with the attributes:
-
-        name='Source',
-        machine_name='source',  # Although this is created automatically on save)
-        field_type=CustomField.TYPE_STR,
-        hermes_field_name=null,  # This is null because the field doesn't exist on the model
-        tc2_machine_name=source,
-        pd_field_id=123_source_456,
-        linked_object_type=Company.__name__.
-
-    When the app starts, `build_custom_field_schema` will add a field to the Organisation model. The field has the name
-    `source` and has an alias for `123_source_456` (aliases in Pydantic mean we can refer to them by that name
-    instead. Check the docs for details.) When a webhook comes in from PD we can do validation on the field value.
-    This is especially useful when combined with the ForeignKeyField. See ForeignKeyField for details.
-
-    When the webhook from PD comes through, the field `source` will be set on the model as it comes from PD with the
-    key `123_source_456` and we've used an alias to tell Pydantic to fill from that field. If the webhook was coming
-    from TC2 then we'd check for an `extra_attr` with the `machine_name` equal to the CustomField's `tc2_machine_name`.
-
-    When the Object, in this case a Company object, is saved to the DB, we create or update a CustomFieldValue linked
-    to the CustomField object with the attributes:
-
-        custom_field=the_custom_field_created_above,
-        company=the_company_object,
-        value="Google"
-
-    Example 2: We want to record the estimated income of a Company. This field exists on the Company model as it is one
-    of the fields available from the Callbooker.
-    First, we create a custom field in Pipedrive for estimated_income; the ID of that field is 123_income_456. We also
-    create the AttDef in TC2. We then create a CustomField with the attributes:
-
-        name='Estimated income',
-        machine_name='estimated_income',  # Although this is created automatically on save)
-        field_type=CustomField.TYPE_STR,
-        hermes_field_name=estimated_income,  # We use the name of the field on the model
-        tc2_machine_name=estimated_income,
-        pd_field_id=123_income_456,
-        linked_object_type=Company.__name__.
-
-    The logic is similar to above, except that when the object is saved to the DB we look at the CustomField's
-    `hermes_field_name` and fill the value to that field. No CustomFieldValue is created.
-    """
-
-    TYPE_INT = 'int'
-    TYPE_STR = 'str'
-    TYPE_BOOL = 'bool'
-    TYPE_FK_FIELD = 'fk_field'
-    TYPE_CHOICES = (
-        (TYPE_INT, TYPE_INT),
-        (TYPE_STR, TYPE_STR),
-        (TYPE_BOOL, TYPE_BOOL),
-        (TYPE_FK_FIELD, TYPE_FK_FIELD),
-    )
-
-    id = fields.IntField(pk=True)
-
-    name = fields.CharField(max_length=255)
-    machine_name = fields.CharField(max_length=255, null=True)
-    field_type = fields.CharField(
-        max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD), description='The type of field.'
-    )
-
-    hermes_field_name = fields.CharField(
-        max_length=255,
-        null=True,
-        description='If this is connected to data from the Hermes model, this is the field name. Eg: `website`',
-    )
-    tc2_machine_name = fields.CharField(
-        max_length=255, null=True, description='The machine name of the Custom Field in TC2, if not in the normal data.'
-    )
-    pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
-    linked_object_type = fields.CharField(
-        max_length=255,
-        description='The name of the model this is linked to, ' '("Company", "Contact", "Deal", "Meeting")',
-    )
-
-    values: fields.ReverseRelation['CustomFieldValue']
-
-    async def save(self, *args, **kwargs) -> None:
-        if not self.machine_name:
-            self.machine_name = _slugify(self.name)
-        return await super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        return str(self)
-
-    class Meta:
-        unique_together = ('machine_name', 'linked_object_type')
-
-
-class CustomFieldValue(models.Model):
-    id = fields.IntField(pk=True)
-
-    custom_field = fields.ForeignKeyField('models.CustomField', related_name='values')
-
-    company = fields.ForeignKeyField(
-        'models.Company', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
-    )
-    contact = fields.ForeignKeyField(
-        'models.Contact', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
-    )
-    deal = fields.ForeignKeyField(
-        'models.Deal', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
-    )
-    meeting = fields.ForeignKeyField(
-        'models.Meeting', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
-    )
-
-    value = fields.CharField(max_length=255)
-
-    def validate(self):
-        if not (self.company or self.contact or self.deal or self.meeting):
-            raise ValueError('Must have a company, contact, deal or meeting')
-
-    def __str__(self):
-        return f'{self.custom_field}: {self.value}'
-
-    def __repr__(self):
-        return str(self)

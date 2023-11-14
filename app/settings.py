@@ -1,33 +1,28 @@
 from pathlib import Path
-from typing import Optional
 
-from pydantic import Field, PostgresDsn, RedisDsn
-from pydantic_settings import SettingsConfigDict, BaseSettings
+from pydantic import BaseSettings, Extra, Field, PostgresDsn, RedisDsn
 
 THIS_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    # Dev and Test settings
-    testing: bool = False
-    dev_mode: bool = False
-    log_level: str = 'INFO'
-
-    logfire_token: Optional[str] = None
-
-    # Postgres
-    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL')
+    pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', env='DATABASE_URL', alias='database_url')
 
     # Redis
-    redis_dsn: RedisDsn = Field('redis://localhost:6379', validation_alias='REDISCLOUD_URL')
+    redis_dsn: RedisDsn = Field('redis://localhost:6379', env='REDIS_URL', alias='redis_url')
 
     # Sentry
-    sentry_dsn: Optional[str] = None
+    sentry_dsn: str = ''
 
-    dft_timezone: str = 'Europe/London'
+    dft_timezone = 'Europe/London'
     signing_key: str = 'test-key'
     host: str = '0.0.0.0'
     port: int = 8000
+
+    # Dev and Test settings
+    testing: bool = True
+    dev_mode: bool = False
+    log_level: str = 'INFO'
 
     # Call booker
     callbooker_base_url: str = 'https://tutorcruncher.com/book-a-call'
@@ -45,8 +40,8 @@ class Settings(BaseSettings):
     tc2_base_url: str = 'http://localhost:8000'
 
     # Pipedrive
-    pd_api_key: str = 'test-key'
-    pd_base_url: str = 'https://tutorcruncher-sandbox.pipedrive.com'
+    pd_api_key: str = '45fc768ccd3e73fbe1925e7849b7471bf64a54ac'
+    pd_base_url: str = 'https://seb-sandbox2.pipedrive.com'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'
@@ -76,4 +71,6 @@ class Settings(BaseSettings):
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
 
-    model_config = SettingsConfigDict(env_file='.env', extra='allow')
+    class Config:
+        env_file = '.env'
+        extra = Extra.allow
