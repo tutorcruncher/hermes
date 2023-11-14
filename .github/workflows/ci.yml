@@ -29,8 +29,9 @@ jobs:
         options: --entrypoint redis-server
 
     env:
-      PG_DSN: 'postgres://postgres:postgres@localhost:5432/hermes_test'
-      TEST_DB_URL: 'postgres://postgres:postgres@localhost:5432/hermes_test'
+      DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/hermes_test'
+      LOGFIRE_SEND_TO_LOGFIRE: 'false'
+      TESTING: 'true'
 
     steps:
     - uses: actions/checkout@v2

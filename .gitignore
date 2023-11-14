@@ -15,3 +15,5 @@ __pycache__
 
 # Database dump
 *.dump
+
+/.logfire/

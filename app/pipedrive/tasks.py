@@ -1,4 +1,8 @@
-from app.models import Company, Contact, Deal, Meeting
+from typing import Type
+
+from app.base_schema import get_custom_fieldinfo
+from app.models import Company, Contact, Deal, Meeting, CustomField
+from app.pipedrive._schema import Organisation, Person, PDDeal, Activity, PipedriveBaseModel
 from app.pipedrive.api import (
     create_activity,
     create_or_update_organisation,
@@ -27,8 +31,33 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
 
 
 async def pd_post_process_client_event(company: Company, deal: Deal = None):
+    """
+    Called after a client event from TC2. For example, a client paying an invoice.
+    """
     await create_or_update_organisation(company)
     for contact in await company.contacts:
         await create_or_update_person(contact)
     if deal:
         await get_or_create_pd_deal(deal)
+
+
+MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Activity}
+
+
+async def pd_rebuild_schema_with_custom_fields() -> list[Type[PipedriveBaseModel]]:
+    """
+    Adds extra fields to the schema for the Pipedrive models based on CustomFields in the DB
+    """
+    models_to_rebuild = []
+    for model, pd_model in MODEL_PD_LU.items():
+        custom_fields = await CustomField.filter(linked_object_type=model.__name__)
+        # First we reset the custom fields
+        pd_model.model_fields = {
+            k: v for k, v in pd_model.model_fields.items() if not (v.json_schema_extra or {}).get('custom')
+        }
+        for field in custom_fields:
+            pd_model.model_fields[field.machine_name] = await get_custom_fieldinfo(
+                field, model, serialization_alias=field.pd_field_id, validation_alias=field.pd_field_id
+            )
+        models_to_rebuild.append(pd_model)
+    return models_to_rebuild

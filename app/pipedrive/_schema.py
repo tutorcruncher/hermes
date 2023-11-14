@@ -1,14 +1,11 @@
-import json
-from typing import ClassVar, Literal, Optional, Union, Dict, Any, Set
+import re
+from typing import Literal, Optional, Any
 
-from pydantic import Field, root_validator, validator
-from pydantic.fields import ModelField
-from pydantic.main import BaseModel, validate_model
+from pydantic import field_validator, model_validator, Field
+from pydantic.main import BaseModel
 
-from app.base_schema import HermesBaseModel, fk_field
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive._utils import app_logger
-from app.utils import get_redis_client
+from app.base_schema import HermesBaseModel, ForeignKeyField
+from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField
 
 
 def _remove_nulls(**kwargs):
@@ -41,107 +38,53 @@ class PDExtraField(BaseModel):
 
 
 class PipedriveBaseModel(HermesBaseModel):
-    """
-    All of this logic is basically here to deal with Pipedrive's horrible custom fields.
-    """
-
-    @classmethod
-    async def _custom_fields(cls) -> dict[str, ModelField]:
-        """Get all fields that have the 'custom' attribute"""
-        return {n: f for n, f in cls.__fields__.items() if f.field_info.extra.get('custom')}
-
-    @classmethod
-    async def _get_pd_custom_fields(cls) -> dict[str, PDExtraField]:
+    async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        Gets the custom fields from Pipedrive that match to the custom fields on the model. This is cached for 5 minutes
+        When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
+        Pipedrive model.
         """
-        from app.pipedrive.api import pipedrive_request
-
-        cache_key = f'{cls.custom_fields_pd_name}-custom-fields'
-        redis = await get_redis_client()
-        if cached_pd_fields_data := await redis.get(cache_key):
-            pd_fields_data = json.loads(cached_pd_fields_data)
-        else:
-            pd_fields_data = (await pipedrive_request(cls.custom_fields_pd_name))['data']
-            await redis.set(cache_key, json.dumps(pd_fields_data), ex=300)
-        field_lu = {}
-        custom_fields = await cls._custom_fields()
-        for pd_field in pd_fields_data:
-            if custom_field := custom_fields.get(_slugify(pd_field['name'])):
-                field_lu[custom_field.name] = PDExtraField(**pd_field)
-        return field_lu
-
-    @classmethod
-    async def set_custom_field_vals(cls, obj: 'PipedriveBaseModel') -> 'PipedriveBaseModel':
-        # TODO: Move to post_model_init in v2
-        custom_field_lu = await cls._get_pd_custom_fields()
-        for field_name, pd_field in custom_field_lu.items():
-            field = cls.__fields__[field_name]
-            field.alias = pd_field.key
-
-        # Since we've set the field aliases, we can just re-validate the model to add the values
-        validate_model(cls, obj.__dict__)
-
-        return obj
-
-    async def a_validate(self):
-        # We need to set the custom field values before we validate
-        if await self._custom_fields():
-            await self.__class__.set_custom_field_vals(self)
-        await super().a_validate()
-
-    class Config:
-        allow_population_by_field_name = True
+        return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     address_country: Optional[str] = None
-    owner_id: fk_field(Admin, 'pd_owner_id')
+    owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
 
-    # These are all custom fields
-    website: Optional[str] = Field('', custom=True)
-    paid_invoice_count: Optional[int] = Field(0, custom=True)
-    has_booked_call: Optional[bool] = Field(False, custom=True)
-    has_signed_up: Optional[bool] = Field(False, custom=True)
-    tc2_status: Optional[str] = Field('', custom=True)
-    tc2_cligency_url: Optional[str] = Field('', custom=True)
-    hermes_id: Optional[fk_field(Company, 'id')] = Field(None, custom=True)
-
-    _get_obj_id = validator('owner_id', allow_reuse=True, pre=True)(_get_obj_id)
-
-    custom_fields_pd_name: ClassVar[str] = 'organizationFields'
+    _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
     obj_type: Literal['organization'] = Field('organization', exclude=True)
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
-        obj = cls(
-            **_remove_nulls(
-                name=company.name,
-                owner_id=(await company.sales_person).pd_owner_id,
-                address_country=company.country,
-                website=company.website,
-                paid_invoice_count=company.paid_invoice_count,
-                has_booked_call=company.has_booked_call,
-                has_signed_up=company.has_signed_up,
-                tc2_status=company.tc2_status,
-                tc2_cligency_url=company.tc2_cligency_url,
-                hermes_id=company.id,
-            )
+        cls_kwargs = dict(
+            name=company.name,
+            owner_id=(await company.sales_person).pd_owner_id,
+            tc2_status=company.tc2_status,
+            tc2_cligency_url=company.tc2_cligency_url,
+            address_country=company.country,
         )
-        obj = await cls.set_custom_field_vals(obj)
-        return obj
+        cls_kwargs.update(await cls.get_custom_field_vals(company))
+        final_kwargs = _remove_nulls(**cls_kwargs)
+        return cls(**final_kwargs)
 
-    async def company_dict(self) -> dict:
+    async def company_dict(self, custom_fields: list[CustomField]) -> dict:
+        cf_data_from_hermes = {
+            c.hermes_field_name: getattr(self, c.machine_name)
+            for c in custom_fields
+            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
+        }
         return {
             'pd_org_id': self.id,
             'name': self.name,
-            'tc2_status': self.tc2_status,
-            'website': self.website,
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
+            **cf_data_from_hermes,
         }
+
+
+# Used to get only alphanumeric characters & whitespace for client entering phone numbers
+PHONE_RE = re.compile(r'[^A-Za-z0-9\s]')
 
 
 class Person(PipedriveBaseModel):
@@ -149,14 +92,10 @@ class Person(PipedriveBaseModel):
     name: str
     email: Optional[str] = ''
     phone: Optional[str] = ''
-    owner_id: Optional[fk_field(Admin, 'pd_owner_id')] = None
-    org_id: Optional[fk_field(Company, 'pd_org_id', null_if_invalid=True)] = None
+    owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+    org_id: Optional[int] = ForeignKeyField(None, model=Company, fk_field_name='pd_org_id', null_if_invalid=True)
 
-    # These are all custom fields
-    hermes_id: Optional[fk_field(Contact, 'id')] = Field(None, custom=True)
-
-    _get_obj_id = validator('org_id', 'owner_id', allow_reuse=True, pre=True)(_get_obj_id)
-    custom_fields_pd_name: ClassVar[str] = 'personFields'
+    _get_obj_id = field_validator('org_id', 'owner_id', mode='before')(_get_obj_id)
     obj_type: Literal['person'] = Field('person', exclude=True)
 
     @classmethod
@@ -168,64 +107,39 @@ class Person(PipedriveBaseModel):
             email=contact.email,
             phone=contact.phone,
             org_id=company.pd_org_id,
-            hermes_id=contact.id,
+            **await cls.get_custom_field_vals(contact),
         )
-        obj = await cls.set_custom_field_vals(obj)
         return obj
 
-    def dict(
-        self,
-        *,
-        include: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
-        exclude: Optional[Union[Set[Union[int, str]], Dict[int, Any]]] = None,
-        by_alias: bool = False,
-        skip_defaults: Optional[bool] = None,
-        exclude_unset: bool = False,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
-    ) -> Dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         """
-        Override this method to remove the `primary_email` field from the dict. This is because have to post email as
-        a list with a dict inside it, with a `primary` key.
+        This is really annoying; it seems the only way to post `email` is as a list of strs.
         """
-        result = super().dict(
-            include=include,
-            exclude=exclude,
-            by_alias=by_alias,
-            skip_defaults=skip_defaults,
-            exclude_unset=exclude_unset,
-            exclude_defaults=exclude_defaults,
-            exclude_none=exclude_none,
-        )
-        result['email'] = [result['email']]
-        return result
+        data = super().model_dump(**kwargs)
+        data['email'] = [data['email']]
+        return data
 
-    @validator('phone', pre=True)
+    @field_validator('phone', 'email', mode='before')
+    @classmethod
     def get_primary_attr(cls, v):
         """
-        When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
+        When coming in from a webhook, email is a list of dicts where one is the 'primary'.
+        Apparently data can apparently come in 3 formats:
+        'email': [{'label': 'work', 'value': '1234567890', 'primary': True}]
+        'email': '1234567890'
+        'email': ['1234567890']
+        TODO: Check that this is True
         """
-        app_logger.info('Primary Attr: %r', v)
+        if not v:
+            return
         if isinstance(v, list):
-            item = next((i for i in v if i['primary']), v[0])
-            v = item['value'].replace('(' or ')', '')
-        app_logger.info('Primary Attr: %r', v)
-        return v
-
-    @validator('email', pre=True)
-    def get_email_attr(cls, v):
-        """
-        When coming in from a webhook, phone and email are lists of dicts so we need to get the primary one.
-        """
-        app_logger.info('Email: %r', v)
-        if len(v) and not isinstance(v, str):
-            email_data = v[0]
-            if isinstance(email_data, dict):
+            if isinstance(v[0], dict):
                 item = next((i for i in v if i['primary']), v[0])
-                v = item['value'].replace('(' or ')', '')
-            else:
+                v = item['value']
+            elif isinstance(v[0], str):
                 v = v[0]
-        app_logger.info('Email is now: %r', v)
+        else:
+            assert isinstance(v, str)
         return v
 
     async def contact_dict(self) -> dict:
@@ -277,18 +191,14 @@ class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     title: str
     org_id: int
-    person_id: Optional[fk_field(Contact, 'pd_person_id', null_if_invalid=True)] = None
-    org_id: fk_field(Company, 'pd_org_id')
-    user_id: fk_field(Admin, 'pd_owner_id')
-    pipeline_id: fk_field(Pipeline, 'pd_pipeline_id')
-    stage_id: fk_field(Stage, 'pd_stage_id')
+    person_id: Optional[int] = ForeignKeyField(None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True)
+    org_id: int = ForeignKeyField(model=Company, fk_field_name='pd_org_id')
+    user_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    pipeline_id: int = ForeignKeyField(model=Pipeline, fk_field_name='pd_pipeline_id')
+    stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
     status: str
 
-    # These are all custom fields
-    hermes_id: fk_field(Deal, 'id', null_if_invalid=True) = Field('', custom=True)
-
-    _get_obj_id = validator('user_id', 'person_id', 'org_id', allow_reuse=True, pre=True)(_get_obj_id)
-    custom_fields_pd_name: ClassVar[str] = 'dealFields'
+    _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
     obj_type: Literal['deal'] = Field('deal', exclude=True)
 
     @classmethod
@@ -305,11 +215,10 @@ class PDDeal(PipedriveBaseModel):
                 person_id=contact and contact.pd_person_id,
                 pipeline_id=pipeline.pd_pipeline_id,
                 stage_id=stage.pd_stage_id,
-                hermes_id=deal.id,
                 status=deal.status,
+                **await cls.get_custom_field_vals(deal),
             )
         )
-        obj = await cls.set_custom_field_vals(obj)
         return obj
 
     async def deal_dict(self) -> dict:
@@ -353,10 +262,11 @@ class WebhookMeta(HermesBaseModel):
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, discriminator='obj_type')
+    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
+    @classmethod
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
         for f in ['current', 'previous']:
@@ -365,3 +275,25 @@ class PipedriveEvent(HermesBaseModel):
             else:
                 values.pop(f, None)
         return values
+
+    @field_validator('current', 'previous', mode='before')
+    @classmethod
+    def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
+        """
+        It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
+        rebuild the model when adding custom fields.
+        """
+        if v['obj_type'] == 'organization':
+            return Organisation(**v)
+        elif v['obj_type'] == 'person':
+            return Person(**v)
+        elif v['obj_type'] == 'deal':
+            return PDDeal(**v)
+        elif v['obj_type'] == 'pipeline':
+            return PDPipeline(**v)
+        elif v['obj_type'] == 'stage':
+            return PDStage(**v)
+        elif v['obj_type'] == 'activity':
+            return Activity(**v)
+        else:
+            raise ValueError(f'Unknown object type {v["obj_type"]}')

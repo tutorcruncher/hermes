@@ -5,7 +5,7 @@ from fastapi_admin.resources import Action, Field, Link, Model
 from fastapi_admin.widgets import displays, inputs
 from httpx import Request
 
-from app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage, CustomField
 
 
 @admin_app.register
@@ -13,6 +13,15 @@ class Dashboard(Link):
     label = 'Home'
     icon = 'fas fa-home'
     url = '/'
+
+
+class Select(inputs.Select):
+    def __init__(self, *args, options, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.options = options
+
+    async def get_options(self):
+        return self.options
 
 
 class TimezoneSelect(inputs.Select):
@@ -56,7 +65,7 @@ class AdminResource(Model):
         Field('pd_owner_id', label='Pipedrive owner ID', input_=inputs.Number()),
         'first_name',
         'last_name',
-        Field('timezone', input_=TimezoneSelect()),
+        Field('timezone', input_=Select(options=[(tz, tz) for tz in pytz.all_timezones])),
         Field('is_sales_person', label='Sales repr', input_=inputs.Switch()),
         Field('is_support_person', label='Support repr (client manager)', input_=inputs.Switch()),
         Field('is_bdr_person', label='BDR', input_=inputs.Switch()),
@@ -204,3 +213,34 @@ class MeetingResource(Model):
 
     async def get_actions(self, request: Request) -> list[Action]:
         return []
+
+
+@admin_app.register
+class CustomFieldResource(Model):
+    model = CustomField
+    icon = 'fas fa-edit'
+    page_pre_title = page_title = label = 'Custom fields'
+    fields = [
+        'id',
+        'name',
+        Field('field_type', input_=Select(options=CustomField.TYPE_CHOICES)),
+        'hermes_field_name',
+        'tc2_machine_name',
+        'pd_field_id',
+        'linked_object_type',
+        # Field(
+        #     'linked_object_type',
+        #     input_=Select(options=((M.__name__, M.__name__) for M in [Company, Contact, Deal, Meeting])),
+        # ),
+    ]
+
+    async def get_toolbar_actions(self, request: Request):
+        return [
+            Action(label='Add', icon='fa fa-plus', name='create', method=Method.GET, ajax=False),
+        ]
+
+    async def get_actions(self, request: Request) -> list[Action]:
+        return [
+            Action(label='Edit', icon='fa fa-edit', name='update', method=Method.GET, ajax=False),
+            Action(label='Delete', icon='fa fa-trash', name='delete', method=Method.GET, ajax=False),
+        ]
