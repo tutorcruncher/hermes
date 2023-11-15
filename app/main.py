@@ -37,12 +37,23 @@ if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
 logging.config.dictConfig(config)
+
+TORTOISE_ORM = {
+    'connections': {'default': str(_app_settings.pg_dsn)},
+    'apps': {
+        'models': {
+            'models': ['app.models', 'aerich.models'],
+            'default_connection': 'default',
+        }
+    },
+}
+
 register_tortoise(
     app,
     db_url=_app_settings.pg_dsn,
-    modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
+    config=TORTOISE_ORM,
 )
 app.include_router(tc2_router, prefix='/tc2')
 app.include_router(cb_router, prefix='/callbooker')
