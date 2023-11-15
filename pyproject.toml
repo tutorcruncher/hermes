@@ -34,3 +34,8 @@
         'raise NotImplementedError',
         'raise NotImplemented',
     ]
+
+[tool.aerich]
+tortoise_orm = 'app.main.TORTOISE_ORM'
+location = './migrations'
+src_folder = './.'
