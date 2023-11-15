@@ -12,7 +12,7 @@ class TCSubject(HermesBaseModel):
     A webhook Subject (generally a Client or Invoice)
     """
 
-    model: str
+    model: Optional[str] = None
     id: int
     model_config = ConfigDict(extra='allow')
 
