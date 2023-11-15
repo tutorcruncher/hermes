@@ -50,7 +50,6 @@ TORTOISE_ORM = {
 
 register_tortoise(
     app,
-    db_url=str(_app_settings.pg_dsn),
     modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
