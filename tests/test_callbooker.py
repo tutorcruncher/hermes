@@ -78,15 +78,17 @@ class MeetingBookingTestCase(HermesTestCase):
         meeting_data.update(meeting_dt=123, admin_id=1)
         r = await self.client.post(self.url, json=meeting_data)
         assert r.status_code == 422
-        assert r.json() == {
-            'detail': [
-                {
-                    'loc': ['body', 'meeting_dt'],
-                    'msg': 'meeting_dt must be in the future',
-                    'type': 'value_error',
-                }
-            ]
-        }
+        detail = r.json()['detail']
+        detail[0].pop('url')
+        assert detail == [
+            {
+                'type': 'value_error',
+                'loc': ['body', 'meeting_dt'],
+                'msg': 'Value error, meeting_dt must be in the future',
+                'input': 123,
+                'ctx': {'error': {}},
+            },
+        ]
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')

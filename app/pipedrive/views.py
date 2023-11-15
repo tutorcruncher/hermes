@@ -19,10 +19,10 @@ pipedrive_router = APIRouter()
 async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     """
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
+    TODO: This has 0 security, we should add some.
     """
     event.current and await event.current.a_validate()
     event.previous and await event.previous.a_validate()
-    app_logger.info(f'Callback: event received for {event.meta.object}')
     app_logger.info(f'Callback: event received for {event.meta.object}: {event}')
     if event.meta.object == 'deal':
         deal = await _process_pd_deal(event.current, event.previous)

@@ -5,10 +5,6 @@ from tortoise.expressions import Q
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive.tasks import pd_post_process_client_event
-from app.tc2._process import update_from_client_event
-from app.tc2._schema import TCSubject
-from app.tc2.api import tc2_request
 from app.utils import get_config, settings
 
 
@@ -22,32 +18,6 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
         contact_data = await event.contact_dict()
         contact = await Contact.create(company_id=company.id, **contact_data)
     return contact
-
-
-async def get_or_create_company(tc2_cligency_id: int) -> Company:
-    """
-    Gets or creates a company based on the tc2_cligency_id.
-    """
-    company = None
-
-    try:
-        company = await Company.get(tc2_cligency_id=tc2_cligency_id)
-    except Exception as e:
-        # Log the exception or handle it as appropriate for your application
-        print(f"An error occurred while getting the company: {e}")
-
-    if not company:
-        # If the company does not exist, create it
-        tc_client_data = await tc2_request(f'clients/{tc2_cligency_id}/')
-        # Format the data to match the TCSubject model
-        tc_client_data['model'] = 'Client'
-        tc_client = TCSubject(**tc_client_data)
-
-        # Create the Company the same way we would if it was a webhook
-        company, deal = await update_from_client_event(tc_client)
-        if company:
-            await pd_post_process_client_event(company, deal)
-    return company
 
 
 async def book_meeting(company: Company, contact: Contact, event: CBSalesCall | CBSupportCall) -> Meeting:

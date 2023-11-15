@@ -1,4 +1,4 @@
-from app.main import app, startup
+from app.main import app, _startup
 from app.models import Admin, Config, Pipeline, Stage
 from tests._common import HermesTestCase
 
@@ -9,7 +9,7 @@ class AdminTestCase(HermesTestCase):
         if not app.middleware_stack:
             # We need to call startup() to initialize the admin app, but since Tortoise's TestCase initializes the app
             # once for the entire test suite, we need to make sure we don't call startup() more than once.
-            await startup()
+            await _startup()
 
     async def test_unauthenticated(self):
         r = await self.client.get('/')

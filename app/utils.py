@@ -27,9 +27,7 @@ def get_bearer(auth: str):
 
 
 async def get_redis_client() -> 'aioredis.Redis':
-    from app.main import redis
-
-    return redis
+    return aioredis.from_url(str(settings.redis_dsn))
 
 
 async def get_config() -> 'Config':

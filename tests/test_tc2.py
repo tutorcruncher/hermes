@@ -8,7 +8,8 @@ from unittest import mock
 
 from requests import HTTPError
 
-from app.models import Admin, Company, Contact, Deal
+from app.base_schema import build_custom_field_schema
+from app.models import Admin, Company, Contact, Deal, CustomField, CustomFieldValue
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
@@ -306,6 +307,73 @@ class TC2CallbackTestCase(HermesTestCase):
         assert contact_b.first_name == 'Rudy'
         assert contact_b.last_name == 'Jones'
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_with_custom_fields(self, mock_add_task):
+        """
+        Create a new company with custom field values
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        source_field = await CustomField.create(
+            name='Source',
+            field_type=CustomField.TYPE_STR,
+            tc2_machine_name='source_campaign',
+            linked_object_type='Company',
+        )
+        income_field = await CustomField.create(
+            name='Estimated income',
+            field_type=CustomField.TYPE_STR,
+            tc2_machine_name='income',
+            linked_object_type='Company',
+            hermes_field_name='estimated_income',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['extra_attrs'] += [
+            {'machine_name': 'source_campaign', 'value': 'Google'},
+            {'machine_name': 'income', 'value': '10000'},
+        ]
+        modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert company.country == 'GB'
+        assert company.paid_invoice_count == 0
+        assert await company.support_person == await company.sales_person == admin
+
+        assert company.estimated_income == '10000'
+        assert not company.bdr_person
+
+        assert await Contact.all().count() == 0
+        deal = await Deal.get()
+        assert deal.name == 'MyTutors'
+        assert await deal.pipeline == self.pipeline
+        assert not deal.contact
+        assert await deal.stage == self.stage
+
+        cf_value = await CustomFieldValue.get()
+        assert cf_value.value == 'google'
+
+        await source_field.delete()
+        await income_field.delete()
+        await build_custom_field_schema()
+
     async def test_cb_client_deleted_no_linked_data(self):
         """
         Company deleted, has no contacts
@@ -453,6 +521,40 @@ class TC2TasksTestCase(HermesTestCase):
         company = await Company.create(
             name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
         )
+        await update_client_from_company(company)
+        assert self.tc2.db['clients'] == {
+            10: {
+                'user': {
+                    'email': 'mary@booth.com',
+                    'phone': None,
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person_id': 30,
+                'associated_admin_id': 30,
+                'bdr_person_id': None,
+                'paid_recipients': [
+                    {
+                        'email': 'mary@booth.com',
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                    },
+                ],
+                'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'who_are_you_trying_to_reach': 'support',
+                },
+            }
+        }
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_with_deal(self, mock_request):
+        mock_request.side_effect = fake_tc2_request(self.tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
         contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         await Deal.create(
             name='Old test deal',
@@ -478,17 +580,128 @@ class TC2TasksTestCase(HermesTestCase):
                 'bdr_person_id': None,
                 'paid_recipients': [
                     {
+                        'email': 'mary@booth.com',
                         'first_name': 'Mary',
                         'last_name': 'Booth',
                     },
                 ],
                 'extra_attrs': {
-                    'how_did_you_hear_about_us_1': '',
-                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
-                    'pipedrive_id': 20,
                     'pipedrive_deal_stage': 'New',
                     'pipedrive_pipeline': 'payg',
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
                     'who_are_you_trying_to_reach': 'support',
                 },
             }
         }
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_custom_fields(self, mock_request):
+        mock_request.side_effect = fake_tc2_request(self.tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+
+        pipedrive_id_field = await CustomField.create(
+            name='Pipedrive ID',
+            field_type=CustomField.TYPE_INT,
+            linked_object_type='Company',
+            hermes_field_name='pd_org_id',
+            tc2_machine_name='pipedrive_id',
+        )
+        domain_field = await CustomField.create(
+            name='Domain',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Company',
+            tc2_machine_name='company_domain',
+        )
+        await CustomFieldValue.create(custom_field=domain_field, value='example.com', company=company)
+        await update_client_from_company(company)
+        assert self.tc2.db['clients'] == {
+            10: {
+                'user': {
+                    'email': 'mary@booth.com',
+                    'phone': None,
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person_id': 30,
+                'associated_admin_id': 30,
+                'bdr_person_id': None,
+                'paid_recipients': [
+                    {
+                        'email': 'mary@booth.com',
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                    },
+                ],
+                'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'pipedrive_id': 20,
+                    'who_are_you_trying_to_reach': 'support',
+                    'company_domain': 'example.com',
+                },
+            }
+        }
+        await pipedrive_id_field.delete()
+        await domain_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_custom_fields_none(self, mock_request):
+        """
+        Update a company with custom fields, with no CustomFieldValue
+        """
+
+        mock_request.side_effect = fake_tc2_request(self.tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+
+        pipedrive_id_field = await CustomField.create(
+            name='Pipedrive ID',
+            field_type=CustomField.TYPE_INT,
+            linked_object_type='Company',
+            hermes_field_name='pd_org_id',
+            tc2_machine_name='pipedrive_id',
+        )
+        domain_field = await CustomField.create(
+            name='Domain',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Company',
+            tc2_machine_name='company_domain',
+        )
+
+        await update_client_from_company(company)
+        assert self.tc2.db['clients'] == {
+            10: {
+                'user': {
+                    'email': 'mary@booth.com',
+                    'phone': None,
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person_id': 30,
+                'associated_admin_id': 30,
+                'bdr_person_id': None,
+                'paid_recipients': [
+                    {
+                        'email': 'mary@booth.com',
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                    },
+                ],
+                'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'pipedrive_id': 20,
+                    'who_are_you_trying_to_reach': 'support',
+                    'company_domain': None,
+                },
+            }
+        }
+        await pipedrive_id_field.delete()
+        await domain_field.delete()
+        await build_custom_field_schema()

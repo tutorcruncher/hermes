@@ -1,11 +1,11 @@
 import logging.config
 import os
-from urllib.parse import urlparse
 
-import aioredis
+import logfire
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
@@ -14,28 +14,28 @@ from app.admin.auth import AuthProvider
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
 from app.logging import config
+from app.base_schema import build_custom_field_schema
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
-
-if _app_settings.testing:
-    redis = aioredis.from_url(_app_settings.redis_dsn)
-else:
-    url = urlparse(_app_settings.redis_dsn)
-    redis = aioredis.Redis(host=url.hostname, port=url.port, password=url.password, ssl=True, ssl_cert_reqs='none')
+logfire_active = bool(_app_settings.logfire_token)
+logfire.configure(send_to_logfire=logfire_active, token=_app_settings.logfire_token)
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
 
-
 app = FastAPI()
-allowed_origins = ['https://tutorcruncher.com/', 'https://tutorcruncher.com']
+
+allowed_origins = ['https://tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
+if logfire_active:
+    app.add_middleware(OpenTelemetryMiddleware)
+
 logging.config.dictConfig(config)
 
 TORTOISE_ORM = {
@@ -50,7 +50,7 @@ TORTOISE_ORM = {
 
 register_tortoise(
     app,
-    db_url=_app_settings.pg_dsn,
+    db_url=str(_app_settings.pg_dsn),
     modules={'models': ['app.models']},
     generate_schemas=True,
     add_exception_handlers=True,
@@ -63,18 +63,24 @@ app.include_router(main_router, prefix='')
 # Has to go last otherwise it will override other routes
 app.mount('/', admin_app)
 
+COMMIT = os.getenv('HEROKU_SLUG_COMMIT', '-')[:7]
+RELEASE_CREATED_AT = os.getenv('HEROKU_RELEASE_CREATED_AT', '-')
+logfire.info('starting app {commit=} {release_created_at=}', commit=COMMIT, release_created_at=RELEASE_CREATED_AT)
+
 
 @app.on_event('startup')
-async def startup():
+async def _startup():
     from app.models import Admin
+    from app.utils import get_redis_client
 
     await admin_app.configure(
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],
         providers=[AuthProvider(Admin)],
         language_switch=False,
-        redis=redis,
+        redis=await get_redis_client(),
         admin_path='',
     )
     from app.utils import get_config
 
     await get_config()
+    await build_custom_field_schema()
