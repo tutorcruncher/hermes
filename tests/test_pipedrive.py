@@ -965,6 +965,31 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_cf_hermes_default(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_paid_invoice_count_456',
+            hermes_field_name='paid_invoice_count',
+            name='Paid Invoice Count',
+            field_type='int',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        assert not await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_with_no_old_cf_vals(self, mock_request):
         company = await Company.create(
             name='Julies Ltd',

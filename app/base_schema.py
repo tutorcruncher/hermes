@@ -8,7 +8,7 @@ from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
 
 if TYPE_CHECKING:  # noqa
-    from app.models import CustomField
+    from app.models import CustomField, HermesModel, Company, Contact, Deal, Meeting
 
 
 def fk_json_schema_extra(
@@ -19,7 +19,7 @@ def fk_json_schema_extra(
     """
     return {
         'is_fk_field': True,
-        'model': model,
+        'hermes_model': model,
         'fk_field_name': fk_field_name,
         'to_field': to_field or model.__name__.lower(),
         'null_if_invalid': null_if_invalid,
@@ -38,12 +38,12 @@ def ForeignKeyField(
 ) -> FieldInfo:
     """
     Generates a custom field type for Pydantic that allows us to validate a foreign key by querying the db using the
-    a_validate method below, then add the related object to the model as an attribute.
+    a_validate method below, then add the related object to the hermes_model as an attribute.
 
     For example, an Organisation has an owner_id which links to an Admin, so we define
 
     class Organisation:
-        owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id', alias='admin')
+        owner_id: int = ForeignKeyField(hermes_model=Admin, fk_field_name='pd_owner_id', alias='admin')
 
     Then when we validate the Organisation, we'll query the db to check that an Admin with the `pd_owner_id=owner_id`,
     and if it does, we'll add it to the Organisation as an attribute using `alias` as the field name.
@@ -59,14 +59,14 @@ def ForeignKeyField(
 class HermesBaseModel(BaseModel):
     async def a_validate(self):
         """
-        Validates any ForeignKeys on the model by querying the db.
+        Validates any ForeignKeys on the hermes_model by querying the db.
         Annoyingly, we can't do this in Pydantic's built in validation as it doesn't support async validators.
         """
         for field_name, field_info in self.model_fields.items():
             v = getattr(self, field_name, None)
             extra_schema = field_info.json_schema_extra or {}
             if extra_schema.get('is_fk_field'):
-                model = extra_schema['model']
+                model = extra_schema['hermes_model']
                 fk_field_name = extra_schema['fk_field_name']
                 to_field = extra_schema['to_field']
                 if v:
@@ -103,15 +103,15 @@ class HermesBaseModel(BaseModel):
 
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When updating a Hermes model from a Pipedrive/TC2 webhook, we need to get the custom field values from the
-        Pipedrive/TC2 model.
+        When updating a Hermes hermes_model from a Pipedrive/TC2 webhook, we need to get the custom field values from the
+        Pipedrive/TC2 hermes_model.
         """
         raise NotImplementedError
 
     @classmethod
     async def get_custom_field_vals(cls, obj) -> dict:
         """
-        When creating a Hermes model from a Pipedrive/TC2 object, gets the custom field values from the model.
+        When creating a Hermes hermes_model from a Pipedrive/TC2 object, gets the custom field values from the hermes_model.
         """
         custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
@@ -129,6 +129,7 @@ class HermesBaseModel(BaseModel):
 async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **extra_field_kwargs) -> FieldInfo:
     """
     Generates the FieldInfo object for custom fields.
+    if the field has a hermes_field_name, we'll use that to get the default value from the hermes_model.
     """
     from app.models import CustomField
 
@@ -139,6 +140,8 @@ async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel
         'json_schema_extra': {'custom': True},
         **extra_field_kwargs,
     }
+    if field.hermes_field_name and (model_default := model._meta.fields_map[field.hermes_field_name].default) is not None:
+        field_kwargs['default'] = model_default
     if field.field_type == CustomField.TYPE_INT:
         field_kwargs['annotation'] = Optional[int]
     elif field.field_type == CustomField.TYPE_STR:
