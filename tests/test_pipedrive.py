@@ -649,10 +649,9 @@ class PipedriveTasksTestCase(HermesTestCase):
             linked_object_type='Company',
         )
         await CustomField.create(
-            name='TC2 cligency url',
+            name='TC2 color',
             field_type=CustomField.TYPE_STR,
-            pd_field_id='123_tc2_cligency_url_456',
-            hermes_field_name='tc2_cligency_url',
+            pd_field_id='123_tc2_color_456',
             linked_object_type='Company',
         )
         await CustomField.create(
@@ -699,7 +698,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                '123_tc2_cligency_url_456': company.tc2_cligency_url,
+                '123_tc2_color_456': None,
                 '123_website_456': company.website,
                 '123_paid_invoice_count_456': company.paid_invoice_count,
             },

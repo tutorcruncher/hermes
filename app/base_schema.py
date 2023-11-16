@@ -8,7 +8,7 @@ from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
 
 if TYPE_CHECKING:  # noqa
-    from app.models import CustomField
+    from app.models import CustomField, Company, Deal, Contact, Meeting
 
 
 def fk_json_schema_extra(
@@ -127,7 +127,11 @@ class HermesBaseModel(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
 
-async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel], **extra_field_kwargs) -> FieldInfo:
+async def get_custom_fieldinfo(
+    field: 'CustomField',
+    model: Type['Company'] | Type['Deal'] | Type['Contact'] | Type['Meeting'],
+    **extra_field_kwargs,
+) -> FieldInfo:
     """
     Generates the FieldInfo object for custom fields.
     if the field has a hermes_field_name, we'll use that to get the default value from the hermes_model.
