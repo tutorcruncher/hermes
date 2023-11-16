@@ -32,6 +32,7 @@ def _to_title(v: str) -> str:
 
 class CBSalesCall(HermesBaseModel):
     admin_id: int = ForeignKeyField(model=Admin)
+    bdr_id: Optional[int] = ForeignKeyField(None, model=Admin, alias='bdr')
     company_id: Optional[int] = ForeignKeyField(None, model=Company)
     name: str
     website: Optional[str] = None
@@ -71,6 +72,7 @@ class CBSalesCall(HermesBaseModel):
     async def company_dict(self) -> dict:
         return {
             'sales_person_id': (await self.admin).id,
+            'bdr_person_id': (await self.bdr).id if self.bdr else None,
             'estimated_income': self.estimated_income,
             'currency': self.currency,
             'website': self.website,
