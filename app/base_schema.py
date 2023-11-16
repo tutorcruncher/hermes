@@ -8,7 +8,7 @@ from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
 
 if TYPE_CHECKING:  # noqa
-    from app.models import CustomField, HermesModel, Company, Contact, Deal, Meeting
+    from app.models import CustomField
 
 
 def fk_json_schema_extra(
@@ -103,15 +103,16 @@ class HermesBaseModel(BaseModel):
 
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When updating a Hermes hermes_model from a Pipedrive/TC2 webhook, we need to get the custom field values from the
-        Pipedrive/TC2 hermes_model.
+        When updating a Hermes hermes_model from a Pipedrive/TC2 webhook, we need to get the custom field values from
+        the Pipedrive/TC2 hermes_model.
         """
         raise NotImplementedError
 
     @classmethod
     async def get_custom_field_vals(cls, obj) -> dict:
         """
-        When creating a Hermes hermes_model from a Pipedrive/TC2 object, gets the custom field values from the hermes_model.
+        When creating a Hermes hermes_model from a Pipedrive/TC2 object, gets the custom field values from the
+        hermes_model.
         """
         custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
@@ -140,7 +141,10 @@ async def get_custom_fieldinfo(field: 'CustomField', model: Type[HermesBaseModel
         'json_schema_extra': {'custom': True},
         **extra_field_kwargs,
     }
-    if field.hermes_field_name and (model_default := model._meta.fields_map[field.hermes_field_name].default) is not None:
+    if (
+        field.hermes_field_name
+        and (model_default := model._meta.fields_map[field.hermes_field_name].default) is not None
+    ):
         field_kwargs['default'] = model_default
     if field.field_type == CustomField.TYPE_INT:
         field_kwargs['annotation'] = Optional[int]

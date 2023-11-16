@@ -988,7 +988,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await source_field.delete()
         await build_custom_field_schema()
 
-
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_with_no_old_cf_vals(self, mock_request):
         company = await Company.create(
