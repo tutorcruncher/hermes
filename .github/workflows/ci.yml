@@ -65,7 +65,7 @@ jobs:
 
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      HEROKU_APP: tc-hermes-v2
+      HEROKU_APP: tc-hermes
 
     steps:
       - uses: actions/checkout@v2
