@@ -649,10 +649,9 @@ class PipedriveTasksTestCase(HermesTestCase):
             linked_object_type='Company',
         )
         await CustomField.create(
-            name='TC2 cligency url',
+            name='TC2 color',
             field_type=CustomField.TYPE_STR,
-            pd_field_id='123_tc2_cligency_url_456',
-            hermes_field_name='tc2_cligency_url',
+            pd_field_id='123_tc2_color_456',
             linked_object_type='Company',
         )
         await CustomField.create(
@@ -699,7 +698,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                '123_tc2_cligency_url_456': company.tc2_cligency_url,
+                '123_tc2_color_456': None,
                 '123_website_456': company.website,
                 '123_paid_invoice_count_456': company.paid_invoice_count,
             },
@@ -960,6 +959,54 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert cf_val.value == 'Google'
         assert await cf_val.custom_field == source_field
         assert await cf_val.company == company
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_cf_hermes_default(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_paid_invoice_count_456',
+            hermes_field_name='paid_invoice_count',
+            name='Paid Invoice Count',
+            field_type='int',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        assert not await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_cf_hermes_no_default(self, mock_request):
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_tc2_cligency_url_456',
+            hermes_field_name='tc2_cligency_url',
+            name='TC2 Cligency URL',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        assert not await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
 
         await source_field.delete()
         await build_custom_field_schema()
