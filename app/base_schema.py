@@ -147,6 +147,7 @@ async def get_custom_fieldinfo(
     }
     if (
         field.hermes_field_name
+        and field.hermes_field_name in model._meta.fields_map
         and (model_default := model._meta.fields_map[field.hermes_field_name].default) is not None
     ):
         field_kwargs['default'] = model_default
