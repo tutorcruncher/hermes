@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi_admin.models import AbstractAdmin
 from tortoise import fields, models
 from tortoise.contrib.pydantic import pydantic_model_creator
