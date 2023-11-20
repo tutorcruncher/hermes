@@ -59,8 +59,33 @@ def ForeignKeyField(
 class HermesBaseModel(BaseModel):
     async def a_validate(self):
         """
-        Validates any ForeignKeys on the hermes_model by querying the db.
-        Annoyingly, we can't do this in Pydantic's built in validation as it doesn't support async validators.
+        Validates any ForeignKeys on the model by querying the database. This is necessary because Pydantic,
+        the library used for data validation, does not support asynchronous validators.
+
+        For each field in the model, the method performs the following steps:
+
+        1. Retrieves the value of the field and the extra schema information if it exists.
+
+        2. If the extra schema information indicates that the field is a foreign key field, it retrieves the model,
+           the foreign key field name, and the field to which the foreign key refers. If an alias for the field exists,
+           it uses the alias instead.
+
+        3. If the value of the field is not None, it tries to get the related object from the database using the
+           foreign key field name and the value.
+
+        4. If the related object does not exist in the database, it checks if the 'null_if_invalid' flag in the extra
+           schema is set to True. If it is, it sets the field to None. If it's not, it raises a RequestValidationError.
+
+        5. If the related object does exist, it sets the field to the related object.
+
+        6. If the value of the field is None, it sets the field to None.
+
+        7. If the field value has an 'a_validate' method (indicating that it's a nested model), it calls the
+           'a_validate' method on the field value.
+
+        This method ensures that all foreign key fields in the model are valid and refer to existing objects in the
+        database. If a foreign key field refers to a non-existing object and the 'null_if_invalid' flag is not set
+        to True, it raises a validation error.
         """
         for field_name, field_info in self.model_fields.items():
             v = getattr(self, field_name, None)
@@ -68,7 +93,7 @@ class HermesBaseModel(BaseModel):
             if extra_schema.get('is_fk_field'):
                 model = extra_schema['hermes_model']
                 fk_field_name = extra_schema['fk_field_name']
-                to_field = extra_schema['to_field']
+                to_field = field_info.alias or extra_schema['to_field']
                 if v:
                     try:
                         related_obj = await model.get(**{fk_field_name: v})
