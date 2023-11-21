@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -5,6 +6,8 @@ from pydantic import field_validator, model_validator, ConfigDict, Field
 
 from app.base_schema import HermesBaseModel, ForeignKeyField
 from app.models import Admin, Company, CustomField
+
+logger = logging.getLogger('tc2')
 
 
 class TCSubject(HermesBaseModel):
@@ -45,7 +48,8 @@ class _TCAgency(HermesBaseModel):
         # Validate the extracted part
         valid_plans = (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
         if plan not in valid_plans:
-            raise ValueError(f'Invalid price plan {v}')
+            plan = Company.PP_PAYG
+            logger.warning(f'Invalid price plan {v}')
         return plan
 
     @field_validator('country')
