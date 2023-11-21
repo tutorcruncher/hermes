@@ -5,6 +5,7 @@ import logfire
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi_admin.app import app as admin_app
+from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
@@ -60,6 +61,7 @@ app.include_router(cb_router, prefix='/callbooker')
 app.include_router(pipedrive_router, prefix='/pipedrive')
 app.include_router(main_router, prefix='')
 # Has to go last otherwise it will override other routes
+app.mount('/assets', StaticFiles(directory='app/assets'), name='assets')
 app.mount('/', admin_app)
 
 COMMIT = os.getenv('HEROKU_SLUG_COMMIT', '-')[:7]
@@ -78,6 +80,7 @@ async def _startup():
         language_switch=False,
         redis=await get_redis_client(),
         admin_path='',
+        favicon_url='/assets/favicon.ico',
     )
     from app.utils import get_config
 
