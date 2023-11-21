@@ -201,6 +201,7 @@ class Company(HermesModel):
     has_booked_call = fields.BooleanField(default=False)
     has_signed_up = fields.BooleanField(default=False)
     utm_campaign = fields.CharField(max_length=255, null=True)
+    utm_source = fields.CharField(max_length=255, null=True)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)

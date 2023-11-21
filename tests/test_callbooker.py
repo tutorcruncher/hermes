@@ -572,6 +572,7 @@ class MeetingBookingTestCase(HermesTestCase):
         Create with admin
         Create with bdr
         Create with utm_campaign
+        Create with utm_source
         """
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admin.create(
@@ -589,6 +590,7 @@ class MeetingBookingTestCase(HermesTestCase):
                 'admin_id': sales_person.id,
                 'bdr_person_id': bdr_person.id,
                 'utm_campaign': 'test_campaign',
+                'utm_source': 'test_source',
                 **CB_MEETING_DATA,
             },
         )
@@ -603,6 +605,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert not company.support_person
         assert await company.bdr_person == bdr_person
         assert await company.sales_person == sales_person
+        assert company.utm_campaign == 'test_campaign'
+        assert company.utm_source == 'test_source'
 
         contact = await Contact.get()
         assert contact.first_name == 'Brain'
