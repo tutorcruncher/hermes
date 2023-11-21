@@ -977,6 +977,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
+        data['current']['123_paid_invoice_count_456'] = None
 
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()

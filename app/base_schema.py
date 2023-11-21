@@ -145,20 +145,20 @@ async def get_custom_fieldinfo(
         'json_schema_extra': {'custom': True},
         **extra_field_kwargs,
     }
+    if field.field_type == CustomField.TYPE_INT:
+        field_kwargs.update(annotation=Optional[int], default=0)
+    elif field.field_type == CustomField.TYPE_STR:
+        field_kwargs.update(annotation=Optional[str], default=None)
+    elif field.field_type == CustomField.TYPE_BOOL:
+        field_kwargs.update(annotation=Optional[bool], default=None)
+    elif field.field_type == CustomField.TYPE_FK_FIELD:
+        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True))
     if (
         field.hermes_field_name
         and field.hermes_field_name in model._meta.fields_map
         and (model_default := model._meta.fields_map[field.hermes_field_name].default) is not None
     ):
         field_kwargs['default'] = model_default
-    if field.field_type == CustomField.TYPE_INT:
-        field_kwargs['annotation'] = Optional[int]
-    elif field.field_type == CustomField.TYPE_STR:
-        field_kwargs['annotation'] = Optional[str]
-    elif field.field_type == CustomField.TYPE_BOOL:
-        field_kwargs['annotation'] = Optional[bool]
-    elif field.field_type == CustomField.TYPE_FK_FIELD:
-        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True))
     return FieldInfo(**field_kwargs)
 
 
