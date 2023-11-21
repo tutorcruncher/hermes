@@ -453,6 +453,34 @@ class TC2CallbackTestCase(HermesTestCase):
         assert contact.first_name == 'Mary'
         assert contact.last_name == 'Booth'
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_invalid_price_plan(self, mock_add_task):
+        """
+        Create a new company
+        Create no contacts
+        With associated admin
+        Create a deal
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['price_plan'] = '1-basic'
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert company.price_plan == Company.PP_PAYG
+        assert await company.support_person == await company.sales_person == admin
+
 
 class FakeTC2:
     def __init__(self):
