@@ -61,7 +61,7 @@ app.include_router(cb_router, prefix='/callbooker')
 app.include_router(pipedrive_router, prefix='/pipedrive')
 app.include_router(main_router, prefix='')
 # Has to go last otherwise it will override other routes
-app.mount("/assets", StaticFiles(directory="app/assets"), name="assets")
+app.mount('/assets', StaticFiles(directory='app/assets'), name='assets')
 app.mount('/', admin_app)
 
 COMMIT = os.getenv('HEROKU_SLUG_COMMIT', '-')[:7]
