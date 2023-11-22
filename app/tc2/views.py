@@ -7,7 +7,7 @@ from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
 from starlette.requests import Request
 
-from app.pipedrive.tasks import pd_post_process_client_event
+from app.pipedrive.tasks import pd_post_process_client_event, pd_post_purge_client_event
 from app.tc2._process import update_from_client_event, update_from_invoice_event
 from app.tc2._schema import TCWebhook
 from app.tc2._utils import app_logger
@@ -36,5 +36,10 @@ async def callback(
         else:
             app_logger.info('Ignoring event with subject model %s', event.subject.model)
         if company:
-            tasks.add_task(pd_post_process_client_event, company, deal)
+            if company.narc:
+                tasks.add_task(pd_post_purge_client_event, company, deal)
+            else:
+                tasks.add_task(pd_post_process_client_event, company, deal)
+
+
     return {'status': 'ok'}

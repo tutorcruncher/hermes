@@ -27,6 +27,7 @@ def _client_data():
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
             'price_plan': '1-payg',
+            'narc': False,
             'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },
         'associated_admin': {

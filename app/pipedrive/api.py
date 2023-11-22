@@ -53,6 +53,20 @@ async def create_or_update_organisation(company: Company) -> Organisation:
     return pipedrive_org
 
 
+async def delete_organisation(company: Company):
+    """
+    Delete an organisation within Pipedrive.
+    """
+    if company.pd_org_id:
+        try:
+            await pipedrive_request(f'organizations/{company.pd_org_id}', method='DELETE')
+            company.pd_org_id = None
+            await company.save()
+            app_logger.info('Deleted org %s from company %s', company.pd_org_id, company.id)
+        except Exception as e:
+            app_logger.error('Error deleting org %s', e)
+
+
 async def create_or_update_person(contact: Contact) -> Person:
     """
     Create or update a Person within Pipedrive.
@@ -73,6 +87,23 @@ async def create_or_update_person(contact: Contact) -> Person:
     return pipedrive_person
 
 
+async def delete_persons(contacts: list[Contact]):
+    """
+    Delete a Person within Pipedrive.
+    """
+    try:
+        await pipedrive_request(
+            f'persons/{",".join(str(contact.pd_person_id) for contact in contacts)}',
+            method='DELETE'
+        )
+        for contact in contacts:
+            contact.pd_person_id = None
+            await contact.save()
+            app_logger.info('Deleted person %s from contact %s', contact.pd_person_id, contact.id)
+    except Exception as e:
+        app_logger.error('Error deleting persons %s', e)
+
+
 async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
     """
     Creates a new deal if none exists within Pipedrive.
@@ -84,6 +115,19 @@ async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
         deal.pd_deal_id = pd_deal.id
         await deal.save()
     return pd_deal
+
+
+async def delete_deal(deal: Deal):
+    """
+    Delete a deal within Pipedrive.
+    """
+    try:
+        await pipedrive_request(f'deals/{deal.pd_deal_id}', method='DELETE')
+        deal.pd_deal_id = None
+        await deal.save()
+        app_logger.info('Deleted deal %s from deal %s', deal.pd_deal_id, deal.id)
+    except Exception as e:
+        app_logger.error('Error deleting deal %s', e)
 
 
 async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Activity:

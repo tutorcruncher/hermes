@@ -202,6 +202,7 @@ class Company(HermesModel):
     has_signed_up = fields.BooleanField(default=False)
     utm_campaign = fields.CharField(max_length=255, null=True)
     utm_source = fields.CharField(max_length=255, null=True)
+    narc = fields.BooleanField(default=False)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)

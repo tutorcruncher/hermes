@@ -45,10 +45,13 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
             data['id'] = obj_id
             fake_pipedrive.db[obj_type][obj_id] = data
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
-        else:
-            assert method == 'PUT'
+        elif method == 'PUT':
             fake_pipedrive.db[obj_type][obj_id].update(**data)
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
+        else:
+            assert method == 'DELETE'
+            del fake_pipedrive.db[obj_type][obj_id]
+            return MockResponse(200, {'data': {'id': obj_id}})
 
     return _pd_request
 
@@ -459,6 +462,69 @@ class PipedriveTasksTestCase(HermesTestCase):
         )
         company = await Company.create(
             name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person
+        )
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=sales_person,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=sales_person,
+            pd_deal_id=17,
+        )
+        await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_org_person_deal(self, mock_request):
+        """
+        The org should be created, the person should be created and since the
+        deal is already in the db with a pd_deal_id, it shouldn't be created in PD.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        sales_person = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person, narc=True
         )
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id

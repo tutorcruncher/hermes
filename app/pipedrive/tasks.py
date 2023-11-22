@@ -7,7 +7,7 @@ from app.pipedrive.api import (
     create_activity,
     create_or_update_organisation,
     create_or_update_person,
-    get_or_create_pd_deal,
+    get_or_create_pd_deal, delete_organisation, delete_persons, delete_deal,
 )
 
 
@@ -39,6 +39,16 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
         await create_or_update_person(contact)
     if deal:
         await get_or_create_pd_deal(deal)
+
+
+async def pd_post_purge_client_event(company: Company, deal: Deal = None):
+    """
+    Called after a client event from TC2. Deletes the Org & Persons in pipedrive then deletes the deal.
+    """
+    await delete_organisation(company)
+    await delete_persons(company.contacts)
+    if deal:
+        await delete_deal(deal)
 
 
 MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Activity}
