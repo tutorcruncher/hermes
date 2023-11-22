@@ -1,4 +1,5 @@
 from fastapi_admin.providers.login import UsernamePasswordProvider
+from fastapi.responses import RedirectResponse
 
 from app.models import Admin
 
@@ -16,4 +17,5 @@ class AuthProvider(UsernamePasswordProvider):
 
     async def pre_save_admin(self, _, instance, using_db, update_fields):
         if instance.password:
+            await super().pre_save_admin(_, instance, using_db, update_fields)
             await super().pre_save_admin(_, instance, using_db, update_fields)
