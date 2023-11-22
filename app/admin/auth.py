@@ -1,5 +1,4 @@
 from fastapi_admin.providers.login import UsernamePasswordProvider
-from fastapi.responses import RedirectResponse
 
 from app.models import Admin
 
