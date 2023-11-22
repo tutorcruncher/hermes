@@ -41,5 +41,4 @@ async def callback(
             else:
                 tasks.add_task(pd_post_process_client_event, company, deal)
 
-
     return {'status': 'ok'}

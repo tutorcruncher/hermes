@@ -151,8 +151,7 @@ class TCClient(HermesBaseModel):
             bdr_person=self.bdr_person,  # noqa: F821 - Added in validation
             paid_invoice_count=self.meta_agency.paid_invoice_count,
             price_plan=self.meta_agency.price_plan,
-            narc=self.meta_agency.narc
-            **cf_data_from_hermes,
+            narc=self.meta_agency.narc**cf_data_from_hermes,
         )
 
 

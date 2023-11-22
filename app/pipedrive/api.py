@@ -91,17 +91,16 @@ async def delete_persons(contacts: list[Contact]):
     """
     Delete a Person within Pipedrive.
     """
-    try:
-        await pipedrive_request(
-            f'persons/{",".join(str(contact.pd_person_id) for contact in contacts)}',
-            method='DELETE'
-        )
-        for contact in contacts:
-            contact.pd_person_id = None
-            await contact.save()
-            app_logger.info('Deleted person %s from contact %s', contact.pd_person_id, contact.id)
-    except Exception as e:
-        app_logger.error('Error deleting persons %s', e)
+    pd_person_ids = [contact.pd_person_id for contact in contacts if contact.pd_person_id]
+    if pd_person_ids:
+        try:
+            await pipedrive_request(f'persons/{",".join(map(str, pd_person_ids))}', method='DELETE')
+            for contact in contacts:
+                contact.pd_person_id = None
+                await contact.save()
+                app_logger.info('Deleted person %s from contact %s', contact.pd_person_id, contact.id)
+        except Exception as e:
+            app_logger.error('Error deleting persons %s', e)
 
 
 async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
@@ -121,13 +120,14 @@ async def delete_deal(deal: Deal):
     """
     Delete a deal within Pipedrive.
     """
-    try:
-        await pipedrive_request(f'deals/{deal.pd_deal_id}', method='DELETE')
-        deal.pd_deal_id = None
-        await deal.save()
-        app_logger.info('Deleted deal %s from deal %s', deal.pd_deal_id, deal.id)
-    except Exception as e:
-        app_logger.error('Error deleting deal %s', e)
+    if deal.pd_deal_id:
+        try:
+            await pipedrive_request(f'deals/{deal.pd_deal_id}', method='DELETE')
+            deal.pd_deal_id = None
+            await deal.save()
+            app_logger.info('Deleted deal %s from deal %s', deal.pd_deal_id, deal.id)
+        except Exception as e:
+            app_logger.error('Error deleting deal %s', e)
 
 
 async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Activity:
