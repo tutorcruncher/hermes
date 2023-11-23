@@ -48,10 +48,10 @@ async def pd_post_purge_client_event(company: Company, deal: Deal = None):
     """
     Called after a client event from TC2. Deletes the Org & Persons in pipedrive then deletes the deal.
     """
-    await delete_organisation(company)
-    await delete_persons(list(await company.contacts))
     if deal:
         await delete_deal(deal)
+    await delete_persons(list(await company.contacts))
+    await delete_organisation(company)
 
 
 MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Activity}
