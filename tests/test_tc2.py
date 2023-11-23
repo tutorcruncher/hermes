@@ -375,6 +375,42 @@ class TC2CallbackTestCase(HermesTestCase):
         await income_field.delete()
         await build_custom_field_schema()
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_create_company_narc(self, mock_add_task):
+        """
+        Create a new company
+        Dont create contacts
+        Dont create deal
+        With associated admin
+        """
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        assert await Deal.all().count() == 0
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['narc'] = True
+        events = [modified_data]
+
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'active'
+        assert company.country == 'GB'
+        assert company.paid_invoice_count == 2
+        assert await company.support_person == await company.sales_person == admin
+
+        assert await Contact.all().count() == 0
+        assert await Deal.all().count() == 0
+
     async def test_cb_client_deleted_no_linked_data(self):
         """
         Company deleted, has no contacts
