@@ -20,7 +20,7 @@ Objects are named different things depending on which system you use:
 | Stage    |               | Stage        | The stages of the pipelines                                       |  
 | Deal     |               | Deal         | A potential sale with a Company.                                  |  
 | Meeting  |               | Activity     | A meeting with a Contact.                                         |  
-  
+
   
 ## Project structure  
   
@@ -31,13 +31,9 @@ This project consists of 4 apps:
 - `tc2`: Deals with callbacks and data sync to Pipedrive
 - `hermes` : Deals with data to do with the entire Hermes system
 
-  
-
-
 ## Running locally  
 
 Simply install requirements with `make install` and run the app with `uvicorn app.main:app --reload`. You'll be able to see the server running at `https://localhost:8000`.
-  
 
 Since Hermes works with tutorcruncher.com, the TC2 system and Pipedrive, there is quite a lot to set up to get the system working:
 
@@ -122,8 +118,10 @@ set the `HERMES_URL` env var to the ngrok url provided.
 
 HINT: if you create a account with ngrok, it will give you a static url that you can use for the webhooks, that will never expire ;)
   
-### Pipedrive:  
-  
+### Pipedrive:
+
+Pipedrive is our current sales CRM. We use it to manage our sales pipelines and deals.
+
 Create a pipedrive sandbox account.  
 Navigate to Profile > Tools and apps > Webhooks > Create 6 new webhooks:
 - Event action: `*`
@@ -158,15 +156,12 @@ hermes_id
 hermes_id
 ```
 
-#### I GOT TO HERE IN THE INITAL REWRITE
-
-
 #### Pipedrive Users:
-Get your Pipedrive Owner ID:  
+Get your Pipedrive Owner ID for your Hermes Admins:  
 - Navigate to ... > User Overview > select your user  
 - Copy the number at the end of the URL  
 
-### Hermes:
+### Return to Hermes for the next steps:
 #### Config Tab  
   
 - Navigate to the Hermes Config tab in the admin interface  
@@ -194,8 +189,7 @@ in order for the callbooker to work on tutorcruncher.com, you need to set the fo
   
 Ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)  
   
-Edit in tutorcruncher.com `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support teams in TC2  
-
+Edit in tutorcruncher.com `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support admins ids in hermes.
 ## Testing  
 
 Unittests can be run with `make test`. You will need to install the test dependencies with `make install-dev` first.
