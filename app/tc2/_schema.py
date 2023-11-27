@@ -39,7 +39,7 @@ class _TCAgency(HermesBaseModel):
     paid_invoice_count: int
     created: datetime = Field(exclude=True)
     price_plan: str
-    narc: Optional[bool] = None
+    narc: Optional[bool] = False
 
     @field_validator('price_plan')
     @classmethod
@@ -139,6 +139,8 @@ class TCClient(HermesBaseModel):
         for cf in [c for c in custom_fields if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD]:
             if extra_attr := next((ea for ea in self.extra_attrs if ea.machine_name == cf.tc2_machine_name), None):
                 cf_data_from_hermes[cf.hermes_field_name] = extra_attr.value
+
+        debug(self.meta_agency.narc)
         return dict(
             tc2_agency_id=self.meta_agency.id,
             tc2_cligency_id=self.id,
