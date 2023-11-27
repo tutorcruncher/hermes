@@ -140,7 +140,6 @@ class TCClient(HermesBaseModel):
             if extra_attr := next((ea for ea in self.extra_attrs if ea.machine_name == cf.tc2_machine_name), None):
                 cf_data_from_hermes[cf.hermes_field_name] = extra_attr.value
 
-        debug(self.meta_agency.narc)
         return dict(
             tc2_agency_id=self.meta_agency.id,
             tc2_cligency_id=self.id,
