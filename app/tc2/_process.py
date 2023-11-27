@@ -98,32 +98,31 @@ async def update_from_client_event(
     deal, contact = None, None
     await tc2_client.a_validate()
     company_created, company = await _create_or_update_company(tc2_client)
-    contacts_created, contacts_updated = [], []
-    for i, recipient in enumerate(tc2_client.paid_recipients):
-        # If the company has just been created, TC2 will not set the email address of the primary user to be the
-        # same as the company email address, so we set it here.
-        if i == 0 and company_created and not recipient.email:
-            recipient.email = tc2_client.user.email
-        if not company.narc:
+    if not company.narc:
+        tc2_agency = tc2_client.meta_agency
+        contacts_created, contacts_updated = [], []
+        for i, recipient in enumerate(tc2_client.paid_recipients):
+            if i == 0 and company_created and not recipient.email:
+                recipient.email = tc2_client.user.email
+
             contact_created, contact = await _create_or_update_contact(recipient, company=company)
             if contact_created:
                 contacts_created.append(contact)
             else:
                 contacts_updated.append(contact)
-    tc2_agency = tc2_client.meta_agency
-    should_create_deal = (
-        create_deal
-        and tc2_agency
-        and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
-        and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
-        and tc2_agency.paid_invoice_count == 0
-        and tc2_client.sales_person
-        and not company.narc
-    )
-    if should_create_deal:
-        # If the company was created recently, has 0 paid invoices, has a salesperson and is live then a deal should
-        # be created.
-        deal = await _get_or_create_deal(company, contact)
+
+        should_create_deal = (
+            create_deal
+            and tc2_agency
+            and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
+            and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
+            and tc2_agency.paid_invoice_count == 0
+            and tc2_client.sales_person
+        )
+        if should_create_deal:
+            deal = await _get_or_create_deal(company, contact)
+    else:
+        contacts_created, contacts_updated, deal = [], [], None
     app_logger.info(
         f'Company {company} {"created" if company_created else "updated"}:, '
         f'Contacts created: {contacts_created}, '
