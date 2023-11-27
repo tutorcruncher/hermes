@@ -139,6 +139,7 @@ class CompanyResource(Model):
         'has_signed_up',
         'utm_campaign',
         'utm_source',
+        'narc',
         Field('sales_person_id', input_=inputs.ForeignKey(model=Admin)),
         Field('bdr_person_id', input_=inputs.ForeignKey(model=Admin)),
         Field('support_person_id', input_=inputs.ForeignKey(model=Admin)),
