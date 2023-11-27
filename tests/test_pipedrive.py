@@ -9,6 +9,7 @@ from app.pipedrive.tasks import (
     pd_post_process_sales_call,
     pd_post_process_support_call,
     pd_post_process_client_event,
+    pd_post_purge_client_event,
 )
 from tests._common import HermesTestCase
 
@@ -45,10 +46,13 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
             data['id'] = obj_id
             fake_pipedrive.db[obj_type][obj_id] = data
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
-        else:
-            assert method == 'PUT'
+        elif method == 'PUT':
             fake_pipedrive.db[obj_type][obj_id].update(**data)
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
+        else:
+            assert method == 'DELETE'
+            del fake_pipedrive.db[obj_type][obj_id]
+            return MockResponse(200, {'data': {'id': obj_id}})
 
     return _pd_request
 
@@ -581,6 +585,85 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert not any('PUT' in str(call) for call in call_args)
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_company_narc_delete_org_person_deal(self, mock_request):
+        """
+        This is basically testing that if the data in PD and the DB are up to date, we don't do the update request
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1, sales_person=admin, narc=True
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id, pd_person_id=1
+        )
+        self.pipedrive.db['persons'] = {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=1,
+        )
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+        await pd_post_purge_client_event(company, deal)
+        call_args = mock_request.call_args_list
+        assert all('DELETE' in str(call) for call in call_args)
+
+        assert self.pipedrive.db['organizations'] == {}
+        assert self.pipedrive.db['persons'] == {}
+        assert self.pipedrive.db['deals'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
@@ -635,6 +718,46 @@ class PipedriveTasksTestCase(HermesTestCase):
             },
         }
         assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_narc_no_pd(self, mock_request):
+        """
+        Test that if the company is NARC, we don't create the org in PD.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        await CustomField.create(
+            name='TC2 status',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='123_tc2_status_456',
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            website='https://junes.com',
+            country='GB',
+            sales_person=admin,
+            status=Company.STATUS_TRIAL,
+            narc=True,
+        )
+        await Contact.create(first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id)
+        await pd_post_purge_client_event(company)
+        assert self.pipedrive.db['organizations'] == {}
+        assert (await Company.get()).pd_org_id is None
+        assert self.pipedrive.db['persons'] == {}
+        assert (await Contact.get()).pd_person_id is None
         assert self.pipedrive.db['deals'] == {}
 
     @mock.patch('app.pipedrive.api.session.request')
