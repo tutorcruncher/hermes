@@ -15,8 +15,9 @@ async def setup_database():
     testing locally, to save wasting 40 mins setting this up each time I have to reset-db.
     """
 
+    # Currently you to need to run uvicorn, login, close the server, then run this script.
+
     logger.info('Creating Admins')
-    debug('creating Admins')
     # Create the first Admin instance
     await Admin.update_or_create(
         id=2,
@@ -254,21 +255,7 @@ async def setup_database():
         },
     )
 
-    # Assuming the relevant classes for each table (e.g., Config, Contact, CustomField, CustomFieldValue, Deal, HermesModel, Meeting, Pipeline, Stage) have create methods.
-    logger.info('Creating Config')
-    # Create instances for the "public.config" table
-    await Config.update_or_create(
-        id=1,
-        defaults={
-            'meeting_dur_mins': 30,
-            'meeting_buffer_mins': 15,
-            'meeting_min_start': "10:00",
-            'meeting_max_end': "17:30",
-            'enterprise_pipeline_id': 3,
-            'payg_pipeline_id': 1,
-            'startup_pipeline_id': 2,
-        },
-    )
+
 
     logger.info('Creating Contact')
     # Create instances for the "public.contact" table
@@ -440,6 +427,31 @@ async def setup_database():
         },
     )
 
+    logger.info('Creating Stages')
+    await Stage.update_or_create(id=1, defaults={'pd_stage_id': 7, 'name': 'PAYG Qualified'})
+    await Stage.update_or_create(id=2, defaults={'pd_stage_id': 9, 'name': 'PAYG Demo Scheduled'})
+    await Stage.update_or_create(id=3, defaults={'pd_stage_id': 11, 'name': 'PAYG Negotiations Started'})
+    await Stage.update_or_create(id=4, defaults={'pd_stage_id': 10, 'name': 'PAYG Proposal Made'})
+    await Stage.update_or_create(id=9, defaults={'pd_stage_id': 25, 'name': 'STARTUP Qualified'})
+    await Stage.update_or_create(id=5, defaults={'pd_stage_id': 27, 'name': 'STARTUP Demo Scheduled'})
+    await Stage.update_or_create(id=6, defaults={'pd_stage_id': 26, 'name': 'STARTUP Contact Made'})
+    await Stage.update_or_create(id=7, defaults={'pd_stage_id': 29, 'name': 'STARTUP Negotiations Started'})
+    await Stage.update_or_create(id=8, defaults={'pd_stage_id': 28, 'name': 'STARTUP Proposal Made'})
+    await Stage.update_or_create(id=12, defaults={'pd_stage_id': 31, 'name': 'ENTERPRISE Contact Made'})
+    await Stage.update_or_create(id=11, defaults={'pd_stage_id': 32, 'name': 'ENTERPRISE Demo Scheduled'})
+    await Stage.update_or_create(id=10, defaults={'pd_stage_id': 30, 'name': 'ENTERPRISE Qualified'})
+    await Stage.update_or_create(id=13, defaults={'pd_stage_id': 33, 'name': 'ENTERPRISE Proposal Made'})
+    await Stage.update_or_create(id=14, defaults={'pd_stage_id': 34, 'name': 'ENTERPRISE Negotiations Started'})
+
+    logger.info('Creating Pipelines')
+    # Updating or Creating records in the Pipeline table
+    await Pipeline.update_or_create(id=1, defaults={'pd_pipeline_id': 2, 'name': 'PAYG', 'dft_entry_stage_id': 1})
+    await Pipeline.update_or_create(
+        id=3, defaults={'pd_pipeline_id': 6, 'name': 'ENTERPRISE', 'dft_entry_stage_id': 10}
+    )
+    await Pipeline.update_or_create(id=2, defaults={'pd_pipeline_id': 5, 'name': 'STARTUP', 'dft_entry_stage_id': 9})
+
+
     logger.info('Creating Deals')
     # Updating or Creating records in the Deal table
     await Deal.update_or_create(
@@ -508,30 +520,21 @@ async def setup_database():
         },
     )
 
-    logger.info('Creating Pipelines')
-    # Updating or Creating records in the Pipeline table
-    await Pipeline.update_or_create(id=1, defaults={'pd_pipeline_id': 2, 'name': 'PAYG', 'dft_entry_stage_id': 1})
-    await Pipeline.update_or_create(
-        id=3, defaults={'pd_pipeline_id': 6, 'name': 'ENTERPRISE', 'dft_entry_stage_id': 10}
+    # Assuming the relevant classes for each table (e.g., Config, Contact, CustomField, CustomFieldValue, Deal, HermesModel, Meeting, Pipeline, Stage) have create methods.
+    logger.info('Creating Config')
+    # Create instances for the "public.config" table
+    await Config.update_or_create(
+        id=1,
+        defaults={
+            'meeting_dur_mins': 30,
+            'meeting_buffer_mins': 15,
+            'meeting_min_start': "10:00",
+            'meeting_max_end': "17:30",
+            'enterprise_pipeline_id': 3,
+            'payg_pipeline_id': 1,
+            'startup_pipeline_id': 2,
+        },
     )
-    await Pipeline.update_or_create(id=2, defaults={'pd_pipeline_id': 5, 'name': 'STARTUP', 'dft_entry_stage_id': 9})
-
-    logger.info('Creating Stages')
-    await Stage.update_or_create(id=1, defaults={'pd_stage_id': 7, 'name': 'PAYG Qualified'})
-    await Stage.update_or_create(id=2, defaults={'pd_stage_id': 9, 'name': 'PAYG Demo Scheduled'})
-    await Stage.update_or_create(id=3, defaults={'pd_stage_id': 11, 'name': 'PAYG Negotiations Started'})
-    await Stage.update_or_create(id=4, defaults={'pd_stage_id': 10, 'name': 'PAYG Proposal Made'})
-    await Stage.update_or_create(id=9, defaults={'pd_stage_id': 25, 'name': 'STARTUP Qualified'})
-    await Stage.update_or_create(id=5, defaults={'pd_stage_id': 27, 'name': 'STARTUP Demo Scheduled'})
-    await Stage.update_or_create(id=6, defaults={'pd_stage_id': 26, 'name': 'STARTUP Contact Made'})
-    await Stage.update_or_create(id=7, defaults={'pd_stage_id': 29, 'name': 'STARTUP Negotiations Started'})
-    await Stage.update_or_create(id=8, defaults={'pd_stage_id': 28, 'name': 'STARTUP Proposal Made'})
-    await Stage.update_or_create(id=12, defaults={'pd_stage_id': 31, 'name': 'ENTERPRISE Contact Made'})
-    await Stage.update_or_create(id=11, defaults={'pd_stage_id': 32, 'name': 'ENTERPRISE Demo Scheduled'})
-    await Stage.update_or_create(id=10, defaults={'pd_stage_id': 30, 'name': 'ENTERPRISE Qualified'})
-    await Stage.update_or_create(id=13, defaults={'pd_stage_id': 33, 'name': 'ENTERPRISE Proposal Made'})
-    await Stage.update_or_create(id=14, defaults={'pd_stage_id': 34, 'name': 'ENTERPRISE Negotiations Started'})
-
 
 async def run():
     # Initialize Tortoise
