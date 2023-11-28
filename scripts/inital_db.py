@@ -421,7 +421,7 @@ async def setup_database():
             'machine_name': "estimated_monthly_income",
             'field_type': "str",
             'hermes_field_name': "estimated_income",
-            'tc2_machine_name': None,
+            'tc2_machine_name': "estimated_monthly_income",
             'pd_field_id': "2f821a5168fa642991fc5ddd3e5e49124f04ebed",
             'linked_object_type': "Company",
         },
