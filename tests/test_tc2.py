@@ -6,7 +6,6 @@ import re
 from datetime import datetime, timedelta
 from unittest import mock
 
-from pydantic_core._pydantic_core import ValidationError
 from requests import HTTPError
 
 from app.base_schema import build_custom_field_schema
@@ -451,13 +450,10 @@ class TC2CallbackTestCase(HermesTestCase):
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_create_company_no_sales_person(self, mock_add_task):
         """
-        Create a new company
-        Dont create contacts
-        Dont create deal
-        With associated admin
+        Company with no sales person, to raise clear Error
         """
 
-        admin = await Admin.create(
+        await Admin.create(
             tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
         )
 
@@ -471,7 +467,6 @@ class TC2CallbackTestCase(HermesTestCase):
         data = {'_request_time': 123, 'events': events}
         with self.assertRaises(TypeError):
             await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
-
 
     async def test_cb_client_deleted_no_linked_data(self):
         """
