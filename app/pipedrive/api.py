@@ -30,7 +30,12 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     app_logger.debug('Response: %r', r.json())
     r.raise_for_status()
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
-    logfire.debug('Pipedrive request method={method=} url={url=} status_code={status_code=}', method=method, url=url, status_code=r.status_code)
+    logfire.debug(
+        'Pipedrive request method={method=} url={url=} status_code={status_code=}',
+        method=method,
+        url=url,
+        status_code=r.status_code,
+    )
     r.raise_for_status()
     return r.json()
 
