@@ -427,6 +427,20 @@ async def setup_database():
         },
     )
 
+    await CustomField.update_or_create(
+        id=8,
+        defaults={
+            'name': "BDR Person ID",
+            'machine_name': "bdr_person_id",
+            'field_type': "str",
+            'hermes_field_name': "bdr_person_id",
+            'tc2_machine_name': "None",
+            'pd_field_id': "d98f937eed5df4341711ba53052d257a20d47bec",
+            'linked_object_type': "Company",
+        },
+    )
+
+
     logger.info('Creating Stages')
     await Stage.update_or_create(id=1, defaults={'pd_stage_id': 7, 'name': 'PAYG Qualified'})
     await Stage.update_or_create(id=2, defaults={'pd_stage_id': 9, 'name': 'PAYG Demo Scheduled'})
