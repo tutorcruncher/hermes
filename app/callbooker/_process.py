@@ -14,7 +14,11 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
         .filter(Q(email=event.email) | Q(last_name__iexact=event.last_name))
         .first()
     )
-    if not contact:
+    if contact:
+        if not contact.email:
+            contact.email = (await event.contact_dict())['email']
+            await contact.save()
+    else:
         contact_data = await event.contact_dict()
         contact = await Contact.create(company_id=company.id, **contact_data)
     return contact
