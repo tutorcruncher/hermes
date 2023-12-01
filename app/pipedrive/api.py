@@ -11,6 +11,7 @@ We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
 import requests
+import logfire
 
 from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
@@ -25,9 +26,16 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
         method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
     )
     app_logger.debug('Request to url %s: %r', url, data)
+    logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
     app_logger.debug('Response: %r', r.json())
     r.raise_for_status()
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
+    logfire.debug(
+        'Pipedrive request method={method=} url={url=} status_code={status_code=}',
+        method=method,
+        url=url,
+        status_code=r.status_code,
+    )
     r.raise_for_status()
     return r.json()
 
