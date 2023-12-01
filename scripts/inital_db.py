@@ -6,6 +6,8 @@ from app.utils import settings
 from app.models import Company, Admin, Config, Contact, CustomField, Deal, Pipeline, Stage
 from app.utils import logger
 
+from fastapi_admin.utils import hash_password
+
 from tortoise import Tortoise, run_async
 
 
@@ -19,6 +21,25 @@ async def setup_database():
 
     logger.info('Creating Admins')
     # Create the first Admin instance
+    await Admin.update_or_create(
+        id=100,
+        defaults={
+            'username': 'testing@tutorcruncher.com',
+            'password': None,
+            'tc2_admin_id': 0,
+            'pd_owner_id': 0,
+            'first_name': 'Testing',
+            'last_name': 'Testing',
+            'timezone': 'Europe/London',
+            'is_sales_person': False,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': False,
+            'sells_enterprise': False,
+        },
+    )
+
     await Admin.update_or_create(
         id=2,
         defaults={
