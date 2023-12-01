@@ -447,6 +447,27 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await Contact.all().count() == 1
         assert await Deal.all().count() == 0
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_create_company_no_sales_person(self, mock_add_task):
+        """
+        Company with no sales person, to raise clear Error
+        """
+
+        await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        assert await Deal.all().count() == 0
+        modified_data = client_full_event_data()
+        modified_data['subject']['sales_person'] = None
+        events = [modified_data]
+
+        data = {'_request_time': 123, 'events': events}
+        with self.assertRaises(TypeError):
+            await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+
     async def test_cb_client_deleted_no_linked_data(self):
         """
         Company deleted, has no contacts
