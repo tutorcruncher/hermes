@@ -10,6 +10,8 @@ We want to update deals in pipedrive when:
 We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl
+
 import requests
 import logfire
 
@@ -22,9 +24,22 @@ session = requests.Session()
 
 
 async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    r = session.request(
-        method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
-    )
+    # Parse the URL and convert to list
+    url_parts = list(urlparse(url))
+
+    # Parse the existing query params
+    query_params = dict(parse_qsl(url_parts[4]))
+
+    # Add the API token to the query params
+    query_params.update({'api_token': settings.pd_api_key})
+
+    # Encode the query params and add back to the URL
+    url_parts[4] = urlencode(query_params)
+
+    # Construct the final URL
+    final_url = urlunparse(url_parts)
+
+    r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{final_url}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
     logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
     app_logger.debug('Response: %r', r.json())
@@ -38,7 +53,6 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     )
     r.raise_for_status()
     return r.json()
-
 
 async def create_or_update_organisation(company: Company) -> Organisation:
     """
@@ -56,17 +70,15 @@ async def create_or_update_organisation(company: Company) -> Organisation:
         # if there is a match, link the company to the org and update the org
         if company.tc2_cligency_id:
             tc2_cligency_url = f'{settings.pd_base_url}/v1/organizations/{company.tc2_cligency_id}/'
-            pipdrive_org = Organisation(
-                **(await pipedrive_request(f'organizations/search?term={tc2_cligency_url}&exact_match=True'))['data'][
-                    'items'
-                ][0]['item']
-            )
-            if pipdrive_org:
-                company.pd_org_id = pipdrive_org.id
+            pd_response = await pipedrive_request(f'organizations/search?term={tc2_cligency_url}&exact_match=True')
+            search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
+            pipedrive_org = Organisation(**search_item) if search_item else None
+            if pipedrive_org:
+                company.pd_org_id = pipedrive_org.id
                 await company.save()
                 await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
                 app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                return pipdrive_org
+                return pipedrive_org
 
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
