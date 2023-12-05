@@ -34,12 +34,20 @@ class MockResponse:
 def fake_pd_request(fake_pipedrive: FakePipedrive):
     def _pd_request(*, url: str, method: str, data: dict):
         obj_type = re.search(r'/api/v1/(.*?)(?:/|\?api_token=)', url).group(1)
+        extra_path = re.search(rf'/api/v1/{obj_type}/(.*?)(?=\?)', url)
+        extra_path = extra_path and extra_path.group(1)
+        kwargs = re.search(r'\?(.*)', url)
+        kwargs = kwargs and kwargs.group(1)
         obj_id = re.search(rf'/api/v1/{obj_type}/(\d+)', url)
         obj_id = obj_id and int(obj_id.group(1))
         if method == 'GET':
             if obj_id:
                 return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
             else:
+                # if object type includes /search then it's a search request
+                if 'search' in extra_path:
+                    return MockResponse(200, {'data': {'items': [{'item': fake_pipedrive.db[obj_type][1]}]}})
+
                 return MockResponse(200, {'data': list(fake_pipedrive.db[obj_type].values())})
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1

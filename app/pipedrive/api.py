@@ -52,13 +52,29 @@ async def create_or_update_organisation(company: Company) -> Organisation:
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
-        # if company is not on pipedrive, create it
+        # if company is not linked to pipedrive, compare the org name with all orgs in pipedrive
+        # if there is a match, link the company to the org and update the org
+        if company.tc2_cligency_id:
+            tc2_cligency_url = f'{settings.pd_base_url}/v1/organizations/{company.tc2_cligency_id}/'
+            pipdrive_org = Organisation(
+                **(await pipedrive_request(f'organizations/search?term={tc2_cligency_url}&exact_match=True'))['data'][
+                    'items'
+                ][0]['item']
+            )
+            if pipdrive_org:
+                company.pd_org_id = pipdrive_org.id
+                await company.save()
+                await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+                app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
+                return pipdrive_org
+
+        # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
         pipedrive_org = Organisation(**created_org)
         company.pd_org_id = pipedrive_org.id
         await company.save()
         app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-    return pipedrive_org
+        return pipedrive_org
 
 
 async def delete_organisation(company: Company):
