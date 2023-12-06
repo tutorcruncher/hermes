@@ -54,6 +54,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     r.raise_for_status()
     return r.json()
 
+
 async def create_or_update_organisation(company: Company) -> Organisation:
     """
     Create or update an organisation within Pipedrive.
