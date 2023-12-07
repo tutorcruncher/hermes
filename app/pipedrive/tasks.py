@@ -19,8 +19,8 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
     await create_or_update_organisation(company)
-    await create_or_update_person(contact)
-    pd_deal = await get_or_create_pd_deal(deal)
+    await create_or_update_person(contact, None)
+    pd_deal = await get_or_create_pd_deal(deal, None)
     await create_activity(meeting, pd_deal)
 
 
@@ -29,7 +29,7 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
     Called after a support call is booked. Creates the activity if the contact have a pipedrive id
     """
     if (await contact.company).pd_org_id:
-        await create_or_update_person(contact)
+        await create_or_update_person(contact, None)
         await create_activity(meeting)
 
 
@@ -39,9 +39,12 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     """
     await create_or_update_organisation(company)
     for contact in await company.contacts:
-        await create_or_update_person(contact)
-    if deal:
-        await get_or_create_pd_deal(deal)
+        await create_or_update_person(contact, company)
+    if deal or company.winback:
+        debug('Creating deal')
+        debug(deal)
+        debug(company.winback)
+        await get_or_create_pd_deal(deal, company)
 
 
 async def pd_post_purge_client_event(company: Company, deal: Deal = None):

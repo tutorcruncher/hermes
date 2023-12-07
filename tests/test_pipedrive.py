@@ -42,6 +42,9 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
         obj_id = obj_id and int(obj_id.group(1))
         if method == 'GET':
             if obj_id:
+                if 'deals' in extra_path:
+                    return MockResponse(200, {'data': fake_pipedrive.db['deals'][1]})
+
                 return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
             else:
                 # if object type includes /search then it's a search request

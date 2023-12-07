@@ -4,7 +4,7 @@ import json
 from unittest import mock
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, CustomField, CustomFieldValue
+from app.models import Admin, Company, CustomField, CustomFieldValue, Contact, Deal
 from app.pipedrive.tasks import pd_post_process_client_event
 from app.utils import settings
 from tests._common import HermesTestCase
@@ -113,7 +113,17 @@ class TestMultipleServices(HermesTestCase):
 
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_company_exists_in_tc_and_pd_but_not_in_hermes(self, mock_pd_request, mock_tc2_get):
+    async def test_company_winback_1(self, mock_pd_request, mock_tc2_get):
+        """
+        Test Winback Case 1
+        Client exists in TC2
+        Org exists in Pipedrive
+        Company does not exist in Hermes
+        Person exists in Pipedrive
+        Contact does not exist in Hermes
+        Deal exists in Pipedrive
+        Deal does not exist in Hermes
+        """
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
         mock_tc2_get.side_effect = mock_tc2_request()
 
@@ -137,6 +147,8 @@ class TestMultipleServices(HermesTestCase):
         await build_custom_field_schema()
 
         assert not await Company.exists()
+        assert not await Contact.exists()
+        assert not await Deal.exists()
 
         # The lost org in pipedrive that needs to be updated
         self.pipedrive.db['organizations'] = {
@@ -148,6 +160,30 @@ class TestMultipleServices(HermesTestCase):
                 '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
             }
         }
+        # the lost person in pipedrive that needs to be updated
+        self.pipedrive.db['persons'] = {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': 1,
+            },
+        }
+
+        # The lost deal in pipedrive that needs to be updated
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'MyTutors',
+                'org_id': 1,
+                'person_id': 2,
+                '345_hermes_id_678': 1,
+            }
+        }
+        debug(self.pipedrive.db['deals'])
 
         # Create the company in TC2 send the webhook to Hermes
         modified_data = client_full_event_data()
@@ -162,6 +198,7 @@ class TestMultipleServices(HermesTestCase):
         company = await Company.get()
 
         assert company.tc2_cligency_url == f'{settings.tc2_base_url}/clients/10/'
+        debug(self.pipedrive.db['deals'])
 
         await pd_post_process_client_event(company=company)
 
@@ -177,5 +214,52 @@ class TestMultipleServices(HermesTestCase):
             }
         }
 
+        # check the person has been updated
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Mary Booth',
+                'owner_id': 10,
+                'email': ['mary@booth.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': 1,
+            },
+        }
+
+        debug(self.pipedrive.db['deals'])
+
+        # Check the deal has been updated
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'MyTutors2',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 10,
+                '345_hermes_id_678': 1,
+            }
+        }
+
         await tc2_cligency_url.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_company_winback_2(self, mock_pd_request, mock_tc2_get):
+        """
+        Test Winback Case 2
+        Client exists in TC2
+        Org exists in Pipedrive
+        Company does not exist in Hermes
+        Person does not exist in Pipedrive
+        Contact does not exist in Hermes
+        Deal does not exist in Pipedrive
+        Deal does not exist in Hermes
+        """
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = mock_tc2_request()
+
