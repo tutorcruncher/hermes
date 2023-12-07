@@ -387,7 +387,7 @@ class PipedriveTasksTestCase(HermesTestCase):
     async def test_update_org_create_person_deal_exists(self, mock_request):
         """
         The org should be updated, the person should be created and since the
-        deal is already in the db with a pd_deal_id, it shouldn't be created in PD.
+        deal is already in the db with a pd_deal_id, it a new one shouldn't be created in PD.
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         admin = await Admin.create(
@@ -429,8 +429,23 @@ class PipedriveTasksTestCase(HermesTestCase):
             pipeline=self.pipeline,
             stage=self.stage,
             admin=admin,
-            pd_deal_id=17,
+            pd_deal_id=1,
         )
+
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
         await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
@@ -452,13 +467,25 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '234_hermes_id_567': contact.id,
             },
         }
-        assert self.pipedrive.db['deals'] == {}
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 99,
+                '345_hermes_id_678': deal.id,
+            }
+        }
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_create_org_create_person_with_owner_admin(self, mock_request):
         """
         The org should be created, the person should be created and since the
-        deal is already in the db with a pd_deal_id, it shouldn't be created in PD.
+        deal is already in the db with a pd_deal_id, a new deal shouldn't be created in PD.
         """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         sales_person = await Admin.create(
@@ -493,6 +520,21 @@ class PipedriveTasksTestCase(HermesTestCase):
             admin=sales_person,
             pd_deal_id=17,
         )
+
+        self.pipedrive.db['deals'] = {
+            17: {
+                'id': 17,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
         await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
@@ -573,7 +615,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             pipeline=self.pipeline,
             stage=self.stage,
             admin=admin,
-            pd_deal_id=17,
+            pd_deal_id=1,
         )
         self.pipedrive.db['deals'] = {
             1: {
