@@ -24,11 +24,8 @@ session = requests.Session()
 
 
 async def pipedrive_request(url: str, *, method: str = 'GET', args: dict = None, data: dict = None) -> dict:
-    # Merge the provided args with the api_token
     query_params = {**args, 'api_token': settings.pd_api_key} if args else {'api_token': settings.pd_api_key}
-    # URL encode the query parameters
     query_string = urlencode(query_params)
-
     r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
     logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
