@@ -994,6 +994,103 @@ class PipedriveTasksTestCase(HermesTestCase):
         }
         assert (await Deal.get()).pd_deal_id == 1
 
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_update_deal(self, mock_request):
+        """
+        The org should be updated, the person should be created and deal gets updated
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=1, sales_person=admin
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Junes Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd 2',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=1,
+        )
+
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        await pd_post_process_sales_call(company=company, contact=contact, meeting=meeting, deal=deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd 2',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 99,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
 
 def basic_pd_org_data():
     return {
