@@ -461,6 +461,45 @@ async def setup_database():
         },
     )
 
+    await CustomField.update_or_create(
+        id=9,
+        defaults={
+            'name': "Hermes ID",
+            'machine_name': "hermes_id",
+            'field_type': "fk_field",
+            'hermes_field_name': "id",
+            'tc2_machine_name': None,
+            'pd_field_id': "ac78ff43095ad2be524b3e0533c2e3f7df91e141",
+            'linked_object_type': "Company",
+        },
+    )
+
+    await CustomField.update_or_create(
+        id=10,
+        defaults={
+            'name': "Hermes ID",
+            'machine_name': "hermes_id_2",
+            'field_type': "fk_field",
+            'hermes_field_name': "id",
+            'tc2_machine_name': None,
+            'pd_field_id': "4ede82add98b0baf02f8881e88fa2c6394be0ba8",
+            'linked_object_type': "Contact",
+        },
+    )
+
+    await CustomField.update_or_create(
+        id=11,
+        defaults={
+            'name': "Hermes ID",
+            'machine_name': "hermes_id_3",
+            'field_type': "fk_field",
+            'hermes_field_name': "id",
+            'tc2_machine_name': None,
+            'pd_field_id': "f9fb48b365d26a4b88cd3953aa5b91cd574efd87",
+            'linked_object_type': "Deal",
+        },
+    )
+
 
     logger.info('Creating Stages')
     await Stage.update_or_create(id=1, defaults={'pd_stage_id': 7, 'name': 'PAYG Qualified'})
