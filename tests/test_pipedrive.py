@@ -702,7 +702,18 @@ class PipedriveTasksTestCase(HermesTestCase):
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
         )
-        await pd_post_process_client_event(company)
+
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=None,
+        )
+
+        await pd_post_process_client_event(company, deal)
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
@@ -726,7 +737,21 @@ class PipedriveTasksTestCase(HermesTestCase):
             },
         }
         assert (await Contact.get()).pd_person_id == 1
-        assert self.pipedrive.db['deals'] == {}
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': None,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        assert await Deal.all().count() == 1
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event_narc_no_pd(self, mock_request):

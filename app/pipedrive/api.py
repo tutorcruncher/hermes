@@ -24,19 +24,10 @@ session = requests.Session()
 
 
 async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    # Parse the URL and convert to list
     url_parts = list(urlparse(url))
-
-    # Parse the existing query params
     query_params = dict(parse_qsl(url_parts[4]))
-
-    # Add the API token to the query params
     query_params.update({'api_token': settings.pd_api_key})
-
-    # Encode the query params and add back to the URL
     url_parts[4] = urlencode(query_params)
-
-    # Construct the final URL
     final_url = urlunparse(url_parts)
 
     r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{final_url}', data=data)
@@ -55,7 +46,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     return r.json()
 
 
-async def create_or_update_organisation(company: Company) -> Organisation:
+async def create_or_update_organisation(company: Company) -> Organisation | None:
     """
     Create or update an organisation within Pipedrive.
     """
@@ -70,16 +61,17 @@ async def create_or_update_organisation(company: Company) -> Organisation:
         # if company is not linked to pipedrive, compare the org name with all orgs in pipedrive
         # if there is a match, link the company to the org and update the org
         if company.tc2_cligency_id:
-            tc2_cligency_url = f'{settings.pd_base_url}/v1/organizations/{company.tc2_cligency_id}/'
-            pd_response = await pipedrive_request(f'organizations/search?term={tc2_cligency_url}&exact_match=True')
+            tc2_cligency_url = f'{settings.tc2_base_url}/clients/{company.tc2_cligency_id}/'
+            pd_response = await pipedrive_request(
+                f'organizations/search?term={tc2_cligency_url}&exact_match=True' f'&limit=1'
+            )
             search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
-            pipedrive_org = Organisation(**search_item) if search_item else None
-            if pipedrive_org:
-                company.pd_org_id = pipedrive_org.id
+            if search_item:
+                company.pd_org_id = search_item['id']
                 await company.save()
                 await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
                 app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                return pipedrive_org
+                return
 
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
@@ -140,17 +132,24 @@ async def delete_persons(contacts: list[Contact]):
             app_logger.error('Error deleting persons %s', e)
 
 
-async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
+async def get_or_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
     Creates a new deal if none exists within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
-    if not deal.pd_deal_id:
-        pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal_data))['data'])
-        deal.pd_deal_id = pd_deal.id
+    if deal.pd_deal_id:
+        pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
+        if pd_deal_data != pipedrive_deal.model_dump(by_alias=True):
+            await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+            app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+    else:
+        created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
+        pipedrive_deal = PDDeal(**created_deal)
+        deal.pd_deal_id = pipedrive_deal.id
         await deal.save()
-    return pd_deal
+        app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
+    return pipedrive_deal
 
 
 async def delete_deal(deal: Deal):
