@@ -10,7 +10,7 @@ We want to update deals in pipedrive when:
 We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
-from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl
+from urllib.parse import urlencode
 
 import requests
 import logfire
@@ -23,14 +23,13 @@ from app.utils import settings
 session = requests.Session()
 
 
-async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    url_parts = list(urlparse(url))
-    query_params = dict(parse_qsl(url_parts[4]))
-    query_params.update({'api_token': settings.pd_api_key})
-    url_parts[4] = urlencode(query_params)
-    final_url = urlunparse(url_parts)
+async def pipedrive_request(url: str, *, method: str = 'GET', args: dict = None, data: dict = None) -> dict:
+    # Merge the provided args with the api_token
+    query_params = {**args, 'api_token': settings.pd_api_key} if args else {'api_token': settings.pd_api_key}
+    # URL encode the query parameters
+    query_string = urlencode(query_params)
 
-    r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{final_url}', data=data)
+    r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
     logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
     app_logger.debug('Response: %r', r.json())
@@ -62,9 +61,12 @@ async def create_or_update_organisation(company: Company) -> Organisation | None
         # if there is a match, link the company to the org and update the org
         if company.tc2_cligency_id:
             tc2_cligency_url = f'{settings.tc2_base_url}/clients/{company.tc2_cligency_id}/'
-            pd_response = await pipedrive_request(
-                f'organizations/search?term={tc2_cligency_url}&exact_match=True' f'&limit=1'
-            )
+            args = {
+                'term': tc2_cligency_url,
+                'exact_match': True,
+                'limit': 1,
+            }
+            pd_response = await pipedrive_request('organizations/search', args=args)
             search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
             if search_item:
                 company.pd_org_id = search_item['id']
