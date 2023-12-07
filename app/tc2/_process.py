@@ -46,7 +46,7 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
     return created, contact
 
 
-async def get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
+async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
     """
     Get or create an Open deal.
     """
@@ -115,12 +115,6 @@ async def update_from_client_event(
             else:
                 contacts_updated.append(contact)
 
-        debug(create_deal)
-        debug(tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL])
-        debug(tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90))
-        debug(tc2_agency.paid_invoice_count == 0)
-        debug(tc2_client.sales_person)
-
         should_create_deal = (
             create_deal
             and tc2_agency
@@ -130,7 +124,7 @@ async def update_from_client_event(
             and tc2_client.sales_person
         )
         if should_create_deal:
-            deal = await get_or_create_deal(company, contact)
+            deal = await _get_or_create_deal(company, contact)
     else:
         contacts_created, contacts_updated, deal = [], [], None
     app_logger.info(

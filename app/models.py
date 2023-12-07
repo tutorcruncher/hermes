@@ -189,7 +189,7 @@ class Company(HermesModel):
     tc2_status = fields.CharField(max_length=25, default=STATUS_PENDING_EMAIL_CONF, null=True)
 
     pd_org_id = fields.IntField(unique=True, null=True)
-    winback = fields.BooleanField(default=False)
+
     created = fields.DatetimeField(auto_now_add=True)
 
     price_plan = fields.CharField(max_length=255, default=PP_PAYG)
