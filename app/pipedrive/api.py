@@ -23,8 +23,19 @@ from app.utils import settings
 session = requests.Session()
 
 
-async def pipedrive_request(url: str, *, method: str = 'GET', args: dict = None, data: dict = None) -> dict:
-    query_params = {**args, 'api_token': settings.pd_api_key} if args else {'api_token': settings.pd_api_key}
+async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict = None, data: dict = None) -> dict:
+    """
+    Make a request to the Pipedrive API.
+    @param url: desired endpoint
+    @param method: GET, POST, PUT, DELETE
+    @param query_kwargs: used to build the query string for search and list endpoints
+    @param data: data to send in the request body
+    @return: json response
+    """
+
+    query_params = (
+        {**query_kwargs, 'api_token': settings.pd_api_key} if query_kwargs else {'api_token': settings.pd_api_key}
+    )
     query_string = urlencode(query_params)
     r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
@@ -42,9 +53,20 @@ async def pipedrive_request(url: str, *, method: str = 'GET', args: dict = None,
     return r.json()
 
 
-async def create_or_update_organisation(company: Company) -> Organisation | None:
+async def get_and_create_or_update_organisation(company: Company) -> Organisation:
     """
-    Create or update an organisation within Pipedrive.
+    This function is responsible for creating or updating an Organisation within Pipedrive.
+
+    If the Company already has a Pipedrive Organisation ID:
+       - Updates the Organisation in Pipedrive with the Company's latest data if there are any changes.
+
+    If the Company doesn't have a Pipedrive Organisation ID:
+       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_url'.
+       - If found, updates this Organisation with the Company's details.
+       - If not found, creates a new Organisation in Pipedrive and links it to the Company.
+
+    @param company: Company object
+    @return: Organisation object
     """
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
@@ -58,19 +80,19 @@ async def create_or_update_organisation(company: Company) -> Organisation | None
         # if there is a match, link the company to the org and update the org
         if company.tc2_cligency_id:
             tc2_cligency_url = f'{settings.tc2_base_url}/clients/{company.tc2_cligency_id}/'
-            args = {
+            query_kwargs = {
                 'term': tc2_cligency_url,
                 'exact_match': True,
                 'limit': 1,
             }
-            pd_response = await pipedrive_request('organizations/search', args=args)
+            pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
             search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
             if search_item:
                 company.pd_org_id = search_item['id']
                 await company.save()
                 await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
                 app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                return
+                return Organisation(**search_item)
 
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
@@ -95,9 +117,9 @@ async def delete_organisation(company: Company):
             app_logger.error('Error deleting org %s', e)
 
 
-async def create_or_update_person(contact: Contact) -> Person:
+async def get_and_create_or_update_person(contact: Contact) -> Person:
     """
-    Create or update a Person within Pipedrive.
+    Get and create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
     hermes_person_data = hermes_person.model_dump(by_alias=True)
@@ -131,9 +153,9 @@ async def delete_persons(contacts: list[Contact]):
             app_logger.error('Error deleting persons %s', e)
 
 
-async def get_or_create_or_update_pd_deal(deal: Deal) -> PDDeal:
+async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
-    Creates a new deal if none exists within Pipedrive.
+    Get and create or update a Deal within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
