@@ -10,6 +10,8 @@ We want to update deals in pipedrive when:
 We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
+from urllib.parse import urlencode
+
 import requests
 import logfire
 
@@ -21,10 +23,19 @@ from app.utils import settings
 session = requests.Session()
 
 
-async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
-    r = session.request(
-        method=method, url=f'{settings.pd_base_url}/api/v1/{url}?api_token={settings.pd_api_key}', data=data
-    )
+async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict = None, data: dict = None) -> dict:
+    """
+    Make a request to the Pipedrive API.
+    @param url: desired endpoint
+    @param method: GET, POST, PUT, DELETE
+    @param query_kwargs: used to build the query string for search and list endpoints
+    @param data: data to send in the request body
+    @return: json response
+    """
+
+    query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
+    query_string = urlencode(query_params)
+    r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
     logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
     app_logger.debug('Response: %r', r.json())
@@ -40,9 +51,20 @@ async def pipedrive_request(url: str, *, method: str = 'GET', data: dict = None)
     return r.json()
 
 
-async def create_or_update_organisation(company: Company) -> Organisation:
+async def get_and_create_or_update_organisation(company: Company) -> Organisation:
     """
-    Create or update an organisation within Pipedrive.
+    This function is responsible for creating or updating an Organisation within Pipedrive.
+
+    If the Company already has a Pipedrive Organisation ID:
+       - Updates the Organisation in Pipedrive with the Company's latest data if there are any changes.
+
+    If the Company doesn't have a Pipedrive Organisation ID:
+       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_id'.
+       - If found, updates this Organisation with the Company's details.
+       - If not found, creates a new Organisation in Pipedrive and links it to the Company.
+
+    @param company: Company object
+    @return: Organisation object
     """
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
@@ -52,13 +74,31 @@ async def create_or_update_organisation(company: Company) -> Organisation:
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
-        # if company is not on pipedrive, create it
+        # if company is not linked to pipedrive, search pd for a matching org by doing a generic search for
+        # tc2_cligency_id, This should be matched with Cligency URL (imported from hubspot) or tc2_cligency_url (Hermes)
+        # if there is a match, link the company to the org and update the org
+
+        if company.tc2_cligency_id:
+            query_kwargs = {
+                'term': company.tc2_cligency_id,
+                'limit': 1,
+            }
+            pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
+            search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
+            if search_item:
+                company.pd_org_id = search_item['id']
+                await company.save()
+                await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+                app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
+                return Organisation(**search_item)
+
+        # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
         pipedrive_org = Organisation(**created_org)
         company.pd_org_id = pipedrive_org.id
         await company.save()
         app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-    return pipedrive_org
+        return pipedrive_org
 
 
 async def delete_organisation(company: Company):
@@ -75,9 +115,9 @@ async def delete_organisation(company: Company):
             app_logger.error('Error deleting org %s', e)
 
 
-async def create_or_update_person(contact: Contact) -> Person:
+async def get_and_create_or_update_person(contact: Contact) -> Person:
     """
-    Create or update a Person within Pipedrive.
+    Get and create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
     hermes_person_data = hermes_person.model_dump(by_alias=True)
@@ -111,17 +151,24 @@ async def delete_persons(contacts: list[Contact]):
             app_logger.error('Error deleting persons %s', e)
 
 
-async def get_or_create_pd_deal(deal: Deal) -> PDDeal:
+async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
-    Creates a new deal if none exists within Pipedrive.
+    Get and create or update a Deal within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
-    if not deal.pd_deal_id:
-        pd_deal = PDDeal(**(await pipedrive_request('deals', method='POST', data=pd_deal_data))['data'])
-        deal.pd_deal_id = pd_deal.id
+    if deal.pd_deal_id:
+        pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
+        if pd_deal_data != pipedrive_deal.model_dump(by_alias=True):
+            await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+            app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+    else:
+        created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
+        pipedrive_deal = PDDeal(**created_deal)
+        deal.pd_deal_id = pipedrive_deal.id
         await deal.save()
-    return pd_deal
+        app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
+    return pipedrive_deal
 
 
 async def delete_deal(deal: Deal):
