@@ -61,7 +61,7 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
        - Updates the Organisation in Pipedrive with the Company's latest data if there are any changes.
 
     If the Company doesn't have a Pipedrive Organisation ID:
-       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_url'.
+       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_id'.
        - If found, updates this Organisation with the Company's details.
        - If not found, creates a new Organisation in Pipedrive and links it to the Company.
 
@@ -76,13 +76,11 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
-        # if company is not linked to pipedrive, compare the org name with all orgs in pipedrive
+        # if company is not linked to pipedrive, search pd for a matching org by tc2_cligency_id
         # if there is a match, link the company to the org and update the org
         if company.tc2_cligency_id:
-            tc2_cligency_url = f'{settings.tc2_base_url}/clients/{company.tc2_cligency_id}/'
             query_kwargs = {
-                'term': tc2_cligency_url,
-                'exact_match': True,
+                'term': company.tc2_cligency_id,
                 'limit': 1,
             }
             pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
