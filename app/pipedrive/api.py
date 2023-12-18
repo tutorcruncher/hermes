@@ -33,9 +33,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
     @return: json response
     """
 
-    query_params = (
-        {**query_kwargs, 'api_token': settings.pd_api_key} if query_kwargs else {'api_token': settings.pd_api_key}
-    )
+    query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
     r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
     app_logger.debug('Request to url %s: %r', url, data)
@@ -76,8 +74,10 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     else:
-        # if company is not linked to pipedrive, search pd for a matching org by tc2_cligency_id
+        # if company is not linked to pipedrive, search pd for a matching org by doing a generic search for
+        # tc2_cligency_id, This should be matched with Cligency URL (imported from hubspot) or tc2_cligency_url (Hermes)
         # if there is a match, link the company to the org and update the org
+
         if company.tc2_cligency_id:
             query_kwargs = {
                 'term': company.tc2_cligency_id,
