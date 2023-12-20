@@ -84,6 +84,7 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         if search_item := _get_search_item(pd_response):
             return Organisation(**search_item)
 
+    await company.fetch_related('contacts')
     contact_emails, contact_phones = set(), set()
     for contact in company.contacts:
         if contact.email:
@@ -97,14 +98,14 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         )
         if search_item := _get_search_item(pd_response):
             org_id = search_item['organization']['id']
-            return Organisation(**await pipedrive_request(f'organizations/{org_id}'))
+            return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
     if contact_phones:
         pd_response = await pipedrive_request(
             'persons/search', query_kwargs={'term': ' '.join(contact_phones), 'limit': 1}
         )
         if search_item := _get_search_item(pd_response):
             org_id = search_item['organization']['id']
-            return Organisation(**await pipedrive_request(f'organizations/{org_id}'))
+            return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
 
 
 async def get_and_create_or_update_organisation(company: Company) -> Organisation:
@@ -132,6 +133,7 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     elif org := await _search_for_organisation(company):
         company.pd_org_id = org.id
         await company.save()
+        await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
     else:
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']

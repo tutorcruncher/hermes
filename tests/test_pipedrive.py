@@ -2,6 +2,7 @@ import copy
 import re
 from datetime import datetime, timedelta, timezone
 from unittest import mock
+from urllib.parse import parse_qs
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline, Stage
@@ -36,8 +37,6 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
         obj_type = re.search(r'/api/v1/(.*?)(?:/|\?api_token=)', url).group(1)
         extra_path = re.search(rf'/api/v1/{obj_type}/(.*?)(?=\?)', url)
         extra_path = extra_path and extra_path.group(1)
-        kwargs = re.search(r'\?(.*)', url)
-        kwargs = kwargs and kwargs.group(1)
         obj_id = re.search(rf'/api/v1/{obj_type}/(\d+)', url)
         obj_id = obj_id and int(obj_id.group(1))
         if method == 'GET':
@@ -46,9 +45,15 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
             else:
                 # if object type includes /search then it's a search request
                 if 'search' in extra_path:
-                    return MockResponse(200, {'data': {'items': [{'item': fake_pipedrive.db[obj_type][1]}]}})
-
-                return MockResponse(200, {'data': list(fake_pipedrive.db[obj_type].values())})
+                    search_term = parse_qs(re.search(r'\?(.*)', url).group(1))['term'][0]
+                    objs = [
+                        obj
+                        for obj in fake_pipedrive.db[obj_type].values()
+                        if any(search_term in str(v) for v in obj.values())
+                    ]
+                    return MockResponse(200, {'data': {'items': [{'item': i} for i in objs]}})
+                else:
+                    return MockResponse(200, {'data': list(fake_pipedrive.db[obj_type].values())})
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1
             data['id'] = obj_id
@@ -993,6 +998,277 @@ class PipedriveTasksTestCase(HermesTestCase):
             },
         }
         assert (await Deal.get()).pd_deal_id == 1
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_org_exists_linked_by_company_id(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        await CustomField.create(
+            name='TC2 status',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='123_tc2_status_456',
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            website='https://junes.com',
+            country='GB',
+            sales_person=admin,
+            status=Company.STATUS_TRIAL,
+            tc2_cligency_id=444444,
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_tc2_cligency_id_456': 444444,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=None,
+        )
+
+        await pd_post_process_client_event(company, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+                '123_tc2_status_456': company.tc2_status,
+                '123_tc2_cligency_id_456': 444444,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': None,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        assert await Deal.all().count() == 1
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_org_exists_linked_by_contacts_emails(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        await CustomField.create(
+            name='TC2 status',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='123_tc2_status_456',
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            website='https://junes.com',
+            country='GB',
+            sales_person=admin,
+            status=Company.STATUS_TRIAL,
+            tc2_cligency_id=444444,
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        self.pipedrive.db['persons'] = {
+            10: {
+                'id': 10,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': 'brain@junes.com',
+                'phone': None,
+                'organization': {'id': 1},
+                '234_hermes_id_567': contact.id,
+            },
+        }
+
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=None,
+        )
+
+        await pd_post_process_client_event(company, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+                '123_tc2_status_456': company.tc2_status,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': None,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        assert await Deal.all().count() == 1
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_org_exists_linked_by_contacts_phones(self, mock_request):
+        """
+        Test that the sales call workflow works. The company exists in Pipedrive so they should have an activity
+        created for them.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+
+        company = await Company.create(
+            name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=10, sales_person=admin
+        )
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 10,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        await pd_post_process_sales_call(contact, meeting)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 10,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 10
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 10,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {}
+        assert not await Deal.exists()
+        assert self.pipedrive.db['activities'] == {
+            1: {
+                'due_date': '2023-01-01',
+                'due_time': '00:00',
+                'subject': 'TutorCruncher demo with Steve Jobs',
+                'user_id': 99,
+                'deal_id': None,
+                'person_id': 1,
+                'org_id': 10,
+                'id': 1,
+            },
+        }
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_update_deal(self, mock_request):
