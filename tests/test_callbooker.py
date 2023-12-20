@@ -7,7 +7,7 @@ from httpx import HTTPError
 from pytz import utc
 
 from app.models import Admin, Company, Contact, Meeting
-from app.utils import sign_args, settings
+from app.utils import settings, sign_args
 from tests._common import HermesTestCase
 
 CB_MEETING_DATA = {

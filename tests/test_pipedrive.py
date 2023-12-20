@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField, CustomFieldValue
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline, Stage
 from app.pipedrive.tasks import (
+    pd_post_process_client_event,
     pd_post_process_sales_call,
     pd_post_process_support_call,
-    pd_post_process_client_event,
     pd_post_purge_client_event,
 )
 from tests._common import HermesTestCase

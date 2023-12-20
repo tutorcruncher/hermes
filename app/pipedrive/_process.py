@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.models import Company, Contact, Deal, Pipeline, Stage, CustomField
+from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
 

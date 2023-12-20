@@ -4,18 +4,18 @@ import os
 import logfire
 import sentry_sdk
 from fastapi import FastAPI
-from fastapi_admin.app import app as admin_app
 from fastapi.staticfiles import StaticFiles
+from fastapi_admin.app import app as admin_app
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
 from app.admin import resources, views  # noqa: F401
 from app.admin.auth import AuthProvider
+from app.base_schema import build_custom_field_schema
 from app.callbooker.views import cb_router
 from app.hermes.views import main_router
 from app.logging import config
-from app.base_schema import build_custom_field_schema
 from app.pipedrive.views import pipedrive_router
 from app.settings import Settings
 from app.tc2.views import tc2_router

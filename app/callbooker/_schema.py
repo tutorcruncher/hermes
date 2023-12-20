@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import field_validator
 
-from app.base_schema import HermesBaseModel, ForeignKeyField
+from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company
 
 

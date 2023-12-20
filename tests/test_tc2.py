@@ -9,7 +9,7 @@ from unittest import mock
 from requests import HTTPError
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, Deal, CustomField, CustomFieldValue
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase

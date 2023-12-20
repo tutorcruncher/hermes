@@ -3,9 +3,7 @@ from tortoise.contrib.test import TestCase
 
 from app.main import app
 from app.models import Pipeline, Stage
-from app.utils import get_config
-
-from app.utils import settings
+from app.utils import get_config, settings
 
 
 class HermesTestCase(TestCase):
