@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Header
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import HTTPException, RequestValidationError
 from starlette.requests import Request
 
 from app.models import Admin, Company
@@ -69,7 +69,7 @@ async def get_companies(request: Request) -> list[dict]:
     """
     query_params = {k: v for k, v in request.query_params.items() if v is not None}
     if not query_params:
-        raise ValueError('Must provide at least one param')
+        raise HTTPException(422, 'Must provide at least one param')
     companies = await Company.filter(**query_params).order_by('name').limit(10)
     schema = Company.pydantic_schema()
     return [(await schema.from_tortoise_orm(c)).model_dump() for c in companies]
