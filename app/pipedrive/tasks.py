@@ -1,16 +1,16 @@
 from typing import Type
 
 from app.base_schema import get_custom_fieldinfo
-from app.models import Company, Contact, Deal, Meeting, CustomField
-from app.pipedrive._schema import Organisation, Person, PDDeal, Activity, PipedriveBaseModel
+from app.models import Company, Contact, CustomField, Deal, Meeting
+from app.pipedrive._schema import Activity, Organisation, PDDeal, Person, PipedriveBaseModel
 from app.pipedrive.api import (
     create_activity,
-    get_and_create_or_update_organisation,
-    get_and_create_or_update_person,
-    get_and_create_or_update_pd_deal,
+    delete_deal,
     delete_organisation,
     delete_persons,
-    delete_deal,
+    get_and_create_or_update_organisation,
+    get_and_create_or_update_pd_deal,
+    get_and_create_or_update_person,
 )
 
 

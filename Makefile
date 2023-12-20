@@ -6,11 +6,12 @@ install:
 .PHONY: lint
 lint:
 	ruff check app/ tests/
-	black --check app tests
+	ruff format app/ tests/ --check
 
 .PHONY: format
 format:
-	black app tests
+	ruff check app/ tests/ --fix
+	ruff format app/ tests/
 
 .PHONY: test
 test:
