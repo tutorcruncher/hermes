@@ -160,6 +160,10 @@ class HermesModel(models.Model):
         deleted = await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
         return created, updated, deleted
 
+    @classmethod
+    def pydantic_schema(cls):
+        return pydantic_model_creator(cls)
+
 
 class Company(HermesModel):
     """

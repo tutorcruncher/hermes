@@ -1,11 +1,11 @@
 import re
-from typing import Literal, Optional, Any
+from typing import Any, Literal, Optional
 
-from pydantic import field_validator, model_validator, Field
+from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
 
-from app.base_schema import HermesBaseModel, ForeignKeyField
-from app.models import Admin, Company, Contact, Deal, Meeting, Pipeline, Stage, CustomField
+from app.base_schema import ForeignKeyField, HermesBaseModel
+from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
 
 
 def _remove_nulls(**kwargs):

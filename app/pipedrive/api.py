@@ -12,8 +12,8 @@ We want to create activities in pipedrive when:
 """
 from urllib.parse import urlencode
 
-import requests
 import logfire
+import requests
 
 from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Header
 from fastapi.exceptions import RequestValidationError
+from starlette.requests import Request
 
 from app.models import Admin, Company
 
@@ -59,3 +60,16 @@ async def choose_support_person() -> Admin.pydantic_schema():
 @main_router.get('/loc/', name='Get the country code for the current user')
 def get_country(cf_ipcountry: str = Header(None)) -> dict:
     return {'country_code': cf_ipcountry or 'GB'}
+
+
+@main_router.get('/companies/', name='Get a list of companies')
+async def get_companies(request: Request) -> list[dict]:
+    """
+    Get the first 10 companies by a list of kwargs.
+    """
+    query_params = {k: v for k, v in request.query_params.items() if v is not None}
+    if not query_params:
+        raise ValueError('Must provide at least one param')
+    companies = await Company.filter(**query_params).order_by('name').limit(10)
+    schema = Company.pydantic_schema()
+    return [(await schema.from_tortoise_orm(c)).model_dump() for c in companies]

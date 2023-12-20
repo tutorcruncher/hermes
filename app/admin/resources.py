@@ -5,7 +5,7 @@ from fastapi_admin.resources import Action, Field, Link, Model
 from fastapi_admin.widgets import displays, inputs
 from httpx import Request
 
-from app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage, CustomField
+from app.models import Admin, Company, Config, Contact, CustomField, Deal, Meeting, Pipeline, Stage
 
 
 @admin_app.register

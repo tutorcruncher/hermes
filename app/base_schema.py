@@ -1,4 +1,4 @@
-from typing import Any, TYPE_CHECKING, Type, Optional
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,7 +8,7 @@ from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
 
 if TYPE_CHECKING:  # noqa
-    from app.models import CustomField, Company, Deal, Contact, Meeting
+    from app.models import Company, Contact, CustomField, Deal, Meeting
 
 
 def fk_json_schema_extra(

@@ -8,8 +8,8 @@ from app.models import Admin, Company, CustomField, CustomFieldValue
 from app.pipedrive.tasks import pd_post_process_client_event
 from app.utils import settings
 from tests._common import HermesTestCase
-from tests.test_pipedrive import fake_pd_request, FakePipedrive
-from tests.test_tc2 import mock_tc2_request, client_full_event_data
+from tests.test_pipedrive import FakePipedrive, fake_pd_request
+from tests.test_tc2 import client_full_event_data, mock_tc2_request
 
 
 class TestMultipleServices(HermesTestCase):

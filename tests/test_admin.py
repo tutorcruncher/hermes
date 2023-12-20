@@ -1,4 +1,4 @@
-from app.main import app, _startup
+from app.main import _startup, app
 from app.models import Admin, Config, Pipeline, Stage
 from tests._common import HermesTestCase
 

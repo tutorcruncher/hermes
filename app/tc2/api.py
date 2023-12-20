@@ -1,5 +1,5 @@
-import requests
 import logfire
+import requests
 from tortoise.exceptions import DoesNotExist
 
 from app.models import Company

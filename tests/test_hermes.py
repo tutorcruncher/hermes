@@ -311,3 +311,123 @@ class CountryTestCase(HermesTestCase):
         r = await self.client.get(self.url)
         assert r.status_code == 200
         assert r.json() == {'country_code': 'GB'}
+
+
+class GetCompaniesTestCase(HermesTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.url = '/companies/'
+        self.admin = await Admin.create(
+            last_name='1', username='admin_1@example.com', tc2_admin_id=10, is_support_person=True
+        )
+
+    async def test_get_companies_no_kwargs(self):
+        r = await self.client.get(self.url)
+        assert r.status_code == 422
+
+    async def test_get_companies_by_id(self):
+        company = await Company.create(
+            name='Junes Ltd', website='https://junes.com', country='GB', sales_person_id=self.admin.id
+        )
+        r = await self.client.get(self.url + f'?id={company.id}')
+
+        assert r.json() == [
+            {
+                'id': company.id,
+                'name': 'Junes Ltd',
+                'tc2_agency_id': None,
+                'tc2_cligency_id': None,
+                'tc2_status': 'pending_email_conf',
+                'pd_org_id': None,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'price_plan': 'payg',
+                'country': 'GB',
+                'custom_field_values': [],
+                'deals': [],
+                'contacts': [],
+                'bdr_person': None,
+                'website': 'https://junes.com',
+                'paid_invoice_count': 0,
+                'estimated_income': None,
+                'currency': None,
+                'has_booked_call': False,
+                'has_signed_up': False,
+                'utm_campaign': None,
+                'utm_source': None,
+                'narc': False,
+                'sales_person': {
+                    'username': 'admin_1@example.com',
+                    'password': None,
+                    'id': self.admin.id,
+                    'tc2_admin_id': self.admin.tc2_admin_id,
+                    'pd_owner_id': None,
+                    'first_name': '',
+                    'last_name': '1',
+                    'timezone': 'Europe/London',
+                    'is_sales_person': False,
+                    'is_support_person': True,
+                    'is_bdr_person': False,
+                    'sells_payg': False,
+                    'sells_startup': False,
+                    'sells_enterprise': False,
+                    'deals': [],
+                    'meetings': [],
+                },
+                'support_person': None,
+            },
+        ]
+
+    async def test_get_companies_by_tc2_id(self):
+        company = await Company.create(
+            name='Junes Ltd',
+            website='https://junes.com',
+            country='GB',
+            tc2_agency_id=123,
+            sales_person_id=self.admin.id,
+        )
+        r = await self.client.get(self.url + '?tc2_agency_id=123')
+        assert r.json() == [
+            {
+                'id': company.id,
+                'name': 'Junes Ltd',
+                'tc2_agency_id': 123,
+                'tc2_cligency_id': None,
+                'tc2_status': 'pending_email_conf',
+                'pd_org_id': None,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'price_plan': 'payg',
+                'country': 'GB',
+                'custom_field_values': [],
+                'deals': [],
+                'contacts': [],
+                'bdr_person': None,
+                'website': 'https://junes.com',
+                'paid_invoice_count': 0,
+                'estimated_income': None,
+                'currency': None,
+                'has_booked_call': False,
+                'has_signed_up': False,
+                'utm_campaign': None,
+                'utm_source': None,
+                'narc': False,
+                'sales_person': {
+                    'username': 'admin_1@example.com',
+                    'password': None,
+                    'id': self.admin.id,
+                    'tc2_admin_id': self.admin.tc2_admin_id,
+                    'pd_owner_id': None,
+                    'first_name': '',
+                    'last_name': '1',
+                    'timezone': 'Europe/London',
+                    'is_sales_person': False,
+                    'is_support_person': True,
+                    'is_bdr_person': False,
+                    'sells_payg': False,
+                    'sells_startup': False,
+                    'sells_enterprise': False,
+                    'deals': [],
+                    'meetings': [],
+                },
+                'support_person': None,
+            },
+        ]
