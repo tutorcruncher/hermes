@@ -1,14 +1,7 @@
-import asyncio
-import os
-import logfire
-
-from app.utils import settings
-from app.models import Company, Admin, Config, Contact, CustomField, Deal, Pipeline, Stage
-from app.utils import logger
-
-from fastapi_admin.utils import hash_password
-
 from tortoise import Tortoise, run_async
+
+from app.models import Admin, Company, Config, Contact, CustomField, Deal, Pipeline, Stage
+from app.utils import logger
 
 
 async def setup_database():
@@ -103,13 +96,13 @@ async def setup_database():
     await Admin.update_or_create(
         id=4,
         defaults={
-            'username': "maahi@tutorcruncher.com",
-            'password': "testing",
+            'username': 'maahi@tutorcruncher.com',
+            'password': 'testing',
             'tc2_admin_id': 70,
             'pd_owner_id': 0,
-            'first_name': "Maahi",
-            'last_name': "Islam",
-            'timezone': "Europe/London",
+            'first_name': 'Maahi',
+            'last_name': 'Islam',
+            'timezone': 'Europe/London',
             'is_sales_person': False,
             'is_support_person': True,
             'is_bdr_person': False,
@@ -123,13 +116,13 @@ async def setup_database():
     await Admin.update_or_create(
         id=7,
         defaults={
-            'username': "gabe@tutorcruncher.com",
-            'password': "testing",
+            'username': 'gabe@tutorcruncher.com',
+            'password': 'testing',
             'tc2_admin_id': 71,
             'pd_owner_id': 16532779,
-            'first_name': "Gabe",
-            'last_name': "Gatrill",
-            'timezone': "Europe/London",
+            'first_name': 'Gabe',
+            'last_name': 'Gatrill',
+            'timezone': 'Europe/London',
             'is_sales_person': False,
             'is_support_person': False,
             'is_bdr_person': True,
@@ -145,17 +138,17 @@ async def setup_database():
     await Company.update_or_create(
         id=168,
         defaults={
-            'name': "rake dog",
+            'name': 'rake dog',
             'tc2_agency_id': 23,
             'tc2_cligency_id': 1351,
-            'tc2_status': "pending_email_conf",
+            'tc2_status': 'pending_email_conf',
             'pd_org_id': 362,
-            'created': "2023-11-24 09:04:59.3112+00",
-            'price_plan': "payg",
-            'country': "GB",
-            'website': "http://test.test.com",
+            'created': '2023-11-24 09:04:59.3112+00',
+            'price_plan': 'payg',
+            'country': 'GB',
+            'website': 'http://test.test.com',
             'paid_invoice_count': 0,
-            'estimated_income': "£10,000 - £20,000",
+            'estimated_income': '£10,000 - £20,000',
             'currency': None,
             'has_booked_call': False,
             'has_signed_up': False,
@@ -172,17 +165,17 @@ async def setup_database():
     await Company.update_or_create(
         id=169,
         defaults={
-            'name': "xenogenesis yearn spoon",
+            'name': 'xenogenesis yearn spoon',
             'tc2_agency_id': 24,
             'tc2_cligency_id': 1412,
-            'tc2_status': "pending_email_conf",
+            'tc2_status': 'pending_email_conf',
             'pd_org_id': 363,
-            'created': "2023-11-24 09:19:08.10572+00",
-            'price_plan': "startup",
-            'country': "GB",
-            'website': "http://super.trooper.com",
+            'created': '2023-11-24 09:19:08.10572+00',
+            'price_plan': 'startup',
+            'country': 'GB',
+            'website': 'http://super.trooper.com',
             'paid_invoice_count': 0,
-            'estimated_income': "£50,000 - £100,000",
+            'estimated_income': '£50,000 - £100,000',
             'currency': None,
             'has_booked_call': False,
             'has_signed_up': False,
@@ -199,17 +192,17 @@ async def setup_database():
     await Company.update_or_create(
         id=170,
         defaults={
-            'name': "brave meraki",
+            'name': 'brave meraki',
             'tc2_agency_id': 25,
             'tc2_cligency_id': 1473,
-            'tc2_status': "pending_email_conf",
+            'tc2_status': 'pending_email_conf',
             'pd_org_id': 364,
-            'created': "2023-11-24 09:27:36.750212+00",
-            'price_plan': "payg",
-            'country': "GB",
-            'website': "http://test.test.com",
+            'created': '2023-11-24 09:27:36.750212+00',
+            'price_plan': 'payg',
+            'country': 'GB',
+            'website': 'http://test.test.com',
             'paid_invoice_count': 0,
-            'estimated_income': "£50,000 - £100,000",
+            'estimated_income': '£50,000 - £100,000',
             'currency': None,
             'has_booked_call': False,
             'has_signed_up': False,
@@ -226,17 +219,17 @@ async def setup_database():
     await Company.update_or_create(
         id=166,
         defaults={
-            'name': "123456",
+            'name': '123456',
             'tc2_agency_id': 21,
             'tc2_cligency_id': 1229,
-            'tc2_status': "pending_email_conf",
+            'tc2_status': 'pending_email_conf',
             'pd_org_id': 360,
-            'created': "2023-11-23 17:25:53.824357+00",
-            'price_plan': "payg",
-            'country': "GB",
-            'website': "http://www.onetwothree.com",
+            'created': '2023-11-23 17:25:53.824357+00',
+            'price_plan': 'payg',
+            'country': 'GB',
+            'website': 'http://www.onetwothree.com',
             'paid_invoice_count': 0,
-            'estimated_income': "just starting out",
+            'estimated_income': 'just starting out',
             'currency': None,
             'has_booked_call': False,
             'has_signed_up': False,
@@ -253,17 +246,17 @@ async def setup_database():
     await Company.update_or_create(
         id=167,
         defaults={
-            'name': "infinite fork",
+            'name': 'infinite fork',
             'tc2_agency_id': 22,
             'tc2_cligency_id': 1290,
-            'tc2_status': "pending_email_conf",
+            'tc2_status': 'pending_email_conf',
             'pd_org_id': 361,
-            'created': "2023-11-23 17:30:59.228017+00",
-            'price_plan': "payg",
-            'country': "GB",
-            'website': "http://test.test.com",
+            'created': '2023-11-23 17:30:59.228017+00',
+            'price_plan': 'payg',
+            'country': 'GB',
+            'website': 'http://test.test.com',
             'paid_invoice_count': 0,
-            'estimated_income': "just starting out",
+            'estimated_income': 'just starting out',
             'currency': None,
             'has_booked_call': False,
             'has_signed_up': False,
@@ -276,8 +269,6 @@ async def setup_database():
         },
     )
 
-
-
     logger.info('Creating Contact')
     # Create instances for the "public.contact" table
     await Contact.update_or_create(
@@ -285,9 +276,9 @@ async def setup_database():
         defaults={
             'tc2_sr_id': 1291,
             'pd_person_id': 173,
-            'created': "2023-11-23 17:30:59.2316+00",
-            'first_name': "opulent",
-            'last_name': "yarn",
+            'created': '2023-11-23 17:30:59.2316+00',
+            'first_name': 'opulent',
+            'last_name': 'yarn',
             'email': None,
             'phone': None,
             'country': None,
@@ -300,10 +291,10 @@ async def setup_database():
         defaults={
             'tc2_sr_id': 1352,
             'pd_person_id': 174,
-            'created': "2023-11-24 09:04:59.320119+00",
-            'first_name': "optimistic",
-            'last_name': "cherry",
-            'email': "rainy@abrasive.com",
+            'created': '2023-11-24 09:04:59.320119+00',
+            'first_name': 'optimistic',
+            'last_name': 'cherry',
+            'email': 'rainy@abrasive.com',
             'phone': None,
             'country': None,
             'company_id': 168,
@@ -315,10 +306,10 @@ async def setup_database():
         defaults={
             'tc2_sr_id': 1413,
             'pd_person_id': 175,
-            'created': "2023-11-24 09:19:08.116621+00",
-            'first_name': "youthful",
-            'last_name': "pencil",
-            'email': "lock@gestalt.com",
+            'created': '2023-11-24 09:19:08.116621+00',
+            'first_name': 'youthful',
+            'last_name': 'pencil',
+            'email': 'lock@gestalt.com',
             'phone': None,
             'country': None,
             'company_id': 169,
@@ -330,10 +321,10 @@ async def setup_database():
         defaults={
             'tc2_sr_id': 1474,
             'pd_person_id': 176,
-            'created': "2023-11-24 09:27:36.759544+00",
-            'first_name': "inquisitive",
-            'last_name': "genteel television",
-            'email': "blue@small.com",
+            'created': '2023-11-24 09:27:36.759544+00',
+            'first_name': 'inquisitive',
+            'last_name': 'genteel television',
+            'email': 'blue@small.com',
             'phone': None,
             'country': None,
             'company_id': 170,
@@ -345,9 +336,9 @@ async def setup_database():
         defaults={
             'tc2_sr_id': 1230,
             'pd_person_id': 172,
-            'created': "2023-11-23 17:25:53.828285+00",
-            'first_name': "123456",
-            'last_name': "123456",
+            'created': '2023-11-23 17:25:53.828285+00',
+            'first_name': '123456',
+            'last_name': '123456',
             'email': None,
             'phone': None,
             'country': None,
@@ -360,146 +351,145 @@ async def setup_database():
     await CustomField.update_or_create(
         id=1,
         defaults={
-            'name': "Website",
-            'machine_name': "website",
-            'field_type': "str",
-            'hermes_field_name': "website",
+            'name': 'Website',
+            'machine_name': 'website',
+            'field_type': 'str',
+            'hermes_field_name': 'website',
             'tc2_machine_name': None,
-            'pd_field_id': "49206a74cce41f79dcb7944f2de6e0ee42a55b02",
-            'linked_object_type': "Company",
+            'pd_field_id': '49206a74cce41f79dcb7944f2de6e0ee42a55b02',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=2,
         defaults={
-            'name': "Paid Invoice Count",
-            'machine_name': "paid_invoice_count",
-            'field_type': "int",
-            'hermes_field_name': "paid_invoice_count",
+            'name': 'Paid Invoice Count',
+            'machine_name': 'paid_invoice_count',
+            'field_type': 'int',
+            'hermes_field_name': 'paid_invoice_count',
             'tc2_machine_name': None,
-            'pd_field_id': "e2e7987002fcc6b2f0b6b1dde78e295f79c4e0b7",
-            'linked_object_type': "Company",
+            'pd_field_id': 'e2e7987002fcc6b2f0b6b1dde78e295f79c4e0b7',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=3,
         defaults={
-            'name': "TC2 Cligency URL",
-            'machine_name': "tc2_cligency_url",
-            'field_type': "str",
-            'hermes_field_name': "tc2_cligency_url",
+            'name': 'TC2 Cligency URL',
+            'machine_name': 'tc2_cligency_url',
+            'field_type': 'str',
+            'hermes_field_name': 'tc2_cligency_url',
             'tc2_machine_name': None,
-            'pd_field_id': "dd55f5ecb2a95f89d30309ba67ef08ddd5aaa5bb",
-            'linked_object_type': "Company",
+            'pd_field_id': 'dd55f5ecb2a95f89d30309ba67ef08ddd5aaa5bb',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=4,
         defaults={
-            'name': "TC2 Status",
-            'machine_name': "tc2_status",
-            'field_type': "str",
-            'hermes_field_name': "tc2_status",
+            'name': 'TC2 Status',
+            'machine_name': 'tc2_status',
+            'field_type': 'str',
+            'hermes_field_name': 'tc2_status',
             'tc2_machine_name': None,
-            'pd_field_id': "174c4a837a4eeeda6ea9850506964a7db2488229",
-            'linked_object_type': "Company",
+            'pd_field_id': '174c4a837a4eeeda6ea9850506964a7db2488229',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=5,
         defaults={
-            'name': "UTM Source",
-            'machine_name': "utm_source",
-            'field_type': "str",
-            'hermes_field_name': "utm_source",
+            'name': 'UTM Source',
+            'machine_name': 'utm_source',
+            'field_type': 'str',
+            'hermes_field_name': 'utm_source',
             'tc2_machine_name': None,
-            'pd_field_id': "2fa66e880dfbabed928e0fcedb4b027f8802c8af",
-            'linked_object_type': "Company",
+            'pd_field_id': '2fa66e880dfbabed928e0fcedb4b027f8802c8af',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=6,
         defaults={
-            'name': "UTM Campaign",
-            'machine_name': "utm_campaign",
-            'field_type': "str",
-            'hermes_field_name': "utm_campaign",
+            'name': 'UTM Campaign',
+            'machine_name': 'utm_campaign',
+            'field_type': 'str',
+            'hermes_field_name': 'utm_campaign',
             'tc2_machine_name': None,
-            'pd_field_id': "ee62ff350d2dd1c189d2ea023ee1823a1b94b3a1",
-            'linked_object_type': "Company",
+            'pd_field_id': 'ee62ff350d2dd1c189d2ea023ee1823a1b94b3a1',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=7,
         defaults={
-            'name': "Estimated Monthly Income",
-            'machine_name': "estimated_monthly_income",
-            'field_type': "str",
-            'hermes_field_name': "estimated_income",
-            'tc2_machine_name': "estimated_monthly_income",
-            'pd_field_id': "2f821a5168fa642991fc5ddd3e5e49124f04ebed",
-            'linked_object_type': "Company",
+            'name': 'Estimated Monthly Income',
+            'machine_name': 'estimated_monthly_income',
+            'field_type': 'str',
+            'hermes_field_name': 'estimated_income',
+            'tc2_machine_name': 'estimated_monthly_income',
+            'pd_field_id': '2f821a5168fa642991fc5ddd3e5e49124f04ebed',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=8,
         defaults={
-            'name': "BDR Person ID",
-            'machine_name': "bdr_person_id",
-            'field_type': "str",
-            'hermes_field_name': "bdr_person_id",
-            'tc2_machine_name': "None",
-            'pd_field_id': "d98f937eed5df4341711ba53052d257a20d47bec",
-            'linked_object_type': "Company",
+            'name': 'BDR Person ID',
+            'machine_name': 'bdr_person_id',
+            'field_type': 'str',
+            'hermes_field_name': 'bdr_person_id',
+            'tc2_machine_name': 'None',
+            'pd_field_id': 'd98f937eed5df4341711ba53052d257a20d47bec',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=9,
         defaults={
-            'name': "Hermes ID",
-            'machine_name': "hermes_id",
-            'field_type': "fk_field",
-            'hermes_field_name': "id",
+            'name': 'Hermes ID',
+            'machine_name': 'hermes_id',
+            'field_type': 'fk_field',
+            'hermes_field_name': 'id',
             'tc2_machine_name': None,
-            'pd_field_id': "ac78ff43095ad2be524b3e0533c2e3f7df91e141",
-            'linked_object_type': "Company",
+            'pd_field_id': 'ac78ff43095ad2be524b3e0533c2e3f7df91e141',
+            'linked_object_type': 'Company',
         },
     )
 
     await CustomField.update_or_create(
         id=10,
         defaults={
-            'name': "Hermes ID",
-            'machine_name': "hermes_id_2",
-            'field_type': "fk_field",
-            'hermes_field_name': "id",
+            'name': 'Hermes ID',
+            'machine_name': 'hermes_id_2',
+            'field_type': 'fk_field',
+            'hermes_field_name': 'id',
             'tc2_machine_name': None,
-            'pd_field_id': "4ede82add98b0baf02f8881e88fa2c6394be0ba8",
-            'linked_object_type': "Contact",
+            'pd_field_id': '4ede82add98b0baf02f8881e88fa2c6394be0ba8',
+            'linked_object_type': 'Contact',
         },
     )
 
     await CustomField.update_or_create(
         id=11,
         defaults={
-            'name': "Hermes ID",
-            'machine_name': "hermes_id_3",
-            'field_type': "fk_field",
-            'hermes_field_name': "id",
+            'name': 'Hermes ID',
+            'machine_name': 'hermes_id_3',
+            'field_type': 'fk_field',
+            'hermes_field_name': 'id',
             'tc2_machine_name': None,
-            'pd_field_id': "f9fb48b365d26a4b88cd3953aa5b91cd574efd87",
-            'linked_object_type': "Deal",
+            'pd_field_id': 'f9fb48b365d26a4b88cd3953aa5b91cd574efd87',
+            'linked_object_type': 'Deal',
         },
     )
-
 
     logger.info('Creating Stages')
     await Stage.update_or_create(id=1, defaults={'pd_stage_id': 7, 'name': 'PAYG Qualified'})
@@ -524,7 +514,6 @@ async def setup_database():
         id=3, defaults={'pd_pipeline_id': 6, 'name': 'ENTERPRISE', 'dft_entry_stage_id': 10}
     )
     await Pipeline.update_or_create(id=2, defaults={'pd_pipeline_id': 5, 'name': 'STARTUP', 'dft_entry_stage_id': 9})
-
 
     logger.info('Creating Deals')
     # Updating or Creating records in the Deal table
@@ -602,13 +591,14 @@ async def setup_database():
         defaults={
             'meeting_dur_mins': 30,
             'meeting_buffer_mins': 15,
-            'meeting_min_start': "10:00",
-            'meeting_max_end': "17:30",
+            'meeting_min_start': '10:00',
+            'meeting_max_end': '17:30',
             'enterprise_pipeline_id': 3,
             'payg_pipeline_id': 1,
             'startup_pipeline_id': 2,
         },
     )
+
 
 async def run():
     # Initialize Tortoise

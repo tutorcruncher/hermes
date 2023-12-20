@@ -66,6 +66,47 @@ async def pipedrive_search(query_kwargs: dict, endpoint: str) -> Organisation | 
     return None
 
 
+def _get_search_item(r: dict) -> dict | None:
+    if r['data']['items']:
+        return r['data']['items'][0]['item']
+
+
+async def _search_for_organisation(company: Company) -> Organisation | None:
+    """
+    Search for an Organisation within Pipedrive. First we search using their cligency_id, then we search using their
+    contacts' email addresses and phone numbers.
+    """
+    search_terms = []
+    if company.tc2_cligency_id:
+        search_terms.append(company.tc2_cligency_id)
+        query_kwargs = {'term': company.tc2_cligency_id, 'exact_match': True, 'limit': 1}
+        pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
+        if search_item := _get_search_item(pd_response):
+            return Organisation(**search_item)
+
+    contact_emails, contact_phones = set(), set()
+    for contact in company.contacts:
+        if contact.email:
+            contact_emails.add(contact.email)
+        if contact.phone:
+            contact_phones.add(contact.phone)
+
+    if contact_emails:
+        pd_response = await pipedrive_request(
+            'persons/search', query_kwargs={'term': ' '.join(contact_emails), 'limit': 1}
+        )
+        if search_item := _get_search_item(pd_response):
+            org_id = search_item['organization']['id']
+            return Organisation(**await pipedrive_request(f'organizations/{org_id}'))
+    if contact_phones:
+        pd_response = await pipedrive_request(
+            'persons/search', query_kwargs={'term': ' '.join(contact_phones), 'limit': 1}
+        )
+        if search_item := _get_search_item(pd_response):
+            org_id = search_item['organization']['id']
+            return Organisation(**await pipedrive_request(f'organizations/{org_id}'))
+
+
 async def get_and_create_or_update_organisation(company: Company) -> Organisation:
     """
     This function is responsible for creating or updating an Organisation within Pipedrive.
@@ -88,68 +129,10 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
         if hermes_org_data != pipedrive_org.model_dump(by_alias=True):
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
+    elif org := await _search_for_organisation(company):
+        company.pd_org_id = org.id
+        await company.save()
     else:
-        # if company is not linked to pipedrive, search pd for a matching org by doing a generic search for
-        # tc2_cligency_id, This should be matched with Cligency URL (imported from hubspot) or tc2_cligency_url (Hermes)
-        # if there is a match, link the company to the org and update the org
-
-        if company.tc2_cligency_id:
-            query_kwargs = {
-                'term': company.tc2_cligency_id,
-                # 'exact_match': True,
-                'limit': 1,
-            }
-            pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
-            search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
-            if search_item:
-                company.pd_org_id = search_item['id']
-                await company.save()
-                await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-                app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                return Organisation(**search_item)
-
-            else:
-                # if there is no match, search by email
-                search_terms = []
-                for contact in company.contacts:
-                    if contact.email:
-                        search_terms.append(contact.email)
-
-                joined_search_terms = ' '.join(search_terms)
-                query_kwargs = {
-                    'term': joined_search_terms,
-                    'limit': 1,
-                }
-                pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
-                search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
-                if search_item:
-                    company.pd_org_id = search_item['id']
-                    await company.save()
-                    await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-                    app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                    return Organisation(**search_item)
-
-                else:
-                    # if there is no match, search by phone
-                    search_terms = []
-                    for contact in company.contacts:
-                        if contact.phone:
-                            search_terms.append(contact.phone)
-
-                    joined_search_terms = ' '.join(search_terms)
-                    query_kwargs = {
-                        'term': joined_search_terms,
-                        'limit': 1,
-                    }
-                    pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
-                    search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
-                    if search_item:
-                        company.pd_org_id = search_item['id']
-                        await company.save()
-                        await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-                        app_logger.info('Updated lost pd org %s from company %s', company.pd_org_id, company.id)
-                        return Organisation(**search_item)
-
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
         pipedrive_org = Organisation(**created_org)
