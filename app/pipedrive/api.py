@@ -51,21 +51,6 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
     return r.json()
 
 
-async def pipedrive_search(query_kwargs: dict, endpoint: str) -> Organisation | Person | None:
-    """
-    Search for an Organisation or Person within Pipedrive.
-    """
-    pd_response = await pipedrive_request(f'{endpoint}/search', query_kwargs=query_kwargs)
-    search_item = pd_response['data']['items'][0]['item'] if pd_response['data']['items'] else None
-    app_logger.info('Search for %s: %r', endpoint, search_item)
-    if search_item:
-        if endpoint == 'organizations':
-            return Organisation(**search_item)
-        elif endpoint == 'persons':
-            return Person(**search_item)
-    return None
-
-
 def _get_search_item(r: dict) -> dict | None:
     if r['data']['items']:
         return r['data']['items'][0]['item']
