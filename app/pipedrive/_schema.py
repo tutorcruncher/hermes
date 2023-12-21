@@ -50,7 +50,7 @@ class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
     name: str
     address_country: Optional[str] = None
-    owner_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
+    owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
