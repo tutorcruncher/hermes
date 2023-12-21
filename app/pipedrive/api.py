@@ -54,6 +54,14 @@ def _get_search_item(r: dict) -> dict | None:
         return r['data']['items'][0]['item']
 
 
+async def _search_contacts_by_field(values: set[str], field: str) -> int | None:
+    for value in values:
+        pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
+        contact = next((c['item'] for c in pd_data['data']['items'] if c['item'].get('organization')), None)
+        if contact:
+            return contact['organization']['id']
+
+
 async def _search_for_organisation(company: Company) -> Organisation | None:
     """
     Search for an Organisation within Pipedrive. First we search using their cligency_id, then we search using their
@@ -75,21 +83,10 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         if contact.phone:
             contact_phones.add(contact.phone)
 
-    for email_address in contact_emails:
-        pd_response = await pipedrive_request(
-            'persons/search', query_kwargs={'term': email_address, 'limit': 1, 'fields': 'email'}
-        )
-        if search_item := _get_search_item(pd_response):
-            org_id = search_item['organization']['id']
-            return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
-
-    for phone_number in contact_phones:
-        pd_response = await pipedrive_request(
-            'persons/search', query_kwargs={'term': phone_number, 'limit': 1, 'fields': 'phone'}
-        )
-        if search_item := _get_search_item(pd_response):
-            org_id = search_item['organization']['id']
-            return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
+    if org_id := await _search_contacts_by_field(contact_emails, 'email'):
+        return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
+    if org_id := await _search_contacts_by_field(contact_phones, 'phone'):
+        return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
 
 
 async def get_and_create_or_update_organisation(company: Company) -> Organisation:
