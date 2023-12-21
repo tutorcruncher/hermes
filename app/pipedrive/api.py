@@ -36,9 +36,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
     query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
     r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
-    app_logger.debug('Request to url %s: %r', url, data)
     logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
-    app_logger.debug('Response: %r', r.json())
     r.raise_for_status()
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
     logfire.debug(
@@ -77,16 +75,17 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         if contact.phone:
             contact_phones.add(contact.phone)
 
-    if contact_emails:
+    for email_address in contact_emails:
         pd_response = await pipedrive_request(
-            'persons/search', query_kwargs={'term': ' '.join(contact_emails), 'limit': 1}
+            'persons/search', query_kwargs={'term': email_address, 'limit': 1, 'fields': 'email'}
         )
         if search_item := _get_search_item(pd_response):
             org_id = search_item['organization']['id']
             return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
-    if contact_phones:
+
+    for phone_number in contact_phones:
         pd_response = await pipedrive_request(
-            'persons/search', query_kwargs={'term': ' '.join(contact_phones), 'limit': 1}
+            'persons/search', query_kwargs={'term': phone_number, 'limit': 1, 'fields': 'phone'}
         )
         if search_item := _get_search_item(pd_response):
             org_id = search_item['organization']['id']
