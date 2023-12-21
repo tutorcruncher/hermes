@@ -54,8 +54,8 @@ def _get_search_item(r: dict) -> dict | None:
         return r['data']['items'][0]['item']
 
 
-async def _search_contacts_by_field(values: set[str], field: str) -> int | None:
-    for value in values:
+async def _search_contacts_by_field(values: list[str], field: str) -> int | None:
+    for value in values[:2]:  # We have to limit it to 2 contacts else we'll hit their API ratelimit.
         pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
         contact = next((c['item'] for c in pd_data['data']['items'] if c['item'].get('organization')), None)
         if contact:
@@ -83,9 +83,9 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         if contact.phone:
             contact_phones.add(contact.phone)
 
-    if org_id := await _search_contacts_by_field(contact_emails, 'email'):
+    if org_id := await _search_contacts_by_field(list(contact_emails), 'email'):
         return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
-    if org_id := await _search_contacts_by_field(contact_phones, 'phone'):
+    if org_id := await _search_contacts_by_field(list(contact_phones), 'phone'):
         return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
 
 
