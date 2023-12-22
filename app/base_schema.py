@@ -131,12 +131,21 @@ class HermesBaseModel(BaseModel):
         """
         When creating a Hermes hermes_model from a Pipedrive/TC2 object, gets the custom field values from the
         hermes_model.
+
+        FK fields are handled differently because we need to get the ID of the related object.
         """
+        from app.models import CustomField
+
         custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
         for cf in custom_fields:
             if cf.hermes_field_name:
-                val = getattr(obj, cf.hermes_field_name, None)
+                if (cf.field_type == CustomField.TYPE_FK_FIELD) and (
+                    related_obj_id := getattr(obj, f'{cf.hermes_field_name}_id', None)
+                ):
+                    val = related_obj_id
+                else:
+                    val = getattr(obj, cf.hermes_field_name, None)
             else:
                 val = cf.values[0].value if cf.values else None
             cf_data[cf.machine_name] = val

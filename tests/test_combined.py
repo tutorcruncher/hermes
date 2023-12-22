@@ -29,7 +29,6 @@ class TestMultipleServices(HermesTestCase):
         await CustomField.create(linked_object_type='Contact', pd_field_id='234_hermes_id_567', **kwargs)
         await CustomField.create(linked_object_type='Deal', pd_field_id='345_hermes_id_678', **kwargs)
         await build_custom_field_schema()
-        await build_custom_field_schema()
 
     def _tc2_sig(self, payload):
         return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
@@ -113,11 +112,11 @@ class TestMultipleServices(HermesTestCase):
 
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_company_exists_in_tc_and_pd_but_not_in_hermes(self, mock_pd_request, mock_tc2_get):
+    async def test_tc2_cb_company_exists_in_tc_and_pd_but_not_in_hermes(self, mock_pd_request, mock_tc2_get):
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
         mock_tc2_get.side_effect = mock_tc2_request()
 
-        await Admin.create(
+        admin = await Admin.create(
             tc2_admin_id=30,
             first_name='Brain',
             last_name='Johnson',
@@ -131,7 +130,14 @@ class TestMultipleServices(HermesTestCase):
             pd_field_id='123_tc2_cligency_url_456',
             hermes_field_name='tc2_cligency_url',
             name='TC2 Cligency URL',
-            field_type='str',
+            field_type=CustomField.TYPE_STR,
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
         )
 
         await build_custom_field_schema()
@@ -172,8 +178,9 @@ class TestMultipleServices(HermesTestCase):
                 'name': 'MyTutors2',
                 'address_country': 'GB',
                 'owner_id': 10,
-                '123_hermes_id_456': 1,
+                '123_hermes_id_456': company.id,
                 '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
+                '123_sales_person_456': admin.id,
             }
         }
 
