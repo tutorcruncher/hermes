@@ -57,9 +57,18 @@ def _get_search_item(r: dict) -> dict | None:
 async def _search_contacts_by_field(values: list[str], field: str) -> int | None:
     for value in values[:2]:  # We have to limit it to 2 contacts else we'll hit their API ratelimit.
         pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
-        contact = next((c['item'] for c in pd_data['data']['items'] if c['item'].get('organization')), None)
-        if contact:
-            return contact['organization']['id']
+        for contact in pd_data['data']['items']:
+            if contact_item := contact['item']:
+                if contact_item.get('organization'):
+                    # Check if the pd_org_id already exists in the database
+                    existing_company = await Company.filter(pd_org_id=contact_item['organization']['id']).first()
+                    if existing_company:
+                        app_logger.error(
+                            f'pd_org_id {contact_item["organization"]["id"]} already exists for company {existing_company.id}'
+                        )
+                        continue
+                    return contact_item['organization']['id']
+    return None
 
 
 async def _search_for_organisation(company: Company) -> Organisation | None:
