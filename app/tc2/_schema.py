@@ -69,7 +69,7 @@ class TCRecipient(_TCSimpleRole):
 
 
 class TCUser(HermesBaseModel):
-    email: Optional[str] = None
+    email: str
     phone: Optional[str] = None
     first_name: Optional[str] = None
     last_name: str
@@ -118,6 +118,16 @@ class TCClient(HermesBaseModel):
             data['sales_person_id'] = sales_person['id']
         return data
 
+    @model_validator(mode='before')
+    @classmethod
+    def set_user_email(cls, data):
+        """
+        If the user doesn't have an email, we can use the email of the first paid recipient.
+        """
+        if 'user' in data and not data['user'].get('email'):
+            data['user']['email'] = data['paid_recipients'][0]['email']
+        return data
+
     @field_validator('extra_attrs')
     @classmethod
     def remove_null_attrs(cls, v: list[TCClientExtraAttr]):
@@ -125,7 +135,7 @@ class TCClient(HermesBaseModel):
 
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
-        When updating a Hermes Company from a TCClient,, we need to get the custom field values from the `extra_attrs`
+        When updating a Hermes Company from a TCClient, we need to get the custom field values from the `extra_attrs`
         on the TCClient.
         """
         cf_val_lu = {}
