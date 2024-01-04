@@ -147,6 +147,55 @@ class TC2CallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 422, r.json()
 
+    async def test_ingnored_actions(self):
+        """
+        try to create a company with an ignored action
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        event_data = {
+            'action': 'AGREE_TERMS',
+            'verb': 'Agreed to Terms and Conditions',
+            'subject': {
+                'charge_via_branch': False,
+                'id': 1234,
+                'invoices_count': 0,
+                'is_taxable': True,
+                'model': 'Client',
+                'payment_pending': '0.00',
+                'received_notifications': [],
+                'status': 'prospect',
+                'url': 'https://secure.tutorcruncher.com/api/clients/1234/',
+                'user': {
+                    'country': 'None',
+                    'email': "'test@email.com'",
+                    'first_name': "'Test'",
+                    'last_name': "'User'",
+                    'mobile': 'None',
+                    'phone': "'+123456789'",
+                    'state': 'None',
+                    'street': 'None',
+                    'title': 'None',
+                    'town': 'None'
+                }
+            },
+        }
+
+        events = [event_data]
+        data = {'_request_time': 123, 'events': events}
+
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+
+        event_data['action'] = 'CLIENT_ENQUIRY'
+        event_data['verb'] = 'Client Enquiry'
+        events = [event_data]
+        data = {'_request_time': 123, 'events': events}
+
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_cb_client_event_test_1(self, mock_add_task):
         """

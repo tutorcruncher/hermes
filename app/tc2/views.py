@@ -15,6 +15,7 @@ from app.utils import settings
 
 tc2_router = APIRouter()
 
+IGNORED_ACTIONS = ['AGREE_TERMS', 'CLIENT_ENQUIRY']
 
 @tc2_router.post('/callback/', name='TC2 callback')
 async def callback(
@@ -28,6 +29,8 @@ async def callback(
     if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
+        if event.action in IGNORED_ACTIONS:
+            continue
         company, deal = None, None
         if event.subject.model == 'Client':
             company, deal = await update_from_client_event(event.subject)
