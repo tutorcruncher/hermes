@@ -1,7 +1,7 @@
 tortoise-orm[asyncpg]==0.20.0
 aerich==0.7.2
 fastapi==0.108.0
-pydantic==2.5.2
+pydantic==2.5.3
 pydantic-settings==2.1.0
 uvicorn==0.25.0
 requests==2.31.0
