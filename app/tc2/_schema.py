@@ -124,7 +124,7 @@ class TCClient(HermesBaseModel):
         """
         If the user doesn't have an email, we can use the email of the first paid recipient.
         """
-        if not data['user']['email']:
+        if 'user' in data and not data['user'].get('email'):
             data['user']['email'] = data['paid_recipients'][0]['email']
         return data
 
