@@ -17,6 +17,7 @@ tc2_router = APIRouter()
 
 IGNORED_ACTIONS = ['AGREE_TERMS', 'CLIENT_ENQUIRY']
 
+
 @tc2_router.post('/callback/', name='TC2 callback')
 async def callback(
     request: Request, webhook: TCWebhook, webhook_signature: Optional[str] = Header(None), tasks: BackgroundTasks = None

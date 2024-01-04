@@ -176,8 +176,8 @@ class TC2CallbackTestCase(HermesTestCase):
                     'state': 'None',
                     'street': 'None',
                     'title': 'None',
-                    'town': 'None'
-                }
+                    'town': 'None',
+                },
             },
         }
 
@@ -186,7 +186,6 @@ class TC2CallbackTestCase(HermesTestCase):
 
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
-
 
         event_data['action'] = 'CLIENT_ENQUIRY'
         event_data['verb'] = 'Client Enquiry'
