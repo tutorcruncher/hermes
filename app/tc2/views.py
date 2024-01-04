@@ -29,10 +29,11 @@ async def callback(
     if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
-        if not hasattr(event.subject, 'meta_agency'):
-            continue
+        debug(event.action)
         company, deal = None, None
         if event.subject.model == 'Client':
+            if not event.action == 'DELETED_A_CLIENT' and not hasattr(event.subject, 'meta_agency'):
+                continue
             company, deal = await update_from_client_event(event.subject)
         elif event.subject.model == 'Invoice':
             company, deal = await update_from_invoice_event(event.subject)

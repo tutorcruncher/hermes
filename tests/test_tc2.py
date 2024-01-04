@@ -74,7 +74,7 @@ def client_full_event_data():
 
 def client_deleted_event_data():
     return {
-        'action': 'delete',
+        'action': 'DELETED_A_CLIENT',
         'verb': 'delete',
         'subject': {
             'id': 10,
