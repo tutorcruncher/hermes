@@ -69,7 +69,7 @@ class TCRecipient(_TCSimpleRole):
 
 
 class TCUser(HermesBaseModel):
-    email: str
+    email: Optional[str] = None
     phone: Optional[str] = None
     first_name: Optional[str] = None
     last_name: str
