@@ -15,8 +15,6 @@ from app.utils import settings
 
 tc2_router = APIRouter()
 
-IGNORED_ACTIONS = ['AGREE_TERMS', 'CLIENT_ENQUIRY']
-
 
 @tc2_router.post('/callback/', name='TC2 callback')
 async def callback(
@@ -25,12 +23,13 @@ async def callback(
     """
     Callback for TC2
     Updates Hermes and other systems based on events in TC2.
+    Ignores events that don't have a meta_agency.
     """
     expected_sig = hmac.new(settings.tc2_api_key.encode(), (await request.body()), hashlib.sha256).hexdigest()
     if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
-        if event.action in IGNORED_ACTIONS:
+        if not hasattr(event.subject, 'meta_agency'):
             continue
         company, deal = None, None
         if event.subject.model == 'Client':

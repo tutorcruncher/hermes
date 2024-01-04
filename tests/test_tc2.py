@@ -147,9 +147,9 @@ class TC2CallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 422, r.json()
 
-    async def test_ingnored_actions(self):
+    async def test_ingnored_actions_no_meta_agency(self):
         """
-        try to create a company with an ignored action
+        try to create a company with no meta_agency
         """
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
