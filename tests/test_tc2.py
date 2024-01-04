@@ -47,7 +47,7 @@ def _client_data():
                 'id': 40,
                 'first_name': 'Mary',
                 'last_name': 'Booth',
-                'email': 'mary+recipient@booth.com',
+                'email': 'mary@booth.com',
             }
         ],
         'status': 'live',
