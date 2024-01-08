@@ -107,11 +107,14 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
     if company.pd_org_id:
+        # get by pipedrive Org ID
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
         if hermes_org_data != pipedrive_org.model_dump(by_alias=True):
+            # update
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
     elif org := await _search_for_organisation(company):
+        # get by cligency url or contact email/phone
         company.pd_org_id = org.id
         await company.save()
         await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)

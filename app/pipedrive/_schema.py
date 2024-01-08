@@ -58,9 +58,11 @@ class Organisation(PipedriveBaseModel):
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
+        sales_person = await company.sales_person
+        owner_id = sales_person.pd_owner_id if sales_person is not None else None
         cls_kwargs = dict(
             name=company.name,
-            owner_id=(await company.sales_person).pd_owner_id,
+            owner_id=owner_id,
             tc2_status=company.tc2_status,
             tc2_cligency_url=company.tc2_cligency_url,
             address_country=company.country,
