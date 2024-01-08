@@ -4,6 +4,7 @@ from tortoise.expressions import Q
 
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
+from app.callbooker._utils import app_logger
 from app.models import Company, Contact, Deal, Meeting
 from app.utils import get_config, settings
 
@@ -77,16 +78,21 @@ async def get_or_create_contact_company(event: CBSalesCall) -> tuple[Company, Co
     company = event.company_id and await event.company
     if not company:
         if contact := await Contact.filter(email=event.email).first():
+            app_logger.info(f'Got contact {contact} from {event}')
             company = await contact.company
         else:
             company = await Company.filter(name__iexact=event.company_name).first()
+            app_logger.info(f'Got company {company} from {event}')
             if not company:
                 company_data = await event.company_dict()
                 company = await Company.create(**company_data)
+                app_logger.info(f'Created company {company} from {event}')
     if not company.sales_person_id:
         company.sales_person = event.admin
+        app_logger.info(f'Set sales person {event.admin} on company {company} from {event}')
         await company.save()
     contact = contact or await get_or_create_contact(company, event)
+    app_logger.info(f'Got company {company} and contact {contact} from {event}')
     return company, contact
 
 
