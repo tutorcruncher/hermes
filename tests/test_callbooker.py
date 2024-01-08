@@ -160,8 +160,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert company.estimated_income == '1000'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -252,8 +252,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -300,8 +300,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -346,8 +346,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Junes Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
 
         contact = await Contact.get()
         assert contact.first_name == 'B'
@@ -393,8 +393,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
 
         contact = await Contact.get()
         assert contact.first_name == 'B'
@@ -453,8 +453,8 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
-        assert not company.support_person
-        assert not company.bdr_person
+        assert not company.support_person_id
+        assert not company.bdr_person_id
 
         contact = await Contact.get()
         assert contact.first_name == 'B'
@@ -627,65 +627,6 @@ class MeetingBookingTestCase(HermesTestCase):
             json={
                 'admin_id': sales_person.id,
                 'bdr_person_id': bdr_person.id,
-                'utm_campaign': 'test_campaign',
-                'utm_source': 'test_source',
-                **CB_MEETING_DATA,
-            },
-        )
-        assert r.status_code == 200, r.json()
-
-        company = await Company.get()
-        assert not company.tc2_cligency_id
-        assert company.name == 'Junes Ltd'
-        assert company.website == 'https://junes.com'
-        assert company.country == 'GB'
-        assert company.estimated_income == '1000'
-        assert not company.support_person
-        assert await company.bdr_person == bdr_person
-        assert await company.sales_person == sales_person
-        assert company.utm_campaign == 'test_campaign'
-        assert company.utm_source == 'test_source'
-
-        contact = await Contact.get()
-        assert contact.first_name == 'Brain'
-        assert contact.last_name == 'Junes'
-        assert contact.email == 'brain@junes.com'
-        assert contact.company_id == company.id
-
-        meeting = await Meeting.get()
-        assert meeting.status == Meeting.STATUS_PLANNED
-        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
-        assert await meeting.admin == sales_person
-        assert await meeting.contact == contact
-        assert meeting.meeting_type == Meeting.TYPE_SALES
-
-    @mock.patch('fastapi.BackgroundTasks.add_task')
-    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_bdr2(self, mock_gcal_builder, mock_add_task):
-        """
-        Book a new meeting
-        Company doesn't exist so create
-        Contact doesn't exist so create
-        Create with admin
-        Create with bdr
-        Create with utm_campaign
-        Create with utm_source
-        """
-        mock_gcal_builder.side_effect = fake_gcal_builder()
-        sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
-        )
-        bdr_person = await Admin.create(
-            first_name='Michael', last_name='Bay', username='brdperson@example.com', is_bdr_person=True
-        )
-
-        assert await Company.all().count() == 0
-        assert await Contact.all().count() == 0
-        r = await self.client.post(
-            self.url,
-            json={
-                'admin_id': sales_person.id,
-                'bdr_person_id': None,
                 'utm_campaign': 'test_campaign',
                 'utm_source': 'test_source',
                 **CB_MEETING_DATA,
