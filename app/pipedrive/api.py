@@ -139,13 +139,14 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
         await company.save()
         await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
 
-    # if company is not linked to pipedrive and there is no match, create a new org
-    created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
-    pipedrive_org = Organisation(**created_org)
-    company.pd_org_id = pipedrive_org.id
-    await company.save()
-    app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-    return pipedrive_org
+    else:
+        # if company is not linked to pipedrive and there is no match, create a new org
+        created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
+        pipedrive_org = Organisation(**created_org)
+        company.pd_org_id = pipedrive_org.id
+        await company.save()
+        app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
+        return pipedrive_org
 
 
 async def delete_organisation(company: Company):
