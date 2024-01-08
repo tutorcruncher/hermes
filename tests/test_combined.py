@@ -186,3 +186,100 @@ class TestMultipleServices(HermesTestCase):
 
         await tc2_cligency_url.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_to_match_already_exists_on_different_organisation(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = mock_tc2_request()
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+        )
+
+        tc2_cligency_url = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_tc2_cligency_url_456',
+            hermes_field_name='tc2_cligency_url',
+            name='TC2 Cligency URL',
+            field_type=CustomField.TYPE_STR,
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await build_custom_field_schema()
+
+        company = await Company.create(
+            name='MyTutors',
+            tc2_cligency_id=None,
+            sales_person=admin,
+            pd_org_id=1,
+        )
+
+        # The Old Org in PD
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': 99,
+                # '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
+                '234_heroes_id_567': company.id,
+            }
+        }
+
+        # The Old Person in PD
+        self.pipedrive.db['persons'] = {
+            1: {
+                'id': 1,
+                'name': 'Mary Booth',
+                'owner_id': 99,
+                'email': ['mary@booth.com'],
+                'phone': None,
+                'organization': {'id': 1, 'name': 'MyTutors'},
+            }
+        }
+
+
+
+        # Create the company in TC2 send the webhook to Hermes
+        modified_data = client_full_event_data()
+        modified_data['id'] = None
+        modified_data['subject']['meta_agency']['name'] = 'MyTutors2'
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        assert await Company.exists()
+        company = await Company.get()
+
+        assert company.tc2_cligency_url == f'{settings.tc2_base_url}/clients/10/'
+
+        await pd_post_process_client_event(company=company)
+
+        # Check the org has been updated
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'MyTutors2',
+                'address_country': 'GB',
+                'owner_id': 10,
+                '123_hermes_id_456': company.id,
+                '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
+                '123_sales_person_456': admin.id,
+            }
+        }
+
+        await tc2_cligency_url.delete()
+        await build_custom_field_schema()

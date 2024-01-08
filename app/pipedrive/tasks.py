@@ -18,6 +18,7 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     """
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
+    debug('1')
     await get_and_create_or_update_organisation(company)
     await get_and_create_or_update_person(contact)
     pd_deal = await get_and_create_or_update_pd_deal(deal)
