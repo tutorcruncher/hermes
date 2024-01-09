@@ -32,7 +32,7 @@ def _to_title(v: str) -> str:
 
 class CBSalesCall(HermesBaseModel):
     admin_id: int = ForeignKeyField(model=Admin)
-    bdr_person_id: Optional[int] = ForeignKeyField(None, model=Admin, to_field='bdr')
+    bdr_person_id: Optional[int] = ForeignKeyField(None, model=Admin, to_field='bdr', fk_field_name='tc2_admin_id')
     utm_campaign: Optional[str] = None
     utm_source: Optional[str] = None
     company_id: Optional[int] = ForeignKeyField(None, model=Company)
