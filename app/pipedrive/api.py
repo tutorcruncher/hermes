@@ -50,6 +50,9 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
 
 
 def _get_search_item(r: dict) -> dict | None:
+    """
+    Get the first item from a search response.
+    """
     if r['data']['items']:
         return r['data']['items'][0]['item']
 
@@ -57,14 +60,24 @@ def _get_search_item(r: dict) -> dict | None:
 async def _search_contacts_by_field(values: list[str], field: str) -> int | None:
     for value in values[:2]:  # We have to limit it to 2 contacts else we'll hit their API ratelimit.
         pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
-        contact = next((c['item'] for c in pd_data['data']['items'] if c['item'].get('organization')), None)
-        if contact:
-            return contact['organization']['id']
+        for contact in pd_data['data']['items']:
+            if contact_item := contact['item']:
+                if contact_item.get('organization'):
+                    # Check if the pd_org_id already exists in the database
+                    existing_company = await Company.filter(pd_org_id=contact_item['organization']['id']).first()
+                    if existing_company:
+                        app_logger.error(
+                            f'pd_org_id {contact_item["organization"]["id"]} already exists for company {existing_company.id}'
+                        )
+                        continue
+                    app_logger.info(f'Found org {contact_item["organization"]["id"]} from contact {contact_item["id"]}')
+                    return contact_item['organization']['id']
+    return None
 
 
 async def _search_for_organisation(company: Company) -> Organisation | None:
     """
-    Search for an Organisation within Pipedrive. First we search using their cligency_id, then we search using their
+    Search for an Organisation within Pipedrive. First we search using their tc2_cligency_id, then we search using their
     contacts' email addresses and phone numbers.
     """
     search_terms = []
@@ -73,6 +86,10 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
         query_kwargs = {'term': company.tc2_cligency_id, 'exact_match': True, 'limit': 1}
         pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
         if search_item := _get_search_item(pd_response):
+            app_logger.info(
+                f'Found org {search_item["id"]} from company {company.id} by searching pipedrive for the '
+                f'tc2_cligency_id'
+            )
             return Organisation(**search_item)
 
     await company.fetch_related('contacts')
@@ -84,8 +101,10 @@ async def _search_for_organisation(company: Company) -> Organisation | None:
             contact_phones.add(contact.phone)
 
     if org_id := await _search_contacts_by_field(list(contact_emails), 'email'):
+        app_logger.info(f'Found org {org_id} from company {company.id} by contacts email')
         return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
     if org_id := await _search_contacts_by_field(list(contact_phones), 'phone'):
+        app_logger.info(f'Found org {org_id} from company {company.id} by contacts phone')
         return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
 
 
@@ -110,15 +129,20 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     if company.pd_org_id:
         # get by pipedrive Org ID
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
+        app_logger.info(
+            f'Found org {pipedrive_org.id} from company {company.id} by company.pd_org_id {company.pd_org_id}'
+        )
         if hermes_org_data != pipedrive_org.model_dump(by_alias=True):
             # update
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-            app_logger.info('Updated org %s from company %s', company.pd_org_id, company.id)
+            app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
     elif org := await _search_for_organisation(company):
         # get by cligency url or contact email/phone
         company.pd_org_id = org.id
+
         await company.save()
         await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+
     else:
         # if company is not linked to pipedrive and there is no match, create a new org
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
