@@ -3,9 +3,11 @@ from typing import Any, Literal, Optional
 
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
+from pydantic_core import ValidationError
 
 from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
+from app.pipedrive._utils import app_logger
 
 
 def _remove_nulls(**kwargs):
@@ -67,7 +69,16 @@ class Organisation(PipedriveBaseModel):
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))
         final_kwargs = _remove_nulls(**cls_kwargs)
-        return cls(**final_kwargs)
+        try:
+            return cls(**final_kwargs)
+        except ValidationError:
+            # Hotfix for https://tutorcruncher.sentry.io/issues/4722239936/
+            app_logger.error(
+                'Sales person ID in data',
+                extra={'company': company.__dict__, 'cf_vals': await cls.get_custom_field_vals(company)},
+            )
+            final_kwargs.pop('sales_person_id')
+            return cls(**final_kwargs)
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:
         cf_data_from_hermes = {
