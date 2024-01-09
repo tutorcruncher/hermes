@@ -176,6 +176,113 @@ class PipedriveTasksTestCase(HermesTestCase):
         }
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_sales_call_booked_with_bdr(self, mock_request):
+        """
+        Test that the sales call flow creates the org, person, deal and activity in pipedrive. None of the objects
+        already exist so should create one of each in PD.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_bdr_person_id_456',
+            tc2_machine_name='hermes_id',
+            name='BDR person ID',
+            hermes_field_name='bdr_person_id',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await build_custom_field_schema()
+
+        sales_person = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        bdr_person = await Admin.create(
+            first_name='Brian',
+            last_name='Jacques',
+            username='bdr@example.com',
+            is_bdr_person=True,
+            tc2_admin_id=22,
+            pd_owner_id=101,
+        )
+        company = await Company.create(
+            name='Julies Ltd', country='GB', sales_person=sales_person, bdr_person=bdr_person
+        )
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=sales_person,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=sales_person,
+        )
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                'id': 1,
+                '123_hermes_id_456': company.id,
+                '123_bdr_person_id_456': bdr_person.id,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 99,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+        assert (await Deal.get()).pd_deal_id == 1
+        assert self.pipedrive.db['activities'] == {
+            1: {
+                'id': 1,
+                'due_date': '2023-01-01',
+                'due_time': '00:00',
+                'subject': 'TutorCruncher demo with Steve Jobs',
+                'user_id': 99,
+                'deal_id': 1,
+                'person_id': 1,
+                'org_id': 1,
+            },
+        }
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_sales_call_booked_with_custom_field(self, mock_request):
         """
         Test that the sales call flow creates the org, person, deal and activity in pipedrive. None of the objects

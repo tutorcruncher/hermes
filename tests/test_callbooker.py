@@ -409,6 +409,47 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meeting.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_com_cli_create_update_7(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new meeting
+        Company doesn't exist but checking cligency_id
+        Contact doesn't exist so create
+        We've got a BDR added this time.
+        """
+        meeting_data = CB_MEETING_DATA.copy()
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+        )
+        bdr_person = await Admin.create(
+            first_name='Brian', last_name='Jacques', username='bdr@example.com', is_bdr_person=True, tc2_admin_id=22
+        )
+        meeting_data.update(admin_id=sales_person.id, bdr_person_id=bdr_person.tc2_admin_id)
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+
+        r = await self.client.post(self.url, json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
+        assert (await company.bdr_person) == bdr_person
+        assert (await company.sales_person) == sales_person
+
+        contact = await Contact.get()
+        assert contact.first_name == 'Brain'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == sales_person
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+
     async def test_meeting_already_exists(self):
         sales_person = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
@@ -617,7 +658,7 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         bdr_person = await Admin.create(
-            first_name='Michael', last_name='Bay', username='brdperson@example.com', is_bdr_person=True
+            first_name='Michael', last_name='Bay', username='brdperson@example.com', is_bdr_person=True, tc2_admin_id=22
         )
 
         assert await Company.all().count() == 0
@@ -626,7 +667,7 @@ class MeetingBookingTestCase(HermesTestCase):
             self.url,
             json={
                 'admin_id': sales_person.id,
-                'bdr_person_id': bdr_person.id,
+                'bdr_person_id': bdr_person.tc2_admin_id,
                 'utm_campaign': 'test_campaign',
                 'utm_source': 'test_source',
                 **CB_MEETING_DATA,
