@@ -5,7 +5,7 @@ from tortoise.expressions import Q
 from app.callbooker._booking import check_gcal_open_slots, create_meeting_gcal_event
 from app.callbooker._schema import CBSalesCall, CBSupportCall
 from app.callbooker._utils import app_logger
-from app.models import Company, Contact, Deal, Meeting
+from app.models import Company, Contact, Deal, Meeting, Admin
 from app.utils import get_config, settings
 
 
@@ -84,8 +84,18 @@ async def get_or_create_contact_company(event: CBSalesCall) -> tuple[Company, Co
             company = await Company.filter(name__iexact=event.company_name).first()
             app_logger.info(f'Got company {company} from {event}')
             if not company:
+                debug('no company found, creating')
                 company_data = await event.company_dict()
+                debug(company_data)
+                debug((await Admin.all())[1].__dict__)
+                # Get the Admin object with the tc2_admin_id that matches the bdr_person_id from company_data
+                bdr_person = await Admin.get(tc2_admin_id=company_data['bdr_person_id'])
+                debug(bdr_person)
+                # Set the bdr_person attribute of the company_data to the Admin object
+                company_data['bdr_person'] = bdr_person if bdr_person else None
+
                 company = await Company.create(**company_data)
+                debug(company)
                 app_logger.info(f'Created company {company} from {event}')
     if not company.sales_person_id:
         company.sales_person = event.admin

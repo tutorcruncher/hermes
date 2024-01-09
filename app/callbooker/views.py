@@ -32,6 +32,7 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     """
     await event.a_validate()
     company, contact = await get_or_create_contact_company(event)
+    debug(company.__dict__)
     deal = await get_or_create_deal(company, contact)
     try:
         meeting = await book_meeting(company=company, contact=contact, event=event)
