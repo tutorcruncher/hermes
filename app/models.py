@@ -207,10 +207,11 @@ class Company(HermesModel):
     utm_campaign = fields.CharField(max_length=255, null=True)
     utm_source = fields.CharField(max_length=255, null=True)
     narc = fields.BooleanField(default=False)
+    bdr_person_id = fields.IntField(null=True)
+
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
-    bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
 
     contacts: fields.ReverseRelation['Contact']
     deals: fields.ReverseRelation['Deal']

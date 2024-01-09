@@ -409,6 +409,67 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meeting.TYPE_SALES
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_com_cli_create_update_7_bdr(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new meeting
+        Company doesn't exist so create
+        Contact doesn't exist so create
+        Create with admin
+        """
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
+        )
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        meeting_data = {
+            'bdr_person_id': '2543678',
+            'company_name': 'MegaReee Ltd',
+            'country': 'GB',
+            'currency': 'GBP',
+            'estimated_income': 'Just Starting Out',
+            'phone': '0123456789',
+            'price_plan': 'payg',
+            'utm_campaign': 'utm_campaign_1',
+            'utm_source': 'utm_source_1',
+            'website': 'https://megareee.com',
+
+            'meeting_dt': int(datetime(2026, 7, 3, 9, tzinfo=utc).timestamp()),
+            'email': 'michael.reeeves@reemail.com',
+            'name': 'Michael Reeeeves',
+
+        }
+
+        r = await self.client.post(self.url, json={'admin_id': sales_person.id, 'bdr_person_id': '2543678', **meeting_data})
+        debug(r.json())
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
+        assert company.website == 'https://junes.com'
+        assert company.country == 'GB'
+        assert company.estimated_income == '1000'
+        assert not company.support_person_id
+        assert not company.bdr_person_id
+        assert await company.sales_person == sales_person
+
+        contact = await Contact.get()
+        assert contact.first_name == 'Brain'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == sales_person
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+
     async def test_meeting_already_exists(self):
         sales_person = await Admin.create(
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True

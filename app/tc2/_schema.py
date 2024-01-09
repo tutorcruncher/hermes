@@ -97,10 +97,8 @@ class TCClient(HermesBaseModel):
     associated_admin_id: Optional[int] = ForeignKeyField(
         None, model=Admin, fk_field_name='tc2_admin_id', to_field='support_person'
     )
-    bdr_person_id: Optional[int] = ForeignKeyField(
-        None, model=Admin, fk_field_name='tc2_admin_id', to_field='bdr_person'
-    )
 
+    bdr_person_id: Optional[int] = int
     paid_recipients: list[TCRecipient]
     extra_attrs: Optional[list[TCClientExtraAttr]] = None
 
@@ -112,8 +110,7 @@ class TCClient(HermesBaseModel):
         """
         if associated_admin := data.pop('associated_admin', None):
             data['associated_admin_id'] = associated_admin['id']
-        if bdr_person := data.pop('bdr_person', None):
-            data['bdr_person_id'] = bdr_person['id']
+
         if sales_person := data.pop('sales_person', None):
             data['sales_person_id'] = sales_person['id']
         return data
