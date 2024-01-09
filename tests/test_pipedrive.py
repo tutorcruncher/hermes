@@ -185,9 +185,8 @@ class PipedriveTasksTestCase(HermesTestCase):
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_bdr_person_id_456',
-            tc2_machine_name='hermes_id',
-            name='BDR person ID',
-            hermes_field_name='bdr_person_id',
+            name='BDR person',
+            hermes_field_name='bdr_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
         await build_custom_field_schema()
