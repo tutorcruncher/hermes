@@ -58,6 +58,15 @@ def _get_search_item(r: dict) -> dict | None:
 
 
 async def _search_contacts_by_field(values: list[str], field: str) -> int | None:
+    """
+    Search Pipdrive for a Person by a field.Searches first by email first, then phone number from the Hermes contacts.
+    If found, returns the associated Organisation ID to the Person.
+
+    @param values:
+    @param field:
+    @return: Organisation.id
+    """
+
     for value in values[:2]:  # We have to limit it to 2 contacts else we'll hit their API ratelimit.
         pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
         for contact in pd_data['data']['items']:
@@ -77,8 +86,8 @@ async def _search_contacts_by_field(values: list[str], field: str) -> int | None
 
 async def _search_for_organisation(company: Company) -> Organisation | None:
     """
-    Search for an Organisation within Pipedrive. First we search using their tc2_cligency_id, then we search using their
-    contacts' email addresses and phone numbers.
+    Search for an Organisation within Pipedrive. First we search using their tc2_cligency_id, if there is no match
+    then we search using their contacts' email addresses and phone numbers.
     """
     search_terms = []
     if company.tc2_cligency_id:
@@ -116,7 +125,7 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
        - Updates the Organisation in Pipedrive with the Company's latest data if there are any changes.
 
     If the Company doesn't have a Pipedrive Organisation ID:
-       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_id'.
+       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_id' or Contact email or phone number .
        - If found, updates this Organisation with the Company's details.
        - If not found, creates a new Organisation in Pipedrive and links it to the Company.
 
