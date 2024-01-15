@@ -189,7 +189,11 @@ in order for the callbooker to work on tutorcruncher.com, you need to set the fo
   
 Ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)  
   
-Edit in tutorcruncher.com `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support admins ids in hermes.
+##### Edit in tutorcruncher.com
+- `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support admins ids in hermes.
+- set `HERMES_URL` = `http://localhost:8000`
+
+
 ## Testing  
 
 Unittests can be run with `make test`. You will need to install the test dependencies with `make install-dev` first.
