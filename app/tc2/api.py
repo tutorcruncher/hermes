@@ -13,14 +13,9 @@ session = requests.Session()
 async def tc2_request(url: str, *, method: str = 'GET', data: dict = None) -> dict:
     headers = {'Authorization': f'token {settings.tc2_api_key}', 'Content-Type': 'application/json'}
     logfire.debug('TutorCruncher request to url: {url=}: {data=}', url=url, data=data)
-    r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', json=data, headers=headers)
+    with logfire.span('{method} {url!r}', url=url, method=method):
+        r = session.request(method=method, url=f'{settings.tc2_base_url}/api/{url}', json=data, headers=headers)
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
-    logfire.debug(
-        'TutorCruncher request method={method=} url={url=} status_code={status_code=}',
-        method=method,
-        url=url,
-        status_code=r.status_code,
-    )
     r.raise_for_status()
     return r.json()
 

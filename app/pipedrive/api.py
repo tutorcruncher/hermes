@@ -35,16 +35,9 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
 
     query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
-    r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
-    logfire.debug('Pipedrive request to url: {url=}: {data=}', url=url, data=data)
-    r.raise_for_status()
-    app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code)
-    logfire.debug(
-        'Pipedrive request method={method=} url={url=} status_code={status_code=}',
-        method=method,
-        url=url,
-        status_code=r.status_code,
-    )
+    with logfire.span('{method} {url!r}', url=url, method=method):
+        r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', data=data)
+    app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
     r.raise_for_status()
     return r.json()
 

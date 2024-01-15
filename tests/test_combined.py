@@ -8,6 +8,7 @@ from app.models import Admin, Company, CustomField, CustomFieldValue
 from app.pipedrive.tasks import pd_post_process_client_event
 from app.utils import settings
 from tests._common import HermesTestCase
+from tests.test_callbooker import fake_gcal_builder
 from tests.test_pipedrive import FakePipedrive, fake_pd_request
 from tests.test_tc2 import client_full_event_data, mock_tc2_request
 
@@ -186,3 +187,65 @@ class TestMultipleServices(HermesTestCase):
 
         await tc2_cligency_url.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_callbooker_sales_call_full(self, _mock_pd_request, _mock_tc2_request, _mock_gcal_builder):
+        _mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        _mock_tc2_request.side_effect = mock_tc2_request()
+        _mock_gcal_builder.side_effect = fake_gcal_builder()
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_bdr_person_456',
+            hermes_field_name='bdr_person_person',
+            name='BDR Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await build_custom_field_schema()
+        assert not await Company.exists()
+        assert not self.pipedrive.db['organizations']
+
+        sales_admin = await Admin.create(
+            tc2_admin_id=100,
+            first_name='Brain',
+            last_name='Johnson',
+            username='climan@example.com',
+            pd_owner_id=10,
+        )
+        bdr_person = await Admin.create(
+            tc2_admin_id=101,
+            first_name='Jeremy',
+            last_name='Irons',
+            username='jeremy@tc.com',
+            pd_owner_id=11,
+        )
+
+        r = await self.client.post(
+            '/callbooker/sales/book/',
+            json={
+                'email': 'jules@example.com',
+                'admin_id': sales_admin.id,
+                'bdr_person_id': bdr_person.tc2_admin_id,
+                'estimated_income': 100,
+                'currency': 'GBP',
+                'website': 'https://www.example.com',
+                'country': 'GB',
+                'name': 'Jules Holland',
+                'company_name': 'MyTutors',
+                'price_plan': 'payg',
+                'meeting_dt': '2032-01-01 12:00',
+            },
+        )
+        assert r.json() == {'status': 'ok'}
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert company.bdr_person_id == bdr_person.id
+        assert company.sales_person_id == sales_admin.id

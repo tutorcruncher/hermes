@@ -6,7 +6,8 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi_admin.app import app as admin_app
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from logfire import PydanticPluginOptions
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
@@ -23,7 +24,11 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
 logfire_active = bool(_app_settings.logfire_token)
-logfire.configure(send_to_logfire=logfire_active, token=_app_settings.logfire_token)
+logfire.configure(
+    send_to_logfire=logfire_active,
+    token=_app_settings.logfire_token,
+    pydantic_plugin=PydanticPluginOptions(record='all'),
+)
 
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
@@ -35,7 +40,7 @@ if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
 if logfire_active:
-    app.add_middleware(OpenTelemetryMiddleware)
+    FastAPIInstrumentor.instrument_app(app)
 
 logging.config.dictConfig(config)
 
