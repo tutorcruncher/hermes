@@ -111,7 +111,7 @@ class HermesBaseModel(BaseModel):
                 await v.a_validate()
 
     @classmethod
-    async def get_custom_fields(cls, obj):
+    async def get_custom_fields(cls, obj) -> list['CustomField']:
         from app.models import CustomField, CustomFieldValue
 
         model = obj.__class__
