@@ -225,6 +225,7 @@ class CustomFieldResource(Model):
     page_pre_title = page_title = label = 'Custom fields'
     fields = [
         'id',
+        'machine_name',
         'name',
         Field('field_type', input_=Select(options=CustomField.TYPE_CHOICES)),
         'hermes_field_name',
