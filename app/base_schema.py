@@ -145,7 +145,10 @@ class HermesBaseModel(BaseModel):
                     if related_obj_id := getattr(obj, pk_field_name, None):
                         val = related_obj_id
                     else:
-                        val = getattr(obj, pk_field_name, None)
+                        if cf.hermes_field_name == 'id':  # this is in the case of Hermes ID
+                            val = getattr(obj, cf.hermes_field_name, None)
+                        else:
+                            val = getattr(obj, pk_field_name, None)
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
             else:
