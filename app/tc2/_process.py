@@ -79,7 +79,7 @@ async def update_from_client_event(
 ) -> tuple[(Company | None), (Deal | None)]:
     """
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
-    in our db.
+    in our db. if the Client is a narc, then we delete the Company and all related objects.
     """
     if isinstance(tc2_subject, TCSubject):
         try:
