@@ -140,10 +140,12 @@ class HermesBaseModel(BaseModel):
         cf_data = {}
         for cf in custom_fields:
             if cf.hermes_field_name:
-                if (cf.field_type == CustomField.TYPE_FK_FIELD) and (
-                    related_obj_id := getattr(obj, f'{cf.hermes_field_name}_id', None)
-                ):
-                    val = related_obj_id
+                if cf.field_type == CustomField.TYPE_FK_FIELD:
+                    pk_field_name = cf.hermes_field_name + '_id'
+                    if related_obj_id := getattr(obj, pk_field_name, None):
+                        val = related_obj_id
+                    else:
+                        val = getattr(obj, pk_field_name, None)
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
             else:

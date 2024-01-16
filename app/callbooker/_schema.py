@@ -75,6 +75,7 @@ class CBSalesCall(HermesBaseModel):
         return {
             'sales_person_id': (await self.admin).id,
             'bdr_person_id': (await self.bdr).id if self.bdr else None,
+            # maybe support person?
             'utm_campaign': self.utm_campaign,
             'utm_source': self.utm_source,
             'estimated_income': self.estimated_income,
