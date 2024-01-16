@@ -209,6 +209,13 @@ class TestMultipleServices(HermesTestCase):
             name='BDR Person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_support_person_456',
+            hermes_field_name='support_person',
+            name='Support Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
         await build_custom_field_schema()
         assert not await Company.exists()
         assert not self.pipedrive.db['organizations']
