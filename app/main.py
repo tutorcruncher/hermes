@@ -23,13 +23,6 @@ from app.tc2.views import tc2_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
-logfire_active = bool(_app_settings.logfire_token)
-logfire.configure(
-    send_to_logfire=logfire_active,
-    token=_app_settings.logfire_token,
-    pydantic_plugin=PydanticPluginOptions(record='all'),
-)
-
 if _app_settings.sentry_dsn:
     sentry_sdk.init(dsn=_app_settings.sentry_dsn)
 
@@ -39,7 +32,14 @@ allowed_origins = ['https://tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
-if logfire_active:
+if bool(_app_settings.logfire_token):
+    logfire.instrument_fastapi(app)
+    logfire.configure(
+        send_to_logfire=True,
+        token=_app_settings.logfire_token,
+        pydantic_plugin=PydanticPluginOptions(record='all'),
+    )
+
     FastAPIInstrumentor.instrument_app(app)
 
 logging.config.dictConfig(config)

@@ -11,7 +11,7 @@ sentry-sdk[fastapi]==1.39.1
 httpx==0.25.2
 opentelemetry-instrumentation-fastapi
 --extra-index-url https://files.logfire.dev/NOdO2jZhxNh8ert5YFYfWkFa9IBVsT7Jher4y8sh6YlXSb9V1d/wheels/
-logfire[asgi]==0.11.0
+logfire[fastapi]==0.11.0
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
