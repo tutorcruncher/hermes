@@ -33,7 +33,7 @@ if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
 if bool(_app_settings.logfire_token):
-    logfire.instrument_fastapi(app)
+    # logfire.instrument_fastapi(app)
     logfire.configure(
         send_to_logfire=True,
         token=_app_settings.logfire_token,
