@@ -89,16 +89,17 @@ class HermesBaseModel(BaseModel):
                 to_field = extra_schema['to_field']
                 is_custom = extra_schema['custom']
                 hermes_field_name = extra_schema['hermes_field_name']
-                debug(field_name, field_info.title, model, fk_field_name, to_field, extra_schema, v)
                 if v:
                     try:
+
+                        # If the field is a custom field and not hermes id, we need to get the related object from
+                        # the related model.
                         if is_custom and field_name != 'hermes_id':
                             related_model = model._meta.fields_map[hermes_field_name].related_model
                             related_obj = await related_model.get(**{fk_field_name: v})
                         else:
                             related_obj = await model.get(**{fk_field_name: v})
 
-                        debug(related_obj)
                     except DoesNotExist:
                         if extra_schema['null_if_invalid']:
                             object_setattr(self, to_field, None)
