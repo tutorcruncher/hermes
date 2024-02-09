@@ -19,10 +19,8 @@ async def _process_pd_organisation(
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
     old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
-    debug(old_company)
     company = current_company or old_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
-    debug(company)
     if company:
         if current_pd_org:
             # The org has been updated
@@ -46,8 +44,6 @@ async def _process_pd_organisation(
     elif current_pd_org:
         # The org has just been created
         company = await Company.create(**await current_pd_org.company_dict(company_custom_fields))
-        debug('down here')
-        debug(company)
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
         new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)

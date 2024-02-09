@@ -93,7 +93,6 @@ class HermesBaseModel(BaseModel):
                 if v:
                     try:
                         if is_custom and field_name != 'hermes_id':
-                            debug('custom field reeeeeeeeeeeeeeeee')
                             related_model = model._meta.fields_map[hermes_field_name].related_model
                             related_obj = await related_model.get(**{fk_field_name: v})
                         else:
@@ -104,12 +103,11 @@ class HermesBaseModel(BaseModel):
                         if extra_schema['null_if_invalid']:
                             object_setattr(self, to_field, None)
                         else:
-                            debug(f'{model.__name__} with {fk_field_name} {v} does not exist for {field_info.title}, {field_name}')
                             raise RequestValidationError(
                                 [
                                     {
                                         'loc': [field_name],
-                                        'msg': f'{model.__name__} with {fk_field_name} {v} does not exist', # this could be happening because locally I have the admin with id x but live i dont have that
+                                        'msg': f'{model.__name__} with {fk_field_name} {v} does not exist',
                                         'type': 'value_error',
                                     }
                                 ]

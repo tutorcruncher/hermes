@@ -43,7 +43,6 @@ class PipedriveBaseModel(HermesBaseModel):
         When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
         Pipedrive model.
         """
-        debug(custom_fields)
         return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
@@ -285,7 +284,6 @@ class PipedriveEvent(HermesBaseModel):
         rebuild the model when adding custom fields.
         """
         if v['obj_type'] == 'organization':
-            debug(Organisation(**v))
             return Organisation(**v)
         elif v['obj_type'] == 'person':
             return Person(**v)
