@@ -7,7 +7,7 @@ uvicorn==0.25.0
 requests==2.31.0
 aioredis==2.0.1
 fastapi-admin==1.0.4
-sentry-sdk[fastapi]==1.40.0
+sentry-sdk[fastapi]==1.40.3
 httpx==0.26.0
 opentelemetry-instrumentation-fastapi
 --extra-index-url https://files.logfire.dev/NOdO2jZhxNh8ert5YFYfWkFa9IBVsT7Jher4y8sh6YlXSb9V1d/wheels/
