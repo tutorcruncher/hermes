@@ -6,13 +6,12 @@ from pydantic._internal._model_construction import object_setattr
 from pydantic.fields import FieldInfo
 from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
-
 if TYPE_CHECKING:  # noqa
     from app.models import Company, Contact, CustomField, Deal, Meeting
 
 
 def fk_json_schema_extra(
-    model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, custom: bool = False, to_field: str = None
+    model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, custom: bool = False, to_field: str = None, hermes_field_name: str = None
 ):
     """
     Generates a json schema for a ForeignKeyField field.
@@ -20,6 +19,7 @@ def fk_json_schema_extra(
     return {
         'is_fk_field': True,
         'hermes_model': model,
+        'hermes_field_name': hermes_field_name,
         'fk_field_name': fk_field_name,
         'to_field': to_field or model.__name__.lower(),
         'null_if_invalid': null_if_invalid,
@@ -87,18 +87,29 @@ class HermesBaseModel(BaseModel):
                 model = extra_schema['hermes_model']
                 fk_field_name = extra_schema['fk_field_name']
                 to_field = extra_schema['to_field']
+                is_custom = extra_schema['custom']
+                hermes_field_name = extra_schema['hermes_field_name']
+                debug(field_name, field_info.title, model, fk_field_name, to_field, extra_schema, v)
                 if v:
                     try:
-                        related_obj = await model.get(**{fk_field_name: v})
+                        if is_custom and field_name != 'hermes_id':
+                            debug('custom field reeeeeeeeeeeeeeeee')
+                            related_model = model._meta.fields_map[hermes_field_name].related_model
+                            related_obj = await related_model.get(**{fk_field_name: v})
+                        else:
+                            related_obj = await model.get(**{fk_field_name: v})
+
+                        debug(related_obj)
                     except DoesNotExist:
                         if extra_schema['null_if_invalid']:
                             object_setattr(self, to_field, None)
                         else:
+                            debug(f'{model.__name__} with {fk_field_name} {v} does not exist for {field_info.title}, {field_name}')
                             raise RequestValidationError(
                                 [
                                     {
                                         'loc': [field_name],
-                                        'msg': f'{model.__name__} with {fk_field_name} {v} does not exist',
+                                        'msg': f'{model.__name__} with {fk_field_name} {v} does not exist', # this could be happening because locally I have the admin with id x but live i dont have that
                                         'type': 'value_error',
                                     }
                                 ]
@@ -184,7 +195,7 @@ async def get_custom_fieldinfo(
     elif field.field_type == CustomField.TYPE_BOOL:
         field_kwargs.update(annotation=Optional[bool], default=None)
     elif field.field_type == CustomField.TYPE_FK_FIELD:
-        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True))
+        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True, hermes_field_name=field.hermes_field_name))
     if (
         field.hermes_field_name
         and field.hermes_field_name in model._meta.fields_map

@@ -1961,6 +1961,49 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_associated_custom_fk_field(self, mock_request):
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_support_person_id_456',
+            hermes_field_name='support_person',
+            name='Support Person ID',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+
+        cfv = await CustomFieldValue.create(custom_field=source_field, company=company, value=admin.id)
+        debug(cfv.__dict__)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'].update(hermes_id=company.id)
+        data['current'].update(**{'name': 'New test company', '123_support_person_id_456': admin.id})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+        cf_val = await CustomFieldValue.get()
+        assert cf_val.value == admin.id
+        assert await cf_val.custom_field == source_field
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_custom_field_val_deleted(self, mock_request):
         source_field = await CustomField.create(
             linked_object_type='Company',
