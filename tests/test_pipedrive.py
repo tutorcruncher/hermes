@@ -2058,6 +2058,18 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.name == 'New test company'
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_no_hermes_id(self, mock_request):
+        await Company.create(name='Old test company', sales_person=self.admin, pd_org_id=20)
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['current'].update(name='New test company')
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_person_create(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
@@ -2114,6 +2126,18 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['previous']['hermes_id'] = contact.id
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.name == 'John Smith'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_no_hermes_id(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
+        data = copy.deepcopy(basic_pd_person_data())
+        data['previous'] = copy.deepcopy(data['current'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()

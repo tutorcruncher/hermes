@@ -20,7 +20,8 @@ async def _process_pd_organisation(
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
     old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
 
-    company = current_company or old_company
+    existing_company = await Company.get(pd_org_id=current_pd_org.id) if current_pd_org else None
+    company = current_company or old_company or existing_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
         if current_pd_org:
@@ -67,7 +68,9 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
     current_contact = getattr(current_pd_person, 'contact', None) if current_pd_person else None
     old_contact = getattr(old_pd_person, 'contact', None) if old_pd_person else None
-    contact = current_contact or old_contact
+
+    existing_person = await Contact.get(pd_person_id=current_pd_person.id) if current_pd_person else None
+    contact = current_contact or old_contact or existing_person
     if contact:
         if current_pd_person:
             # The person has been updated
