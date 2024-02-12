@@ -1983,7 +1983,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
             pd_owner_id=99,
         )
 
-        source_field = await CustomField.create(
+        support_person_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_support_person_id_456',
             hermes_field_name='support_person',
@@ -1995,7 +1995,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
 
-        await CustomFieldValue.create(custom_field=source_field, company=company, value=admin.id)
+        await CustomFieldValue.create(custom_field=support_person_field, company=company, value=admin.id)
 
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
@@ -2013,9 +2013,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         cf_val = await CustomFieldValue.get()
         assert cf_val.value == str(admin.id)
-        assert await cf_val.custom_field == source_field
+        assert await cf_val.custom_field == support_person_field
 
-        await source_field.delete()
+        await support_person_field.delete()
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
@@ -2071,8 +2071,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_no_hermes_id(self, mock_request):
-        await Company.create(name='Old test company', sales_person=self.admin, pd_org_id=20)
         mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        await Company.create(name='Old test company', sales_person=self.admin, pd_org_id=20)
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
         data['current'].update(name='New test company')
