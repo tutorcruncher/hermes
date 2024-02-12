@@ -15,6 +15,9 @@ async def _process_pd_organisation(
     TODO: If we can't match the company by it's hermes_id, we should really try and match it by name also. However, as
     of now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
+
+    if a company is not found in a_validate, then we will also check if it already exists in the db by matching the
+    pd_org_id
     """
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
@@ -67,6 +70,9 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
 
     TODO: If we can't match the contact by it's hermes_id, we should really try and match it by name also. However, I
     don't care enough since Companies are really the only important part.
+
+    if a contact is not found in a_validate, then we will also check if it already exists in the db by matching the
+    pd_person_id
     """
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
     current_contact = getattr(current_pd_person, 'contact', None) if current_pd_person else None
