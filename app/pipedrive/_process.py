@@ -20,7 +20,10 @@ async def _process_pd_organisation(
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
     old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
 
-    existing_company = await Company.get(pd_org_id=current_pd_org.id) if current_pd_org else None
+    try:
+        existing_company = await Company.get(pd_org_id=current_pd_org.id) if current_pd_org else None
+    except Exception:
+        existing_company = None
     company = current_company or old_company or existing_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
@@ -69,7 +72,11 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
     current_contact = getattr(current_pd_person, 'contact', None) if current_pd_person else None
     old_contact = getattr(old_pd_person, 'contact', None) if old_pd_person else None
 
-    existing_person = await Contact.get(pd_person_id=current_pd_person.id) if current_pd_person else None
+    try:
+        existing_person = await Contact.get(pd_person_id=current_pd_person.id) if current_pd_person else None
+    except Exception:
+        existing_person = None
+
     contact = current_contact or old_contact or existing_person
     if contact:
         if current_pd_person:
