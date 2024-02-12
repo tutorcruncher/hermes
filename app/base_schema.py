@@ -6,12 +6,18 @@ from pydantic._internal._model_construction import object_setattr
 from pydantic.fields import FieldInfo
 from tortoise.exceptions import DoesNotExist
 from tortoise.query_utils import Prefetch
+
 if TYPE_CHECKING:  # noqa
     from app.models import Company, Contact, CustomField, Deal, Meeting
 
 
 def fk_json_schema_extra(
-    model: Any, fk_field_name: str = 'id', null_if_invalid: bool = False, custom: bool = False, to_field: str = None, hermes_field_name: str = None
+    model: Any,
+    fk_field_name: str = 'id',
+    null_if_invalid: bool = False,
+    custom: bool = False,
+    to_field: str = None,
+    hermes_field_name: str = None,
 ):
     """
     Generates a json schema for a ForeignKeyField field.
@@ -67,13 +73,15 @@ class HermesBaseModel(BaseModel):
         2. If the extra schema information indicates that the field is a foreign key field, it retrieves the model,
            the foreign key field name, and the field to which the foreign key refers. If to_field is set on the class
            attribute, it uses that instead.
-        3. If the value of the field is not None, it tries to get the related object from the database using the
+        3. If the field is custom and the field name is not 'hermes_id', it retrieves the related model from the
+           model's metadata and sets the to_field to the hermes_field_name.
+        4. If the value of the field is not None, it tries to get the related object from the database using the
            foreign key field name and the value.
-        4. If the related object does not exist in the database, it checks if the 'null_if_invalid' flag in the extra
+        5. If the related object does not exist in the database, it checks if the 'null_if_invalid' flag in the extra
            schema is set to True. If it is, it sets the field to None. If it's not, it raises a RequestValidationError.
-        5. If the related object does exist, it sets the field to the related object.
-        6. If the value of the field is None, it sets the field to None.
-        7. If the field value has an 'a_validate' method (indicating that it's a nested model), it calls the
+        6. If the related object does exist, it sets the field to the related object.
+        7. If the value of the field is None, it sets the field to None.
+        8. If the field value has an 'a_validate' method (indicating that it's a nested model), it calls the
            'a_validate' method on the field value.
 
         This method ensures that all foreign key fields in the model are valid and refer to existing objects in the
@@ -89,16 +97,14 @@ class HermesBaseModel(BaseModel):
                 to_field = extra_schema['to_field']
                 is_custom = extra_schema['custom']
                 hermes_field_name = extra_schema['hermes_field_name']
+
+                if is_custom and field_name != 'hermes_id':
+                    model = model._meta.fields_map[hermes_field_name].related_model
+                    to_field = hermes_field_name
+
                 if v:
                     try:
-
-                        # If the field is a custom field and not hermes id, we need to get the related object from
-                        # the related model.
-                        if is_custom and field_name != 'hermes_id':
-                            related_model = model._meta.fields_map[hermes_field_name].related_model
-                            related_obj = await related_model.get(**{fk_field_name: v})
-                        else:
-                            related_obj = await model.get(**{fk_field_name: v})
+                        related_obj = await model.get(**{fk_field_name: v})
 
                     except DoesNotExist:
                         if extra_schema['null_if_invalid']:
@@ -194,7 +200,10 @@ async def get_custom_fieldinfo(
     elif field.field_type == CustomField.TYPE_BOOL:
         field_kwargs.update(annotation=Optional[bool], default=None)
     elif field.field_type == CustomField.TYPE_FK_FIELD:
-        field_kwargs.update(annotation=Optional[int], json_schema_extra=fk_json_schema_extra(model, custom=True, hermes_field_name=field.hermes_field_name))
+        field_kwargs.update(
+            annotation=Optional[int],
+            json_schema_extra=fk_json_schema_extra(model, custom=True, hermes_field_name=field.hermes_field_name),
+        )
     if (
         field.hermes_field_name
         and field.hermes_field_name in model._meta.fields_map

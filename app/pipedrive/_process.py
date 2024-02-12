@@ -19,6 +19,7 @@ async def _process_pd_organisation(
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
     old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
+
     company = current_company or old_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
