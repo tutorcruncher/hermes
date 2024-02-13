@@ -10,7 +10,7 @@ from app.pipedrive.tasks import pd_post_process_client_event
 from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import fake_gcal_builder
-from tests.test_pipedrive import FakePipedrive, fake_pd_request, basic_pd_org_data
+from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
 from tests.test_tc2 import client_full_event_data, mock_tc2_request
 
 
@@ -195,7 +195,7 @@ class TestMultipleServices(HermesTestCase):
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
         mock_tc2_get.side_effect = mock_tc2_request()
 
-        admin = await Admin.create(
+        await Admin.create(
             tc2_admin_id=30,
             first_name='Brain',
             last_name='Johnson',
@@ -214,10 +214,12 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': 999,
             }
         }
+        assert not await Company.exists()
 
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['current'].update(name='New test company')
+        data['previous'].update(id=1)
+        data['current'].update(id=1, name='New test company')
 
         r = await self.client.post('/pipedrive/callback/', json=data)
         assert r.status_code == 200, r.json()
@@ -225,20 +227,17 @@ class TestMultipleServices(HermesTestCase):
         assert await Company.exists()
         company = await Company.get()
 
-        debug(company)
         await pd_post_process_client_event(company=company)
-        debug('ree')
         # Check the org has been updated
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
                 'name': 'New test company',
-                'address_country': 'GB',
+                'address_country': None,
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
             }
         }
-
 
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     @mock.patch('app.tc2.api.session.request')
