@@ -107,7 +107,7 @@ class HermesBaseModel(BaseModel):
                         related_obj = await model.get(**{fk_field_name: v})
 
                     except DoesNotExist:
-                        if extra_schema['null_if_invalid'] or field_name == 'hermes_id':
+                        if extra_schema['null_if_invalid']:
                             object_setattr(self, to_field, None)
                         else:
                             raise RequestValidationError(

@@ -1665,10 +1665,18 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data = copy.deepcopy(basic_pd_org_data())
         data['current']['123_hermes_id_456'] = 75
         r = await self.client.post(self.url, json=data)
-        assert r.status_code == 200, r.json()
-        company = await Company.get()
-        assert company.name == 'Test company'
-        assert company.sales_person_id == self.admin.id
+        assert r.status_code == 422, r.json()
+        assert r.json() == {
+            'detail': [
+                {
+                    'loc': [
+                        'hermes_id',
+                    ],
+                    'msg': 'Company with id 75 does not exist',
+                    'type': 'value_error',
+                },
+            ],
+        }
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_no_custom_fields(self, mock_request):
