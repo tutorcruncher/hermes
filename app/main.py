@@ -3,6 +3,8 @@ import os
 
 import logfire
 import sentry_sdk
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi_admin.app import app as admin_app
@@ -24,7 +26,18 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
 if _app_settings.sentry_dsn:
-    sentry_sdk.init(dsn=_app_settings.sentry_dsn)
+    sentry_sdk.init(
+        dsn=_app_settings.sentry_dsn,
+        enable_tracing=True,
+        integrations=[
+            StarletteIntegration(
+                transaction_style="endpoint"
+            ),
+            FastApiIntegration(
+                transaction_style="endpoint"
+            ),
+        ]
+    )
 
 app = FastAPI()
 
