@@ -82,7 +82,7 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
 
     try:
         existing_person = await Contact.get(pd_person_id=current_pd_person.id) if current_pd_person else None
-    except Exception:
+    except DoesNotExist:
         existing_person = None
 
     contact = current_contact or old_contact or existing_person
