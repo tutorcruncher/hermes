@@ -1,9 +1,10 @@
 from typing import Optional
 
+from tortoise.exceptions import DoesNotExist
+
 from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
-from tortoise.exceptions import DoesNotExist
 
 
 async def _process_pd_organisation(
