@@ -3,6 +3,7 @@ from typing import Optional
 from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
+from tortoise.exceptions import DoesNotExist
 
 
 async def _process_pd_organisation(
@@ -25,7 +26,7 @@ async def _process_pd_organisation(
 
     try:
         existing_company = await Company.get(pd_org_id=current_pd_org.id) if current_pd_org else None
-    except Exception:
+    except DoesNotExist:
         existing_company = None
     company = current_company or old_company or existing_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')

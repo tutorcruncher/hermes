@@ -30,5 +30,6 @@ install-dev:
 
 .PHONY: restore-from-live
 restore-from-live:
+	heroku pg:backups:capture --app tc-hermes
 	heroku pg:backups:download --app tc-hermes
 	make reset-db && time pg_restore --clean --no-acl --no-owner -j12 -h localhost -U postgres -d hermes latest.dump
