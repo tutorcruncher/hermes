@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import hmac
 import json
@@ -9,7 +10,7 @@ from app.pipedrive.tasks import pd_post_process_client_event
 from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import fake_gcal_builder
-from tests.test_pipedrive import FakePipedrive, fake_pd_request
+from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
 from tests.test_tc2 import client_full_event_data, mock_tc2_request
 
 
@@ -187,6 +188,56 @@ class TestMultipleServices(HermesTestCase):
 
         await tc2_cligency_url.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pipedrive_cb_org_exists_no_hermes_id_match(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = mock_tc2_request()
+
+        await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        # The lost org in pipedrive that needs to be updated
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': 999,
+            }
+        }
+        assert not await Company.exists()
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'].update(id=1)
+        data['current'].update(id=1, name='New test company')
+
+        r = await self.client.post('/pipedrive/callback/', json=data)
+        assert r.status_code == 200, r.json()
+
+        assert await Company.exists()
+        company = await Company.get()
+
+        await pd_post_process_client_event(company=company)
+        # Check the org has been updated
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'New test company',
+                'address_country': None,
+                'owner_id': 10,
+                '123_hermes_id_456': company.id,
+            }
+        }
 
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     @mock.patch('app.tc2.api.session.request')

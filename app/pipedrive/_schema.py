@@ -65,7 +65,6 @@ class Organisation(PipedriveBaseModel):
             tc2_cligency_url=company.tc2_cligency_url,
             address_country=company.country,
         )
-
         cls_kwargs.update(await cls.get_custom_field_vals(company))
         final_kwargs = _remove_nulls(**cls_kwargs)
         return cls(**final_kwargs)

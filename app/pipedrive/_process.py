@@ -1,5 +1,7 @@
 from typing import Optional
 
+from tortoise.exceptions import DoesNotExist
+
 from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
@@ -15,11 +17,19 @@ async def _process_pd_organisation(
     TODO: If we can't match the company by it's hermes_id, we should really try and match it by name also. However, as
     of now it should be impossible to create a company in Pipedrive that already exists in Hermes as the only other
     two ways to create a company (from TC2 and the Callbooker) always create the new company in PD.
+
+    if a company is not found in a_validate, then we will also check if it already exists in the db by matching the
+    pd_org_id
     """
     # Company has been set here by Org.a_validate, as we have a custom field `hermes_id` linking it to the Company
     current_company = getattr(current_pd_org, 'company', None) if current_pd_org else None
     old_company = getattr(old_pd_org, 'company', None) if old_pd_org else None
-    company = current_company or old_company
+
+    try:
+        existing_company = await Company.get(pd_org_id=current_pd_org.id) if current_pd_org else None
+    except DoesNotExist:
+        existing_company = None
+    company = current_company or old_company or existing_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
     if company:
         if current_pd_org:
@@ -62,11 +72,20 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
 
     TODO: If we can't match the contact by it's hermes_id, we should really try and match it by name also. However, I
     don't care enough since Companies are really the only important part.
+
+    if a contact is not found in a_validate, then we will also check if it already exists in the db by matching the
+    pd_person_id
     """
     # Contact has been set here by Person.a_validate, as we have a custom field `hermes_id` linking it to the Contact
     current_contact = getattr(current_pd_person, 'contact', None) if current_pd_person else None
     old_contact = getattr(old_pd_person, 'contact', None) if old_pd_person else None
-    contact = current_contact or old_contact
+
+    try:
+        existing_person = await Contact.get(pd_person_id=current_pd_person.id) if current_pd_person else None
+    except DoesNotExist:
+        existing_person = None
+
+    contact = current_contact or old_contact or existing_person
     if contact:
         if current_pd_person:
             # The person has been updated

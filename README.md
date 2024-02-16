@@ -198,6 +198,14 @@ Ensure admin has a matching email address to the one in the sales or support tea
 
 Unittests can be run with `make test`. You will need to install the test dependencies with `make install-dev` first.
 
+### Testing with live data
+
+to test with live data, run `make restore-from-live` to download and restore the live database to your local machine.
+
+also add your `{your ngork url}/pipedrive/callback` to TutorCruncher Pipedrive webhooks,
+
+then you should see all the webhooks and responses in both your local nrork site and any changes you make in pipedrive will be reflected in your local database.
+
 ## Migrations
 
 We use `aerich` to create and run migrations.
