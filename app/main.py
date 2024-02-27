@@ -6,7 +6,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi_admin.app import app as admin_app
-from logfire import PydanticPluginOptions
+from logfire import PydanticPlugin
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -46,7 +46,7 @@ if bool(_app_settings.logfire_token):
     logfire.configure(
         send_to_logfire=True,
         token=_app_settings.logfire_token,
-        pydantic_plugin=PydanticPluginOptions(record='all'),
+        pydantic_plugin=PydanticPlugin(record='all'),
     )
 
     FastAPIInstrumentor.instrument_app(app)
