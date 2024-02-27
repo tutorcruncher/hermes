@@ -1,5 +1,5 @@
-tortoise-orm[asyncpg]==0.20.0
 aerich==0.7.2
+asyncpg==0.24.0
 fastapi==0.108.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
@@ -10,8 +10,7 @@ fastapi-admin==1.0.4
 sentry-sdk[fastapi]==1.40.3
 httpx==0.26.0
 opentelemetry-instrumentation-fastapi
---extra-index-url https://files.logfire.dev/NOdO2jZhxNh8ert5YFYfWkFa9IBVsT7Jher4y8sh6YlXSb9V1d/wheels/
-logfire[fastapi]==0.11.1
+logfire[fastapi]==0.17
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
