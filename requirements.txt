@@ -1,6 +1,6 @@
 aerich==0.7.2
 asyncpg==0.24.0
-fastapi==0.108.0
+fastapi==0.110.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 uvicorn==0.25.0
