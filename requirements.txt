@@ -10,7 +10,7 @@ fastapi-admin==1.0.4
 sentry-sdk[fastapi]==1.40.3
 httpx==0.26.0
 opentelemetry-instrumentation-fastapi
-logfire[fastapi]==0.17
+logfire[fastapi]==0.18.1
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
