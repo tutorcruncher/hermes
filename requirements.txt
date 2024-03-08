@@ -1,21 +1,21 @@
 aerich==0.7.2
-asyncpg==0.24.0
-fastapi==0.108.0
-pydantic==2.5.3
+asyncpg==0.29.0
+fastapi==0.110.0
+pydantic==2.6.3
 pydantic-settings==2.1.0
 uvicorn==0.25.0
 requests==2.31.0
 aioredis==2.0.1
 fastapi-admin==1.0.4
 sentry-sdk[fastapi]==1.40.3
-httpx==0.26.0
+httpx==0.27.0
 opentelemetry-instrumentation-fastapi
 logfire[fastapi]==0.18.1
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
-google-api-core==2.17.0
-google-api-python-client==2.117.0
+google-api-core==2.17.1
+google-api-python-client==2.120.0
 google-auth==2.27.0
 google-auth-httplib2==0.2.0
 googleapis-common-protos==1.62.0
