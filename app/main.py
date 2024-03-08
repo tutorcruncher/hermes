@@ -24,7 +24,9 @@ from app.tc2.views import tc2_router
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _app_settings = Settings()
 if _app_settings.sentry_dsn:
-    sentry_sdk.init(dsn=_app_settings.sentry_dsn,)
+    sentry_sdk.init(
+        dsn=_app_settings.sentry_dsn,
+    )
 
 app = FastAPI()
 
