@@ -1,5 +1,4 @@
 from tortoise import Tortoise, run_async
-
 from app.models import Admin, Company, Config, Contact, CustomField, Deal, Pipeline, Stage
 from app.utils import logger
 
