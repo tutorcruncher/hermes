@@ -4,5 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    # Allow up to 10 open pull requests for pip dependencies
+    groups:
+      python-packages:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10
