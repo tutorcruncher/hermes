@@ -10,6 +10,7 @@ We want to update deals in pipedrive when:
 We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
+
 from urllib.parse import urlencode
 
 import logfire
