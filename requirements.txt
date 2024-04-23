@@ -16,6 +16,6 @@ logfire[fastapi]==0.23.0
 google==3.0.0
 google-api-core==2.18.0
 google-api-python-client==2.124.0
-google-auth==2.27.0
+google-auth==2.29.0
 google-auth-httplib2==0.2.0
 googleapis-common-protos==1.62.0
