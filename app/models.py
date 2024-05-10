@@ -102,7 +102,7 @@ class Admin(AbstractAdmin):
     sells_enterprise = fields.BooleanField(default=False)
 
     sells_us = fields.BooleanField(default=False)
-    sells_uk = fields.BooleanField(default=False)
+    sells_gb = fields.BooleanField(default=False)
     sells_au = fields.BooleanField(default=False)
     sells_ca = fields.BooleanField(default=False)
     sells_eu = fields.BooleanField(default=False)

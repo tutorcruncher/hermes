@@ -31,13 +31,37 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             sells_us=True,
             tc2_admin_id=50,
         )
+        self.admin_payg_ca = await Admin.create(
+            last_name='ca',
+            username='ca-payg@example.com',
+            is_sales_person=True,
+            sells_payg=True,
+            sells_ca=True,
+            tc2_admin_id=60,
+        )
         self.admin_startup_eu = await Admin.create(
             last_name='eu',
             username='eu-startup@example.com',
             is_sales_person=True,
             sells_startup=True,
             sells_eu=True,
-            tc2_admin_id=60,
+            tc2_admin_id=70,
+        )
+        self.admin_startup_au = await Admin.create(
+            last_name='au',
+            username='au-startup@example.com',
+            is_sales_person=True,
+            sells_startup=True,
+            sells_au=True,
+            tc2_admin_id=80,
+        )
+        self.admin_startup_row = await Admin.create(
+            last_name='row',
+            username='row-startup@example.com',
+            is_sales_person=True,
+            sells_startup=True,
+            sells_row=True,
+            tc2_admin_id=90,
         )
 
 
@@ -65,6 +89,118 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': False,
         }
+        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'US'})
+        assert r.json() == {
+            'username': 'us-payg@example.com',
+            'id': self.admin_payg_us.id,
+            'tc2_admin_id': 50,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': 'us',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': True,
+            'sells_startup': False,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': True,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
+        }
+        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'CA'})
+        assert r.json() == {
+            'username': 'ca-payg@example.com',
+            'id': self.admin_payg_ca.id,
+            'tc2_admin_id': 60,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': 'ca',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': True,
+            'sells_startup': False,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': True,
+            'sells_eu': False,
+            'sells_row': False,
+        }
+        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'FR'})
+        assert r.json() == {
+            'username': 'eu-startup@example.com',
+            'id': self.admin_startup_eu.id,
+            'tc2_admin_id': 70,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': 'eu',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': True,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': True,
+            'sells_row': False,
+        }
+        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'AU'})
+        assert r.json() == {
+            'username': 'au-startup@example.com',
+            'id': self.admin_startup_au.id,
+            'tc2_admin_id': 80,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': 'au',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': True,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': True,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
+        }
+        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'JP'})
+        assert r.json() == {
+            'username': 'row-startup@example.com',
+            'id': self.admin_startup_row.id,
+            'tc2_admin_id': 90,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': 'row',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': False,
+            'sells_startup': True,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': True,
+        }
+
+
 
     async def test_payg_round_robin(self):
         company = await Company.create(
@@ -86,6 +222,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.sales_person = self.admin_2
         await company.save()
@@ -104,6 +246,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.sales_person = self.admin_3
         await company.save()
@@ -122,6 +270,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
 
     async def test_startup(self):
@@ -144,6 +298,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.sales_person = self.admin_2
         await company.save()
@@ -162,6 +322,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.sales_person = self.admin_3
         await company.save()
@@ -180,6 +346,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
 
     async def test_enterprise(self):
@@ -190,7 +362,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             price_plan='enterprise',
             sales_person=self.admin_1,
         )
-        r = await self.client.get(self.url + '?plan=enterprise')
+        r = await self.client.get(self.url + '?plan=enterprise', headers={'CF-IPCountry': 'GB'})
         assert r.status_code == 200
         assert r.json() == {
             'username': 'enterprise@example.com',
@@ -206,10 +378,16 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': True,
+            'sells_gb': True,
+            'sells_us': True,
+            'sells_au': True,
+            'sells_ca': True,
+            'sells_eu': True,
+            'sells_row': True,
         }
         company.sales_person = self.admin_enterprise
         await company.save()
-        r = await self.client.get(self.url + '?plan=enterprise')
+        r = await self.client.get(self.url + '?plan=enterprise', headers={'CF-IPCountry': 'US'})
         assert r.json() == {
             'username': 'enterprise@example.com',
             'id': self.admin_enterprise.id,
@@ -224,6 +402,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': True,
+            'sells_gb': True,
+            'sells_us': True,
+            'sells_au': True,
+            'sells_ca': True,
+            'sells_eu': True,
+            'sells_row': True,
         }
 
     async def test_invalid_plan(self):
@@ -263,6 +447,12 @@ class SupportPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
 
     async def test_support_round_robin(self):
@@ -289,6 +479,12 @@ class SupportPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.support_person = self.admin_2
         await company.save()
@@ -307,6 +503,12 @@ class SupportPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
         company.support_person = self.admin_3
         await company.save()
@@ -325,6 +527,12 @@ class SupportPersonDeciderTestCase(HermesTestCase):
             'sells_payg': False,
             'sells_startup': False,
             'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
 
 
@@ -399,6 +607,12 @@ class GetCompaniesTestCase(HermesTestCase):
                     'sells_payg': False,
                     'sells_startup': False,
                     'sells_enterprise': False,
+                    'sells_gb': False,
+                    'sells_us': False,
+                    'sells_au': False,
+                    'sells_ca': False,
+                    'sells_eu': False,
+                    'sells_row': False,
                     'deals': [],
                     'meetings': [],
                 },
@@ -454,6 +668,12 @@ class GetCompaniesTestCase(HermesTestCase):
                     'sells_payg': False,
                     'sells_startup': False,
                     'sells_enterprise': False,
+                    'sells_gb': False,
+                    'sells_us': False,
+                    'sells_au': False,
+                    'sells_ca': False,
+                    'sells_eu': False,
+                    'sells_row': False,
                     'deals': [],
                     'meetings': [],
                 },
