@@ -64,7 +64,6 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             tc2_admin_id=90,
         )
 
-
     async def test_no_companies(self):
         r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
         assert r.status_code == 200
@@ -199,8 +198,6 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': True,
         }
-
-
 
     async def test_payg_round_robin(self):
         company = await Company.create(
