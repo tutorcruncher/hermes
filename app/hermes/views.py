@@ -6,11 +6,27 @@ from app.models import Admin, Company
 
 main_router = APIRouter()
 
+EU_COUNTRIES = [
+    'MD', 'BG', 'DE', 'AL', 'ME', 'ES', 'SE', 'AD', 'MT', 'CZ', 'GB', 'GI', 'CY',
+    'MC', 'RU', 'IE', 'FR', 'BY', 'PT', 'HR', 'LI', 'HU', 'IS', 'PL', 'CH', 'MK',
+    'XK', 'BE', 'RS', 'NL', 'DK', 'LU', 'FO', 'SI', 'UA', 'FI', 'AT', 'BA', 'GR',
+    'GG', 'EE', 'SM', 'VA', 'IT', 'SK', 'LT', 'IM', 'NO', 'LV', 'RO', 'SJ', 'JE', 'AX'
+]
+# EU Countries:
+# MD: Moldova, BG: Bulgaria, DE: Germany, AL: Albania, ME: Montenegro, ES: Spain, SE: Sweden, AD: Andorra, MT: Malta,
+# CZ: Czech Republic, GB: United Kingdom, GI: Gibraltar, CY: Cyprus, MC: Monaco, RU: Russia, IE: Ireland, FR: France,
+# BY: Belarus, PT: Portugal, HR: Croatia, LI: Liechtenstein, HU: Hungary, IS: Iceland, PL: Poland, CH: Switzerland,
+# MK: North Macedonia, XK: Kosovo, BE: Belgium, RS: Serbia, NL: Netherlands, DK: Denmark, LU: Luxembourg,
+# FO: Faroe Islands, SI: Slovenia, UA: Ukraine, FI: Finland, AT: Austria, BA: Bosnia and Herzegovina, GR: Greece,
+# GG: Guernsey, EE: Estonia, SM: San Marino, VA: Vatican City, IT: Italy, SK: Slovakia, LT: Lithuania,
+# IM: Isle of Man, NO: Norway, LV: Latvia, RO: Romania, SJ: Svalbard and Jan Mayen, JE: Jersey, AX: Åland Islands
+
+
 
 @main_router.get('/choose-roundrobin/sales/', name='Decide which sales person to assign to a new signup')
-async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
+async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Admin.pydantic_schema():
     """
-    Chooses which sales person should be assigned to a new company if it were on a certain price plan. Uses simple
+    Chooses which sales person should be assigned to a new company if it were on a certain price plan and region. Uses simple
     round robin logic where the order of admins is decided by their ID.
     """
     if plan == Company.PP_PAYG:
@@ -21,6 +37,22 @@ async def choose_sales_person(plan: str) -> Admin.pydantic_schema():
         admins = Admin.filter(sells_enterprise=True)
     else:
         raise RequestValidationError('Price plan must be one of "payg,startup,enterprise"')
+
+    region = cf_ipcountry or 'GB'
+
+    if region == 'US':
+        admins = admins.filter(sells_us=True)
+    elif region == 'GB':
+        admins = admins.filter(sells_gb=True)
+    elif region == 'AU':
+        admins = admins.filter(sells_au=True)
+    elif region == 'CA':
+        admins = admins.filter(sells_ca=True)
+    elif region in EU_COUNTRIES:
+        admins = admins.filter(sells_eu=True)
+    else:
+        admins = admins.filter(sells_row=True)
+
     admins = {a.id: a async for a in admins.filter(is_sales_person=True).order_by('id')}
     admin_ids = list(admins.keys())
     latest_company = await Company.filter(price_plan=plan, sales_person_id__isnull=False).order_by('-created').first()

@@ -6,7 +6,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.url = '/choose-roundrobin/sales/'
-        sp_kwargs = {'is_sales_person': True, 'sells_payg': True, 'sells_startup': True}
+        sp_kwargs = {'is_sales_person': True, 'sells_payg': True, 'sells_startup': True, 'sells_gb': True}
         self.admin_1 = await Admin.create(last_name='1', username='admin_1@example.com', tc2_admin_id=10, **sp_kwargs)
         self.admin_2 = await Admin.create(last_name='2', username='admin_2@example.com', tc2_admin_id=20, **sp_kwargs)
         self.admin_3 = await Admin.create(last_name='3', username='admin_3@example.com', tc2_admin_id=30, **sp_kwargs)
@@ -15,11 +15,34 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             username='enterprise@example.com',
             is_sales_person=True,
             sells_enterprise=True,
+            sells_gb=True,
+            sells_us=True,
+            sells_au=True,
+            sells_ca=True,
+            sells_eu=True,
+            sells_row=True,
             tc2_admin_id=40,
         )
+        self.admin_payg_us = await Admin.create(
+            last_name='us',
+            username='us-payg@example.com',
+            is_sales_person=True,
+            sells_payg=True,
+            sells_us=True,
+            tc2_admin_id=50,
+        )
+        self.admin_startup_eu = await Admin.create(
+            last_name='eu',
+            username='eu-startup@example.com',
+            is_sales_person=True,
+            sells_startup=True,
+            sells_eu=True,
+            tc2_admin_id=60,
+        )
+
 
     async def test_no_companies(self):
-        r = await self.client.get(self.url + '?plan=payg')
+        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
         assert r.status_code == 200
         assert r.json() == {
             'username': 'admin_1@example.com',
@@ -35,6 +58,12 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_payg': True,
             'sells_startup': True,
             'sells_enterprise': False,
+            'sells_gb': True,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
         }
 
     async def test_payg_round_robin(self):
