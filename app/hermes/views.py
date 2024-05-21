@@ -91,7 +91,7 @@ async def get_next_sales_person(admins, latest_sales_person_id):
 
 
 @main_router.get('/choose-roundrobin/sales/', name='Decide which sales person to assign to a new signup')
-async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Admin.pydantic_schema():
+async def choose_sales_person(plan: str, country_code: str) -> Admin.pydantic_schema():
     """
     Chooses which sales person should be assigned to a new company if it were on a certain price plan and region. Uses simple
     round robin logic where the order of admins is decided by their ID.
@@ -105,7 +105,7 @@ async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Ad
     else:
         raise RequestValidationError('Price plan must be one of "payg,startup,enterprise"')
 
-    region = cf_ipcountry or 'GB'
+    region = country_code or 'GB'
 
     if region == 'US':
         regional_admins = admins.filter(sells_us=True)

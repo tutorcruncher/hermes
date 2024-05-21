@@ -65,7 +65,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         )
 
     async def test_no_companies(self):
-        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
+        r = await self.client.get(self.url + '?plan=payg&country_code=GB')
         assert r.status_code == 200
         assert r.json() == {
             'username': 'admin_1@example.com',
@@ -88,7 +88,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': False,
         }
-        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'US'})
+        r = await self.client.get(self.url + '?plan=payg&country_code=US')
         assert r.json() == {
             'username': 'us-payg@example.com',
             'id': self.admin_payg_us.id,
@@ -110,7 +110,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': False,
         }
-        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'CA'})
+        r = await self.client.get(self.url + '?plan=payg&country_code=CA')
         assert r.json() == {
             'username': 'ca-payg@example.com',
             'id': self.admin_payg_ca.id,
@@ -132,7 +132,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': False,
         }
-        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'FR'})
+        r = await self.client.get(self.url + '?plan=startup&country_code=FR')
         assert r.json() == {
             'username': 'eu-startup@example.com',
             'id': self.admin_startup_eu.id,
@@ -154,7 +154,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': True,
             'sells_row': False,
         }
-        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'AU'})
+        r = await self.client.get(self.url + '?plan=startup&country_code=AU')
         assert r.json() == {
             'username': 'au-startup@example.com',
             'id': self.admin_startup_au.id,
@@ -176,7 +176,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_eu': False,
             'sells_row': False,
         }
-        r = await self.client.get(self.url + '?plan=startup', headers={'CF-IPCountry': 'JP'})
+        r = await self.client.get(self.url + '?plan=startup&country_code=JP')
         assert r.json() == {
             'username': 'row-startup@example.com',
             'id': self.admin_startup_row.id,
@@ -210,7 +210,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             a.sells_row = False
             await a.save()
 
-        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
+        r = await self.client.get(self.url + '?plan=payg&country_code=GB')
         assert r.status_code == 200
         assert r.json() == {
             'username': 'admin_1@example.com',
@@ -238,7 +238,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', price_plan='payg', sales_person=self.admin_1
         )
-        r = await self.client.get(self.url + '?plan=payg')
+        r = await self.client.get(self.url + '?plan=payg&country_code=GB')
         assert r.status_code == 200
         assert r.json() == {
             'username': 'admin_2@example.com',
@@ -263,7 +263,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
         company.sales_person = self.admin_2
         await company.save()
-        r = await self.client.get(self.url + '?plan=payg')
+        r = await self.client.get(self.url + '?plan=payg&country_code=GB')
         assert r.json() == {
             'username': 'admin_3@example.com',
             'id': self.admin_3.id,
@@ -287,7 +287,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
         company.sales_person = self.admin_3
         await company.save()
-        r = await self.client.get(self.url + '?plan=payg')
+        r = await self.client.get(self.url + '?plan=payg&country_code=GB')
         assert r.json() == {
             'username': 'admin_1@example.com',
             'id': self.admin_1.id,
@@ -314,7 +314,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', price_plan='startup', sales_person=self.admin_1
         )
-        r = await self.client.get(self.url + '?plan=startup')
+        r = await self.client.get(self.url + '?plan=startup&country_code=GB')
         assert r.status_code == 200
         assert r.json() == {
             'username': 'admin_2@example.com',
@@ -339,7 +339,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
         company.sales_person = self.admin_2
         await company.save()
-        r = await self.client.get(self.url + '?plan=startup')
+        r = await self.client.get(self.url + '?plan=startup&country_code=GB')
         assert r.json() == {
             'username': 'admin_3@example.com',
             'id': self.admin_3.id,
@@ -363,7 +363,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
         company.sales_person = self.admin_3
         await company.save()
-        r = await self.client.get(self.url + '?plan=startup')
+        r = await self.client.get(self.url + '?plan=startup&country_code=GB')
         assert r.json() == {
             'username': 'admin_1@example.com',
             'id': self.admin_1.id,
@@ -394,7 +394,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             price_plan='enterprise',
             sales_person=self.admin_1,
         )
-        r = await self.client.get(self.url + '?plan=enterprise', headers={'CF-IPCountry': 'GB'})
+        r = await self.client.get(self.url + '?plan=enterprise&country_code=GB')
         assert r.status_code == 200
         assert r.json() == {
             'username': 'enterprise@example.com',
@@ -419,7 +419,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
         company.sales_person = self.admin_enterprise
         await company.save()
-        r = await self.client.get(self.url + '?plan=enterprise', headers={'CF-IPCountry': 'US'})
+        r = await self.client.get(self.url + '?plan=enterprise&country_code=US')
         assert r.json() == {
             'username': 'enterprise@example.com',
             'id': self.admin_enterprise.id,
@@ -443,9 +443,13 @@ class SalesPersonDeciderTestCase(HermesTestCase):
         }
 
     async def test_invalid_plan(self):
-        r = await self.client.get(self.url + '?plan=foobar')
+        r = await self.client.get(self.url + '?plan=foobar&country_code=GB')
         assert r.status_code == 422
         assert r.json() == {'detail': 'Price plan must be one of "payg,startup,enterprise"'}
+
+    async def test_no_country_code(self):
+        r = await self.client.get(self.url + '?plan=payg')
+        assert r.status_code == 422
 
 
 class SupportPersonDeciderTestCase(HermesTestCase):
