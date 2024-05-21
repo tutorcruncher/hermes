@@ -199,6 +199,40 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             'sells_row': True,
         }
 
+    async def test_no_companies_no_regional_admin(self):
+        admin = await Admin.all()
+        for a in admin:
+            a.sells_gb = False
+            a.sells_us = False
+            a.sells_au = False
+            a.sells_ca = False
+            a.sells_eu = False
+            a.sells_row = False
+            await a.save()
+        r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
+        assert r.status_code == 200
+        assert r.json() == {
+            'username': 'admin_1@example.com',
+            'id': self.admin_1.id,
+            'tc2_admin_id': 10,
+            'pd_owner_id': None,
+            'first_name': '',
+            'last_name': '1',
+            'timezone': 'Europe/London',
+            'is_sales_person': True,
+            'is_support_person': False,
+            'is_bdr_person': False,
+            'sells_payg': True,
+            'sells_startup': True,
+            'sells_enterprise': False,
+            'sells_gb': False,
+            'sells_us': False,
+            'sells_au': False,
+            'sells_ca': False,
+            'sells_eu': False,
+            'sells_row': False,
+        }
+
     async def test_payg_round_robin(self):
         company = await Company.create(
             name='Junes Ltd', website='https://junes.com', country='GB', price_plan='payg', sales_person=self.admin_1

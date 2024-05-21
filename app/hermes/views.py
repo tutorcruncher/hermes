@@ -89,29 +89,37 @@ async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Ad
     region = cf_ipcountry or 'GB'
 
     if region == 'US':
-        admins = admins.filter(sells_us=True)
+        regional_admins = admins.filter(sells_us=True)
     elif region == 'GB':
-        admins = admins.filter(sells_gb=True)
+        regional_admins = admins.filter(sells_gb=True)
     elif region == 'AU':
-        admins = admins.filter(sells_au=True)
+        regional_admins = admins.filter(sells_au=True)
     elif region == 'CA':
-        admins = admins.filter(sells_ca=True)
+        regional_admins = admins.filter(sells_ca=True)
     elif region in EU_COUNTRIES:
-        admins = admins.filter(sells_eu=True)
+        regional_admins = admins.filter(sells_eu=True)
     else:
-        admins = admins.filter(sells_row=True)
+        regional_admins = admins.filter(sells_row=True)
+
 
     admins = {a.id: a async for a in admins.filter(is_sales_person=True).order_by('id')}
-    admin_ids = list(admins.keys())
+    admins_ids = list(admins.keys())
+
+    regional_admins = {a.id: a async for a in regional_admins.filter(is_sales_person=True).order_by('id')}
+    regional_admins_ids = list(regional_admins.keys())
     latest_company = await Company.filter(price_plan=plan, sales_person_id__isnull=False).order_by('-created').first()
     if latest_company:
         latest_sales_person = latest_company.sales_person_id
         try:
-            next_sales_person = admin_ids[admin_ids.index(latest_sales_person) + 1]
+            next_sales_person = regional_admins_ids[regional_admins_ids.index(latest_sales_person) + 1]
         except (IndexError, ValueError):
-            next_sales_person = admin_ids[0]
+            next_sales_person = admins_ids[0]
     else:
-        next_sales_person = admin_ids[0]
+        try:
+            next_sales_person = regional_admins_ids[0]
+        except IndexError:
+            next_sales_person = admins_ids[0]
+
     schema = Admin.pydantic_schema()
     return await schema.from_tortoise_orm(admins[next_sales_person])
 
