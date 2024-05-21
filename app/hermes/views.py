@@ -107,16 +107,23 @@ async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Ad
     regional_admins = {a.id: a async for a in regional_admins.filter(is_sales_person=True).order_by('id')}
     regional_admins_ids = list(regional_admins.keys())
     latest_company = await Company.filter(price_plan=plan, sales_person_id__isnull=False).order_by('-created').first()
-    if latest_company:
-        latest_sales_person = latest_company.sales_person_id
-        try:
-            next_sales_person = regional_admins_ids[regional_admins_ids.index(latest_sales_person) + 1]
-        except (IndexError, ValueError):
-            next_sales_person = admins_ids[0]
-    else:
-        try:
+    if regional_admins:
+        if latest_company:
+            latest_sales_person = latest_company.sales_person_id
+            try:
+                next_sales_person = regional_admins_ids[regional_admins_ids.index(latest_sales_person) + 1]
+            except (IndexError, ValueError):
+                next_sales_person = regional_admins_ids[0]
+        else:
             next_sales_person = regional_admins_ids[0]
-        except IndexError:
+    else:
+        if latest_company:
+            latest_sales_person = latest_company.sales_person_id
+            try:
+                next_sales_person = admins_ids[admins_ids.index(latest_sales_person) + 1]
+            except (IndexError, ValueError):
+                next_sales_person = admins_ids[0]
+        else:
             next_sales_person = admins_ids[0]
 
     schema = Admin.pydantic_schema()
