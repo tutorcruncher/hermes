@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Header
 from fastapi.exceptions import HTTPException, RequestValidationError
 from starlette.requests import Request
+from tortoise.queryset import QuerySet
+
 
 from app.models import Admin, Company
 
@@ -73,7 +75,7 @@ EU_COUNTRIES = [
 # IM: Isle of Man, NO: Norway, LV: Latvia, RO: Romania, SJ: Svalbard and Jan Mayen, JE: Jersey, AX: Åland Islands
 
 
-async def get_next_sales_person(admins, latest_sales_person_id):
+async def _get_next_sales_person(admins: QuerySet[Admin], latest_sales_person_id: int) -> int:
     """
     @param admins: a list of Admin objects
     @param latest_sales_person_id: the ID of the latest sales person Admin object
@@ -124,9 +126,9 @@ async def choose_sales_person(plan: str, country_code: str) -> Admin.pydantic_sc
     latest_sales_person = latest_company.sales_person_id if latest_company else None
 
     if await regional_admins.exists():
-        next_sales_person = await get_next_sales_person(regional_admins, latest_sales_person)
+        next_sales_person = await _get_next_sales_person(regional_admins, latest_sales_person)
     else:
-        next_sales_person = await get_next_sales_person(admins, latest_sales_person)
+        next_sales_person = await _get_next_sales_person(admins, latest_sales_person)
 
     schema = Admin.pydantic_schema()
     next_admin = await Admin.get(id=next_sales_person)
