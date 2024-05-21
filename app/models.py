@@ -101,6 +101,13 @@ class Admin(AbstractAdmin):
     sells_startup = fields.BooleanField(default=False)
     sells_enterprise = fields.BooleanField(default=False)
 
+    sells_us = fields.BooleanField(default=False)
+    sells_gb = fields.BooleanField(default=False)
+    sells_au = fields.BooleanField(default=False)
+    sells_ca = fields.BooleanField(default=False)
+    sells_eu = fields.BooleanField(default=False)
+    sells_row = fields.BooleanField(default=False)
+
     password = fields.CharField(max_length=255, null=True)
 
     deals: fields.ReverseRelation['Deal']
@@ -138,6 +145,12 @@ class Admin(AbstractAdmin):
                 'sells_payg',
                 'sells_startup',
                 'sells_enterprise',
+                'sells_us',
+                'sells_gb',
+                'sells_au',
+                'sells_ca',
+                'sells_eu',
+                'sells_row',
             ),
         )
 

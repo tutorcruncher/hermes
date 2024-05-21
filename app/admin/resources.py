@@ -72,6 +72,12 @@ class AdminResource(Model):
         Field('sells_payg', label='Sells PAYG', input_=inputs.Switch()),
         Field('sells_startup', label='Sells startup', input_=inputs.Switch()),
         Field('sells_enterprise', label='Sells enterprise', input_=inputs.Switch()),
+        Field('sells_us', label='Sells US', input_=inputs.Switch()),
+        Field('sells_gb', label='Sells GB', input_=inputs.Switch()),
+        Field('sells_au', label='Sells AU', input_=inputs.Switch()),
+        Field('sells_eu', label='Sells EU', input_=inputs.Switch()),
+        Field('sells_ca', label='Sells CA', input_=inputs.Switch()),
+        Field('sells_row', label='Sells ROW', input_=inputs.Switch()),
     ]
 
     async def get_actions(self, request: Request) -> list[Action]:
