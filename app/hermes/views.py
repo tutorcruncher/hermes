@@ -76,7 +76,7 @@ EU_COUNTRIES = [
 async def get_next_sales_person(admins, latest_sales_person_id):
     """
     @param admins: a list of Admin objects
-    @param latest_sales_person_id: the ID of the latest sales Admin object
+    @param latest_sales_person_id: the ID of the latest sales person Admin object
     @return: the ID of the next sales Admin object
     """
     admin_ids = [a.id async for a in admins.filter(is_sales_person=True).order_by('id')]
