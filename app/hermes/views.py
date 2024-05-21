@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header
 from fastapi.exceptions import HTTPException, RequestValidationError
 from starlette.requests import Request
 
+from app.hermes.tasks import get_next_sales_person
 from app.models import Admin, Company
 
 main_router = APIRouter()
@@ -101,33 +102,17 @@ async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Ad
     else:
         regional_admins = admins.filter(sells_row=True)
 
-    admins = {a.id: a async for a in admins.filter(is_sales_person=True).order_by('id')}
-    admins_ids = list(admins.keys())
-
-    regional_admins = {a.id: a async for a in regional_admins.filter(is_sales_person=True).order_by('id')}
-    regional_admins_ids = list(regional_admins.keys())
     latest_company = await Company.filter(price_plan=plan, sales_person_id__isnull=False).order_by('-created').first()
-    if regional_admins:
-        if latest_company:
-            latest_sales_person = latest_company.sales_person_id
-            try:
-                next_sales_person = regional_admins_ids[regional_admins_ids.index(latest_sales_person) + 1]
-            except (IndexError, ValueError):
-                next_sales_person = regional_admins_ids[0]
-        else:
-            next_sales_person = regional_admins_ids[0]
+    latest_sales_person = latest_company.sales_person_id if latest_company else None
+
+    if await regional_admins.exists():
+        next_sales_person = await get_next_sales_person(regional_admins, latest_sales_person)
     else:
-        if latest_company:
-            latest_sales_person = latest_company.sales_person_id
-            try:
-                next_sales_person = admins_ids[admins_ids.index(latest_sales_person) + 1]
-            except (IndexError, ValueError):
-                next_sales_person = admins_ids[0]
-        else:
-            next_sales_person = admins_ids[0]
+        next_sales_person = await get_next_sales_person(admins, latest_sales_person)
 
     schema = Admin.pydantic_schema()
-    return await schema.from_tortoise_orm(admins[next_sales_person])
+    next_admin = await Admin.get(id=next_sales_person)
+    return await schema.from_tortoise_orm(next_admin)
 
 
 @main_router.get('/choose-roundrobin/support/', name='Decide which support person to assign to a new signup')

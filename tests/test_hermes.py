@@ -209,6 +209,7 @@ class SalesPersonDeciderTestCase(HermesTestCase):
             a.sells_eu = False
             a.sells_row = False
             await a.save()
+
         r = await self.client.get(self.url + '?plan=payg', headers={'CF-IPCountry': 'GB'})
         assert r.status_code == 200
         assert r.json() == {
