@@ -3,7 +3,6 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 from starlette.requests import Request
 from tortoise.queryset import QuerySet
 
-
 from app.models import Admin, Company
 
 main_router = APIRouter()
