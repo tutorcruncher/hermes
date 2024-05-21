@@ -101,7 +101,6 @@ async def choose_sales_person(plan: str, cf_ipcountry: str = Header(None)) -> Ad
     else:
         regional_admins = admins.filter(sells_row=True)
 
-
     admins = {a.id: a async for a in admins.filter(is_sales_person=True).order_by('id')}
     admins_ids = list(admins.keys())
 
