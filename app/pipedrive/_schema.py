@@ -259,6 +259,58 @@ class WebhookMeta(HermesBaseModel):
     object: str
 
 
+async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
+    """
+    @param object_type: the type of object we are dealing with
+    @param hermes_ids: a string of comma-separated hermes IDs
+    @return: a single hermes ID
+
+    This function is used to handle the case where a merge has caused Pipedrive object has multiple hermes IDs.
+    We need to choose one to keep.
+    """
+
+    if object_type == 'organization':
+        orgs = await Organisation.filter(id__in=hermes_ids.split(','))
+        main_org = orgs[0]
+        for org in orgs:
+            contacts = await Contact.filter(company=org)
+            for contact in contacts:
+                contact.company = main_org
+                await contact.save()
+
+            deals = await Deal.filter(company=org)
+            for deal in deals:
+                deal.company = main_org
+                await deal.save()
+
+        return main_org.id
+
+    elif object_type == 'person':
+        contacts = await Contact.filter(id__in=hermes_ids.split(','))
+        main_contact = contacts[0]
+        for contact in contacts:
+            deals = await Deal.filter(contact=contact)
+            for deal in deals:
+                deal.contact = main_contact
+                await deal.save()
+
+            meetings = await Meeting.filter(contact=contact)
+            for meeting in meetings:
+                meeting.contact = main_contact
+                await meeting.save()
+
+        return main_contact.id
+
+    elif object_type == 'deal':
+        deals = await Deal.filter(id__in=hermes_ids.split(','))
+        main_deal = deals[0]
+        for deal in deals:
+            meetings = await Meeting.filter(deal=deal)
+            for meeting in meetings:
+                meeting.deal = main_deal
+                await meeting.save()
+        return main_deal.id
+
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
@@ -283,6 +335,9 @@ class PipedriveEvent(HermesBaseModel):
         It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
         rebuild the model when adding custom fields.
         """
+        if 'hermes_id' in v and isinstance(v['hermes_id'], str):
+            v['hermes_id'] = handle_duplicate_hermes_ids(v['hermes_id'], v['obj_type'])
+
         if v['obj_type'] == 'organization':
             return Organisation(**v)
         elif v['obj_type'] == 'person':

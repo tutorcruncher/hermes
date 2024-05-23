@@ -2140,6 +2140,21 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert contact.name == 'Jessica Jones'
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_merged(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
+        contact_2 = await Contact.create(first_name='John', last_name='Smith', pd_person_id=31, company=company)
+        data = copy.deepcopy(basic_pd_person_data())
+        data['previous'] = copy.deepcopy(data['current'])
+        data['previous']['hermes_id'] = f'{contact.id},{contact_2.id}'
+        data['current'].update(name='Jessica Jones')
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.name == 'Jessica Jones'
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_person_update_no_changes(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
