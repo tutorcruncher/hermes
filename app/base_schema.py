@@ -89,10 +89,8 @@ class HermesBaseModel(BaseModel):
         to True, it raises a validation error.
         """
         for field_name, field_info in self.model_fields.items():
-            debug(f'Validating {field_name}')
             v = getattr(self, field_name, None)
             extra_schema = field_info.json_schema_extra or {}
-            debug(extra_schema)
             if extra_schema.get('is_fk_field') or field_name == 'hermes_id':
                 model = extra_schema['hermes_model']
                 fk_field_name = extra_schema['fk_field_name']
@@ -103,8 +101,6 @@ class HermesBaseModel(BaseModel):
                 if is_custom and field_name != 'hermes_id':
                     model = model._meta.fields_map[hermes_field_name].related_model
                     to_field = hermes_field_name
-
-                debug(fk_field_name, v)
 
                 if v:
                     try:

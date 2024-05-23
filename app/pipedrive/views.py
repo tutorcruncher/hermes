@@ -8,37 +8,53 @@ from app.pipedrive._process import (
     _process_pd_pipeline,
     _process_pd_stage,
 )
-from app.pipedrive._schema import PipedriveEvent
+from app.pipedrive._schema import PipedriveEvent, handle_duplicate_hermes_ids
 from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company
 
 pipedrive_router = APIRouter()
 
 
+async def prepare_event_data(event_data):
+    """
+    Prepare the event data for processing. If the event has a previous hermes_id then we check if it's a duplicate.
+    """
+    if 'hermes_id' in event_data['previous'] and isinstance(event_data['previous']['hermes_id'], str):
+        event_data['previous']['hermes_id'] = await handle_duplicate_hermes_ids(
+            event_data['previous']['hermes_id'], event_data['meta']['object']
+        )
+
+    return event_data
+
+
 @pipedrive_router.post('/callback/', name='Pipedrive callback')
-async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
+async def callback(event: dict, tasks: BackgroundTasks):
     """
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     TODO: This has 0 security, we should add some.
     """
-    event.current and await event.current.a_validate()
-    event.previous and await event.previous.a_validate()
 
-    app_logger.info(f'Callback: event received for {event.meta.object}: {event}')
-    if event.meta.object == 'deal':
-        deal = await _process_pd_deal(event.current, event.previous)
+    event_data = await prepare_event_data(event)
+    event_instance = PipedriveEvent(**event_data)
+
+    event_instance.current and await event_instance.current.a_validate()
+    event_instance.previous and await event_instance.previous.a_validate()
+
+    app_logger.info(f'Callback: event_instance received for {event_instance.meta.object}: {event_instance}')
+    if event_instance.meta.object == 'deal':
+        deal = await _process_pd_deal(event_instance.current, event_instance.previous)
         company = await deal.company
         if company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
-    elif event.meta.object == 'pipeline':
-        await _process_pd_pipeline(event.current, event.previous)
-    elif event.meta.object == 'stage':
-        await _process_pd_stage(event.current, event.previous)
-    elif event.meta.object == 'person':
-        await _process_pd_person(event.current, event.previous)
-    elif event.meta.object == 'organization':
-        company = await _process_pd_organisation(event.current, event.previous)
+    elif event_instance.meta.object == 'pipeline':
+        await _process_pd_pipeline(event_instance.current, event_instance.previous)
+    elif event_instance.meta.object == 'stage':
+        await _process_pd_stage(event_instance.current, event_instance.previous)
+    elif event_instance.meta.object == 'person':
+        await _process_pd_person(event_instance.current, event_instance.previous)
+    elif event_instance.meta.object == 'organization':
+        company = await _process_pd_organisation(event_instance.current, event_instance.previous)
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)

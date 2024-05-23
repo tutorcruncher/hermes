@@ -266,22 +266,25 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     @return: a single hermes ID
 
     This function is used to handle the case where a merge has caused Pipedrive object has multiple hermes IDs.
-    We need to choose one to keep.
+    We need to choose one to keep, update all the related objects to point to that one, and delete the other objects.
     """
 
     if object_type == 'organization':
-        orgs = await Organisation.filter(id__in=hermes_ids.split(','))
-        main_org = orgs[0]
-        for org in orgs:
-            contacts = await Contact.filter(company=org)
+        companies = await Company.filter(id__in=hermes_ids.split(','))
+        main_org = companies[0]
+        for company in companies:
+            contacts = await Contact.filter(company=company)
             for contact in contacts:
                 contact.company = main_org
                 await contact.save()
 
-            deals = await Deal.filter(company=org)
+            deals = await Deal.filter(company=company)
             for deal in deals:
                 deal.company = main_org
                 await deal.save()
+
+            if company.id != main_org.id:
+                await company.delete()
 
         return main_org.id
 
@@ -299,6 +302,9 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
                 meeting.contact = main_contact
                 await meeting.save()
 
+            if contact.id != main_contact.id:
+                await contact.delete()
+
         return main_contact.id
 
     elif object_type == 'deal':
@@ -309,7 +315,12 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
             for meeting in meetings:
                 meeting.deal = main_deal
                 await meeting.save()
+
+            if deal.id != main_deal.id:
+                await deal.delete()
+
         return main_deal.id
+
 
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
@@ -335,9 +346,6 @@ class PipedriveEvent(HermesBaseModel):
         It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
         rebuild the model when adding custom fields.
         """
-        if 'hermes_id' in v and isinstance(v['hermes_id'], str):
-            v['hermes_id'] = handle_duplicate_hermes_ids(v['hermes_id'], v['obj_type'])
-
         if v['obj_type'] == 'organization':
             return Organisation(**v)
         elif v['obj_type'] == 'person':
