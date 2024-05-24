@@ -9,7 +9,7 @@ from app.pipedrive._process import (
     _process_pd_pipeline,
     _process_pd_stage,
 )
-from app.pipedrive._schema import PipedriveEvent, handle_duplicate_hermes_ids
+from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent, handle_duplicate_hermes_ids
 from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company
 
@@ -23,8 +23,12 @@ async def prepare_event_data(event_data: dict) -> dict:
     """
     hermes_id_cf_fields = await CustomField.filter(machine_name='hermes_id').values_list('pd_field_id', flat=True)
     for hermes_id_pd_field_id in hermes_id_cf_fields:
-        for state in ['previous', 'current']:
-            if hermes_id_pd_field_id in event_data[state] and isinstance(event_data[state][hermes_id_pd_field_id], str):
+        for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
+            if (
+                state in event_data
+                and hermes_id_pd_field_id in event_data[state]
+                and isinstance(event_data[state][hermes_id_pd_field_id], str)
+            ):
                 event_data[state][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
                     event_data[state][hermes_id_pd_field_id], event_data['meta']['object']
                 )
@@ -52,13 +56,13 @@ async def callback(event: dict, tasks: BackgroundTasks):
         if company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
-    elif event_instance.meta.object == 'pipeline':
+    elif event_instance.meta.object == PDObjectNames.PIPELINE:
         await _process_pd_pipeline(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == 'stage':
+    elif event_instance.meta.object == PDObjectNames.STAGE:
         await _process_pd_stage(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == 'person':
+    elif event_instance.meta.object == PDObjectNames.PERSON:
         await _process_pd_person(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == 'organization':
+    elif event_instance.meta.object == PDObjectNames.ORGANISATION:
         company = await _process_pd_organisation(event_instance.current, event_instance.previous)
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id

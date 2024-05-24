@@ -1,4 +1,5 @@
 import re
+from enum import Enum
 from typing import Any, Literal, Optional
 
 from pydantic import Field, field_validator, model_validator
@@ -6,6 +7,20 @@ from pydantic.main import BaseModel
 
 from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
+
+
+class PDStatus(str, Enum):
+    PREVIOUS = 'previous'
+    CURRENT = 'current'
+
+
+class PDObjectNames(str, Enum):
+    ORGANISATION = 'organization'
+    PERSON = 'person'
+    DEAL = 'deal'
+    PIPELINE = 'pipeline'
+    STAGE = 'stage'
+    ACTIVITY = 'activity'
 
 
 def _remove_nulls(**kwargs):
@@ -269,7 +284,7 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     We need to choose one to keep, update all the related objects to point to that one, and delete the other objects.
     """
 
-    if object_type == 'organization':
+    if object_type == PDObjectNames.ORGANISATION:
         companies = await Company.filter(id__in=hermes_ids.split(','))
         main_org = companies[0]
         for company in companies:
@@ -288,7 +303,7 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
         return main_org.id
 
-    elif object_type == 'person':
+    elif object_type == PDObjectNames.PERSON:
         contacts = await Contact.filter(id__in=hermes_ids.split(','))
         main_contact = contacts[0]
         for contact in contacts:
@@ -307,7 +322,7 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
         return main_contact.id
 
-    elif object_type == 'deal':
+    elif object_type == PDObjectNames.DEAL:
         deals = await Deal.filter(id__in=hermes_ids.split(','))
         main_deal = deals[0]
         for deal in deals:
@@ -332,31 +347,31 @@ class PipedriveEvent(HermesBaseModel):
     @classmethod
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
-        for f in ['current', 'previous']:
+        for f in [PDStatus.CURRENT, PDStatus.PREVIOUS]:
             if v := values.get(f):
                 v['obj_type'] = obj_type
             else:
                 values.pop(f, None)
         return values
 
-    @field_validator('current', 'previous', mode='before')
+    @field_validator(PDStatus.CURRENT, PDStatus.PREVIOUS, mode='before')
     @classmethod
     def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
         """
         It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
         rebuild the model when adding custom fields.
         """
-        if v['obj_type'] == 'organization':
+        if v['obj_type'] == PDObjectNames.ORGANISATION:
             return Organisation(**v)
-        elif v['obj_type'] == 'person':
+        elif v['obj_type'] == PDObjectNames.PERSON:
             return Person(**v)
-        elif v['obj_type'] == 'deal':
+        elif v['obj_type'] == PDObjectNames.DEAL:
             return PDDeal(**v)
-        elif v['obj_type'] == 'pipeline':
+        elif v['obj_type'] == PDObjectNames.PIPELINE:
             return PDPipeline(**v)
-        elif v['obj_type'] == 'stage':
+        elif v['obj_type'] == PDObjectNames.STAGE:
             return PDStage(**v)
-        elif v['obj_type'] == 'activity':
+        elif v['obj_type'] == PDObjectNames.ACTIVITY:
             return Activity(**v)
         else:
             raise ValueError(f'Unknown object type {v["obj_type"]}')
