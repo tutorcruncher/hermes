@@ -2422,6 +2422,15 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         data = copy.deepcopy(basic_pd_deal_data())
         data['previous'] = copy.deepcopy(data['current'])
+        data['current'].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}', 'title': 'New test deal'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert deal.name == 'New test deal'
+        meeting2 = await Meeting.get(id=meeting.id)
+        assert await meeting2.deal == deal
+
+        data = copy.deepcopy(basic_pd_deal_data())
         data['previous'].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}'})
         data['current'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)

@@ -21,16 +21,13 @@ async def prepare_event_data(event_data: dict) -> dict:
     This function retrieves all the pd_field_ids for the custom field 'hermes_id' and then checks if the previous value
     is a string. If it is, it calls handle_duplicate_hermes_ids to handle the duplicate hermes_id.
     """
-
     hermes_id_cf_fields = await CustomField.filter(machine_name='hermes_id').values_list('pd_field_id', flat=True)
     for hermes_id_pd_field_id in hermes_id_cf_fields:
-        if hermes_id_pd_field_id in event_data['previous'] and isinstance(
-            event_data['previous'][hermes_id_pd_field_id], str
-        ):
-            event_data['previous'][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
-                event_data['previous'][hermes_id_pd_field_id], event_data['meta']['object']
-            )
-
+        for state in ['previous', 'current']:
+            if hermes_id_pd_field_id in event_data[state] and isinstance(event_data[state][hermes_id_pd_field_id], str):
+                event_data[state][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
+                    event_data[state][hermes_id_pd_field_id], event_data['meta']['object']
+                )
     return event_data
 
 
