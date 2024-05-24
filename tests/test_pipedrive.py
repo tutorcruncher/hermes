@@ -1943,7 +1943,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         data = copy.deepcopy(basic_pd_org_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['previous'].update(hermes_id=f'{company.id},{company2.id}')
+        data['previous'].update(**{'123_hermes_id_456': f'{company.id},{company2.id}'})
         data['current'].update(**{'name': 'New test company'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
@@ -2204,7 +2204,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         data = copy.deepcopy(basic_pd_person_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['previous']['hermes_id'] = f'{contact.id},{contact_2.id}'
+        data['previous'].update(**{'234_hermes_id_567': f'{contact.id},{contact_2.id}'})
         data['current'].update(name='Jessica Jones')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
@@ -2422,7 +2422,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         data = copy.deepcopy(basic_pd_deal_data())
         data['previous'] = copy.deepcopy(data['current'])
-        data['previous']['hermes_id'] = f'{deal.id},{deal2.id}'
+        data['previous'].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}'})
         data['current'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()

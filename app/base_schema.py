@@ -91,7 +91,7 @@ class HermesBaseModel(BaseModel):
         for field_name, field_info in self.model_fields.items():
             v = getattr(self, field_name, None)
             extra_schema = field_info.json_schema_extra or {}
-            if extra_schema.get('is_fk_field') or field_name == 'hermes_id':
+            if extra_schema.get('is_fk_field'):
                 model = extra_schema['hermes_model']
                 fk_field_name = extra_schema['fk_field_name']
                 to_field = extra_schema['to_field']

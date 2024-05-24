@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from starlette.background import BackgroundTasks
 
+from app.models import CustomField
 from app.pipedrive._process import (
     _process_pd_deal,
     _process_pd_organisation,
@@ -15,14 +16,20 @@ from app.tc2.tasks import update_client_from_company
 pipedrive_router = APIRouter()
 
 
-async def prepare_event_data(event_data):
+async def prepare_event_data(event_data: dict) -> dict:
     """
-    Prepare the event data for processing. If the event has a previous hermes_id then we check if it's a duplicate.
+    This function retrieves all the pd_field_ids for the custom field 'hermes_id' and then checks if the previous value
+    is a string. If it is, it calls handle_duplicate_hermes_ids to handle the duplicate hermes_id.
     """
-    if 'hermes_id' in event_data['previous'] and isinstance(event_data['previous']['hermes_id'], str):
-        event_data['previous']['hermes_id'] = await handle_duplicate_hermes_ids(
-            event_data['previous']['hermes_id'], event_data['meta']['object']
-        )
+
+    hermes_id_cf_fields = await CustomField.filter(machine_name='hermes_id').values_list('pd_field_id', flat=True)
+    for hermes_id_pd_field_id in hermes_id_cf_fields:
+        if hermes_id_pd_field_id in event_data['previous'] and isinstance(
+            event_data['previous'][hermes_id_pd_field_id], str
+        ):
+            event_data['previous'][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
+                event_data['previous'][hermes_id_pd_field_id], event_data['meta']['object']
+            )
 
     return event_data
 
