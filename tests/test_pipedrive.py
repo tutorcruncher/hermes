@@ -2430,7 +2430,46 @@ class PipedriveCallbackTestCase(HermesTestCase):
         meeting2 = await Meeting.get(id=meeting.id)
         assert await meeting2.deal == deal
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_deal_update_merged_previous(self, mock_add_task):
+        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
+        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
+        deal = await Deal.create(
+            name='Old test deal',
+            pd_deal_id=40,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage,
+            admin=self.admin,
+        )
+        deal2 = await Deal.create(
+            name='Old test deal2',
+            pd_deal_id=41,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage,
+            admin=self.admin,
+        )
+
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=self.admin,
+            deal=deal2,
+        )
+
+        assert await Deal.exists()
+
         data = copy.deepcopy(basic_pd_deal_data())
+        data['previous'] = copy.deepcopy(data['current'])
         data['previous'].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}'})
         data['current'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)

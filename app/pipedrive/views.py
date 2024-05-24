@@ -28,6 +28,7 @@ async def prepare_event_data(event_data: dict) -> dict:
                 event_data[state][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
                     event_data[state][hermes_id_pd_field_id], event_data['meta']['object']
                 )
+
     return event_data
 
 
