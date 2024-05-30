@@ -81,7 +81,10 @@ class TCClientExtraAttr(HermesBaseModel):
 
     @field_validator('value')
     @classmethod
-    def validate_value(cls, v):
+    def validate_value(cls, v, values):
+        if values.data['machine_name'] == 'termination_category':
+            debug('Termination category', v)
+            return v
         return v.lower().strip().strip('-')
 
 

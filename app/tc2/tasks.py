@@ -6,6 +6,7 @@ from app.base_schema import HermesBaseModel
 from app.models import Company, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient
 from app.tc2.api import tc2_request
+import logfire
 
 
 async def update_client_from_company(company: Company):
@@ -32,7 +33,9 @@ async def update_client_from_company(company: Company):
             extra_attrs[cf.tc2_machine_name] = val
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
-        await tc2_request('clients/', method='POST', data=client_data)
+        with logfire.span('Updating Cligency from Company'):
+            assert False
+            await tc2_request('clients/', method='POST', data=client_data)
 
 
 MODEL_TC2_LU = {Company: TCClient}

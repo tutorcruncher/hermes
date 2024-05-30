@@ -553,6 +553,27 @@ class TC2CallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         assert await Company.all().count() == 0
 
+    async def test_cb_client_deleted_no_linked_data(self):
+        """
+        Company deleted, has no contacts
+        """
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+        await Company.create(
+            tc2_agency_id=20, tc2_cligency_id=10, name='OurTutors', status='inactive', country='GB', sales_person=admin
+        )
+
+        modified_data = client_deleted_event_data()
+        modified_data['subject']['extra_attrs'] = [
+            {'machine_name': 'termination_category', 'value': 'Too Complicated'},
+        ]
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+        assert await Company.all().count() == 0
+
     async def test_cb_client_deleted_test_has_linked_data(self):
         """
         Company deleted, has contact
@@ -707,7 +728,7 @@ class TC2TasksTestCase(HermesTestCase):
         assert self.tc2.db['clients'] == {10: _client_data()}
 
     @mock.patch('app.tc2.api.session.request')
-    async def test_update_cligency(self, mock_request):
+    async def test_update_cligency(self, mock_request): # combine with this
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(
