@@ -84,16 +84,12 @@ def client_deleted_event_data():
         },
     }
 
+
 def client_edited_event_data():
     return {
         'action': 'EDITED_A_CLIENT',
         'verb': 'Edited a Client',
-        'subject': {
-            'id': 10,
-            'model': 'Client',
-            'first_name': 'Harry',
-            'last_name': 'Poster',
-        },
+        'subject': _client_data(),
     }
 
 
@@ -719,7 +715,7 @@ class TC2TasksTestCase(HermesTestCase):
         assert self.tc2.db['clients'] == {10: _client_data()}
 
     @mock.patch('app.tc2.api.session.request')
-    async def test_update_cligency(self, mock_request): # combine with this
+    async def test_update_cligency(self, mock_request):  # combine with this
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
         company = await Company.create(
@@ -750,6 +746,24 @@ class TC2TasksTestCase(HermesTestCase):
                     'who_are_you_trying_to_reach': 'support',
                 },
             }
+        }
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_termination(self, mock_request):  # combine with this
+        fake_tc2 = FakeTC2()
+        fake_tc2.db['clients'][10]['extra_attrs'] += [
+            {'machine_name': 'termination_category', 'value': 'Too Complicated'}
+        ]
+        mock_request.side_effect = fake_tc2_request(fake_tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+        await update_client_from_company(company)
+        assert fake_tc2.db['clients'][10]['extra_attrs'] == {
+            'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+            'who_are_you_trying_to_reach': 'support',
+            'termination_category': 'Too Complicated',
         }
 
     @mock.patch('app.tc2.api.session.request')
@@ -909,66 +923,3 @@ class TC2TasksTestCase(HermesTestCase):
         await pipedrive_id_field.delete()
         await domain_field.delete()
         await build_custom_field_schema()
-
-
-class TC2TasksAndClassTestCase(HermesTestCase):
-    def setUp(self):
-        super().setUp()
-        self.tc2 = FakeTC2()
-        self.tc_callback_url = '/tc2/callback/'
-
-    def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
-
-
-    @mock.patch('app.tc2.api.session.request')
-    async def test_cb_client_deleted_no_linked_data_update_cligency(self, mock_request):
-        """
-        Company deleted, has no contacts
-        """
-        # Handle the callback from TC2 to delete a company
-        admin = await Admin.create(
-            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
-        )
-        company = await Company.create(
-            tc2_agency_id=20, tc2_cligency_id=10, name='OurTutors', status='inactive', country='GB', sales_person=admin
-        )
-
-        modified_data = client_deleted_event_data()
-        modified_data['subject']['extra_attrs'] = [
-            {'machine_name': 'termination_category', 'value': 'Too Complicated'},
-        ]
-        events = [modified_data]
-        data = {'_request_time': 123, 'events': events}
-        r = await self.client.post(self.tc_callback_url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
-        assert r.status_code == 200, r.json()
-        assert await Company.all().count() == 0
-
-        # Handle the post to TC2 to update the cligency
-        mock_request.side_effect = fake_tc2_request(self.tc2)
-        await update_client_from_company(company)
-        assert self.tc2.db['clients'] == {
-            10: {
-                'user': {
-                    'email': 'mary@booth.com',
-                    'phone': None,
-                    'first_name': 'Mary',
-                    'last_name': 'Booth',
-                },
-                'status': 'live',
-                'sales_person_id': 30,
-                'associated_admin_id': 30,
-                'bdr_person_id': None,
-                'paid_recipients': [
-                    {
-                        'email': 'mary@booth.com',
-                        'first_name': 'Mary',
-                        'last_name': 'Booth',
-                    },
-                ],
-                'extra_attrs': {
-                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
-                    'who_are_you_trying_to_reach': 'support',
-                },
-            }
-        }
