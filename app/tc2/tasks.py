@@ -1,5 +1,6 @@
 from typing import Type
 
+import logfire
 from tortoise.query_utils import Prefetch
 
 from app.base_schema import HermesBaseModel
@@ -32,7 +33,8 @@ async def update_client_from_company(company: Company):
             extra_attrs[cf.tc2_machine_name] = val
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
-        await tc2_request('clients/', method='POST', data=client_data)
+        with logfire.span('Updating TC2 Cligency from Company'):
+            await tc2_request('clients/', method='POST', data=client_data)
 
 
 MODEL_TC2_LU = {Company: TCClient}
