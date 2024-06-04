@@ -741,6 +741,24 @@ class TC2TasksTestCase(HermesTestCase):
         }
 
     @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_termination(self, mock_request):
+        fake_tc2 = FakeTC2()
+        fake_tc2.db['clients'][10]['extra_attrs'] += [
+            {'machine_name': 'termination_category', 'value': 'Too Complicated'}
+        ]
+        mock_request.side_effect = fake_tc2_request(fake_tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+        await update_client_from_company(company)
+        assert fake_tc2.db['clients'][10]['extra_attrs'] == {
+            'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+            'who_are_you_trying_to_reach': 'support',
+            'termination_category': 'Too Complicated',
+        }
+
+    @mock.patch('app.tc2.api.session.request')
     async def test_update_cligency_with_deal(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
