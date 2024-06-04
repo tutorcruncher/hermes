@@ -132,7 +132,7 @@ Navigate to Profile > Tools and apps > Webhooks > Create 6 new webhooks:
 #### Setting the Data Fields:  
 Navigate to Company Settings > Data Fields
 
-###### Organization Custom Fields:
+###### Organization Default Custom Fields:
 ```  
 website  
 paid_invoice_count  
@@ -147,14 +147,33 @@ utm_source
 estimated_income
 currency
 ```  
-###### Person Custom Fields:
+###### Person Default Custom Fields:
 ```
 hermes_id
 ```
-###### Deal Custom Fields:
+###### Deal Default Custom Fields:
 ```
 hermes_id
 ```
+
+
+### How to add a new custom field to Pipedrive:
+
+For example we have a new field on the TC2 Cligency called `signup_questionnaire` that we want to add to the Organization in Pipedrive.
+
+1. Create the field in Pipedrive: [here](https://tutorcruncher.pipedrive.com/settings/fields?type=ORGANIZATION)
+   1. Be sure the name you set is lowercase and snake_case (with underscrolls) (i.e `signup_questionnaire`)
+   2. Set the field type to `Large text` (or whatever type you need)
+2. get the field key from the Pipedrive API by selecting the ... on the field and selecting `Copy API key`
+3. Now in hermes, navigate to the Custom Fields tab:
+   1. Create a new Custom Field
+   2. set the machine_name to the same snake_case name as the field in pipedrive (i.e `signup_questionnaire`)
+   3. set the Name to the name of the field in pipedrive (i.e `Signup Questionnaire`)
+   4. set the field_type to the type of the field in pipedrive (i.e `str`)
+   5. next set the value of either `hermes_field_name` or `tc2_machine_name` to that of the source data location i.e `signup_questionnaire` is coming from TC2 so set `tc2_machine_name` to `signup_questionnaire` and leave `hermes_field_name` blank.
+   6. set the `pd_field_id` to the field key you got from the pipedrive API (i.e `d4db234b06f753a951c0de94456740f270e0f2ed`)
+   7. set the `Linked Object Type` to the hermes object type that the field is linked to (i.e `Company`) 
+
 
 #### Pipedrive Users:
 Get your Pipedrive Owner ID for your Hermes Admins:  
@@ -217,5 +236,5 @@ If you mess up your migrations, you can reset the database with `make reset-db`.
 More details can be found in the aerich docs.
 
 ## Deploying to Heroku  
-Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes.  
+Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes. 
   
