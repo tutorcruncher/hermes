@@ -1,12 +1,12 @@
 from typing import Type
 
+import logfire
 from tortoise.query_utils import Prefetch
 
 from app.base_schema import HermesBaseModel
 from app.models import Company, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient
 from app.tc2.api import tc2_request
-import logfire
 
 
 async def update_client_from_company(company: Company):
