@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, List, Union
 
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
@@ -274,67 +274,56 @@ class WebhookMeta(HermesBaseModel):
     object: str
 
 
+async def update_and_delete_objects(objects: List[Union[Company, Contact, Deal]], main_object: Union[Company, Contact, Deal], object_type: str):
+    """
+    @param objects: a list of objects to update, can be either Company, Contact or Deal
+    @param main_object: the object to keep
+    @param object_type: the type of object we are dealing with
+    @return:    None
+    """
+    for object in objects:
+        if object_type == PDObjectNames.ORGANISATION:
+            contacts = await Contact.filter(company=object)
+            deals = await Deal.filter(company=object)
+        elif object_type == PDObjectNames.PERSON:
+            contacts = []
+            deals = await Deal.filter(contact=object)
+        elif object_type == PDObjectNames.DEAL:
+            contacts = []
+            deals = []
+
+        for contact in contacts:
+            contact.company = main_object
+            await contact.save()
+
+        for deal in deals:
+            if object_type == PDObjectNames.ORGANISATION:
+                deal.company = main_object
+            elif object_type == PDObjectNames.PERSON:
+                deal.contact = main_object
+            await deal.save()
+
+        if object.id != main_object.id:
+            await object.delete()
+
 async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     """
-    @param object_type: the type of object we are dealing with
     @param hermes_ids: a string of comma-separated hermes IDs
+    @param object_type: the type of object we are dealing with
     @return: a single hermes ID
-
-    This function is used to handle the case where a merge has caused Pipedrive object has multiple hermes IDs.
-    We need to choose one to keep, update all the related objects to point to that one, and delete the other objects.
     """
-
     if object_type == PDObjectNames.ORGANISATION:
-        companies = await Company.filter(id__in=hermes_ids.split(','))
-        main_org = companies[0]
-        for company in companies:
-            contacts = await Contact.filter(company=company)
-            for contact in contacts:
-                contact.company = main_org
-                await contact.save()
-
-            deals = await Deal.filter(company=company)
-            for deal in deals:
-                deal.company = main_org
-                await deal.save()
-
-            if company.id != main_org.id:
-                await company.delete()
-
-        return main_org.id
-
+        objects = await Company.filter(id__in=hermes_ids.split(','))
     elif object_type == PDObjectNames.PERSON:
-        contacts = await Contact.filter(id__in=hermes_ids.split(','))
-        main_contact = contacts[0]
-        for contact in contacts:
-            deals = await Deal.filter(contact=contact)
-            for deal in deals:
-                deal.contact = main_contact
-                await deal.save()
-
-            meetings = await Meeting.filter(contact=contact)
-            for meeting in meetings:
-                meeting.contact = main_contact
-                await meeting.save()
-
-            if contact.id != main_contact.id:
-                await contact.delete()
-
-        return main_contact.id
-
+        objects = await Contact.filter(id__in=hermes_ids.split(','))
     elif object_type == PDObjectNames.DEAL:
-        deals = await Deal.filter(id__in=hermes_ids.split(','))
-        main_deal = deals[0]
-        for deal in deals:
-            meetings = await Meeting.filter(deal=deal)
-            for meeting in meetings:
-                meeting.deal = main_deal
-                await meeting.save()
+        objects = await Deal.filter(id__in=hermes_ids.split(','))
 
-            if deal.id != main_deal.id:
-                await deal.delete()
+    main_object = objects[0]
+    await update_and_delete_objects(objects, main_object, object_type)
 
-        return main_deal.id
+    return main_object.id
+
 
 
 class PipedriveEvent(HermesBaseModel):
