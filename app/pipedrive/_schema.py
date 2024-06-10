@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any, Literal, Optional, List, Union
+from typing import Any, List, Literal, Optional, Union
 
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
@@ -274,7 +274,9 @@ class WebhookMeta(HermesBaseModel):
     object: str
 
 
-async def update_and_delete_objects(objects: List[Union[Company, Contact, Deal]], main_object: Union[Company, Contact, Deal], object_type: str):
+async def update_and_delete_objects(
+    objects: List[Union[Company, Contact, Deal]], main_object: Union[Company, Contact, Deal], object_type: str
+):
     """
     @param objects: a list of objects to update, can be either Company, Contact or Deal
     @param main_object: the object to keep
@@ -306,6 +308,7 @@ async def update_and_delete_objects(objects: List[Union[Company, Contact, Deal]]
         if object.id != main_object.id:
             await object.delete()
 
+
 async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     """
     @param hermes_ids: a string of comma-separated hermes IDs
@@ -323,7 +326,6 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     await update_and_delete_objects(objects, main_object, object_type)
 
     return main_object.id
-
 
 
 class PipedriveEvent(HermesBaseModel):
