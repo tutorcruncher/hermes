@@ -283,30 +283,37 @@ async def update_and_delete_objects(
     @param object_type: the type of object we are dealing with
     @return:    None
     """
-    for object in objects:
+    for obj in objects:
         if object_type == PDObjectNames.ORGANISATION:
-            contacts = await Contact.filter(company=object)
-            deals = await Deal.filter(company=object)
-        elif object_type == PDObjectNames.PERSON:
-            contacts = []
-            deals = await Deal.filter(contact=object)
-        elif object_type == PDObjectNames.DEAL:
-            contacts = []
-            deals = []
+            contacts = await Contact.filter(company=obj)
+            for contact in contacts:
+                contact.company = main_object
+                await contact.save()
 
-        for contact in contacts:
-            contact.company = main_object
-            await contact.save()
-
-        for deal in deals:
-            if object_type == PDObjectNames.ORGANISATION:
+            deals = await Deal.filter(company=obj)
+            for deal in deals:
                 deal.company = main_object
-            elif object_type == PDObjectNames.PERSON:
-                deal.contact = main_object
-            await deal.save()
+                await deal.save()
 
-        if object.id != main_object.id:
-            await object.delete()
+        elif object_type == PDObjectNames.PERSON:
+            deals = await Deal.filter(contact=obj)
+            for deal in deals:
+                deal.contact = main_object
+                await deal.save()
+
+            meetings = await Meeting.filter(contact=obj)
+            for meeting in meetings:
+                meeting.contact = main_object
+                await meeting.save()
+
+        elif object_type == PDObjectNames.DEAL:
+            meetings = await Meeting.filter(deal=obj)
+            for meeting in meetings:
+                meeting.deal = main_object
+                await meeting.save()
+
+        if obj.id != main_object.id:
+            await obj.delete()
 
 
 async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
