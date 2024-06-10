@@ -755,7 +755,7 @@ class TC2TasksTestCase(HermesTestCase):
         assert fake_tc2.db['clients'][10]['extra_attrs'] == {
             'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
             'who_are_you_trying_to_reach': 'support',
-            'termination_category': 'Too Complicated',
+            'termination_category': 'too-complicated',
         }
 
     @mock.patch('app.tc2.api.session.request')
