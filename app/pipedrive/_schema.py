@@ -79,6 +79,8 @@ class Organisation(PipedriveBaseModel):
             'pd_org_id': self.id,
             'name': self.name,
             'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
+            'support_person_id': self.support_person.id,
+            'bdr_person_id': self.bdr_person.id,
             **_remove_nulls(**cf_data_from_hermes),
         }
 
