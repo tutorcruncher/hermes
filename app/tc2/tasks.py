@@ -24,7 +24,7 @@ async def update_client_from_company(company: Company):
                 pipedrive_deal_stage=(await deal.stage).name, pipedrive_pipeline=(await deal.pipeline).name
             )
         custom_fields = await CustomField.filter(
-            linked_object_type=Company.__name__, tc2_machine_name__isnull=False
+            linked_object_type=Company.__name__,  tc2_machine_name__not=''
         ).prefetch_related(Prefetch('values', queryset=CustomFieldValue.filter(company=company)))
         for cf in custom_fields:
             if cf.hermes_field_name:
