@@ -12,7 +12,6 @@ async def update_client_from_company(company: Company):
     """
     When an Organisation or Deal changes in Pipedrive, we want to update the Cligency obj in TC.
     """
-    debug(company.__dict__)
     if cligency_id := company.tc2_cligency_id:
         tc_client = TCClient(**await tc2_request(f'clients/{cligency_id}/'))
         extra_attrs = {ea.machine_name: ea.value for ea in tc_client.extra_attrs}
