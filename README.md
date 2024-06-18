@@ -46,7 +46,7 @@ HERMES_URL = 'https://${your ngrok domain}'
 HERMES_API_KEY = ${tc2 api integration private key} # same as tc2_api_key in hermes env vars
 ```  
 
-#### Create a Meta Admins:  
+#### Create Meta Admins:  
 Create 5 Admins in TC2, for each of the following:
 - payg / startup sales
 - enterprise sales
@@ -55,12 +55,16 @@ Create 5 Admins in TC2, for each of the following:
 - bdr
   
 #### Meta Client Custom Fields:
-```  
-pipedrive_url: str (Long Textbox)          # url of the Organization in pipedrive
-pipedrive_id: int (Number)                 # id of the Organization in pipedrive
-pipedrive_deal_stage: str (Long Textbox)   # name of the stage of the deal in pipedrive
-pipedrive_pipeline: str (Long Textbox)     # name of the pipeline of the deal in pipedrive i.e Startup 
-```  
+Navigate to ... > Settings > Custom Fields > Add Custom Field
+```
+estimated_monthly_income: str (Short Textbox)     # estimated monthly income of the Cligency
+utm_source: str (Short Textbox)                  # utm source of the Cligency
+utm_campaign: str (Short Textbox)                # utm campaign of the Cligency
+currency: str (Short Textbox)                    # currency of the Cligency
+referer: str (Short Textbox)                     # referer of the Cligency
+```
+
+`bdr_person_id` ??
   
 #### Add API Integration to META:  
 
@@ -160,7 +164,9 @@ Create 5 Admins in Hermes, for each of the following:
 - support 2
 - bdr
 
-When creating the admin, ensure that the `email` matches their Google account email address, and that the `tc2_admin_id` matches the id of the admin in TC2. and that the `pd_user_id` matches the id of the user in Pipedrive.
+When creating the admin, ensure that the `email` matches their Google account email address, and that the `tc2_admin_id` matches the id of the admin in TC2. and that the `pd_owner_id` matches the id of the user in Pipedrive.
+
+for support admins, set the `pd_owner_id` to 0
 
 
 ### Custom Fields:
@@ -192,8 +198,28 @@ Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), 
 
 
 #### Template Custom Field setup:  
-https://dev.tutorcruncher.com/microservices/hermes/#suggested-default-custom-fields-setup:~:text=for%20admin%20users.-,Suggested%20Default%20Custom%20Fields%20Setup,-Logfire
-the only difference will be the `pd_field_id` which will be the id of the field in pipedrive.
+
+| ID | machine_name | name | field_type | hermes_field_name       | tc2_machine_name | pd_field_id | linked_object_type |
+|---|-------------|------|------------|-------------------------|------------------|-------------|--------------------|
+| 1 | website | Website | str        | website                 |  | xxxxxxxxxxx | Company            |
+| 2 | paid_invoice_count | Paid Invoice Count | int        | paid_invoice_count      |  | xxxxxxxxxxx | Company            |
+| 3 | tc2_status | TC2 Status | str        | tc2_status              |  | xxxxxxxxxxx | Company            |
+| 4 | tc2_cligency_url | TC2 Cligency URL | str        | tc2_cligency_url        |  | xxxxxxxxxxx | Company            |
+| 5 | utm_source | UTM Source | str        | utm_source              |  | xxxxxxxxxxx | Company            |
+| 6 | utm_campaign | UTM Campaign | str        | utm_campaign            |  | xxxxxxxxxxx | Company            |
+| 7 | estimated_monthly_income | Estimated Monthly Income | str        | estimated_income | estimated_monthly_income | xxxxxxxxxxx | Company            |
+| 8 | currency | Currency | str        | currency                | currency | xxxxxxxxxxx | Company            |
+| 8 | support_person_id | Support Person ID | int        | support_person_id       |  | xxxxxxxxxxx | Company            |
+| 9 | bdr_person_id | BDR Person ID | int        | bdr_person_id           |  | xxxxxxxxxxx | Company            |
+| 10 | hermes_id | Hermes ID | fk_field   | id                      |  | xxxxxxxxxxx | Company            |
+| 11 | hermes_id | Hermes ID | fk_field        | id                      |  | xxxxxxxxxxx | Contact            |
+| 12 | hermes_id | Hermes ID | fk_field        | id                      |  | xxxxxxxxxxx | Deal               |
+
+
+- replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
+
+
+
 
 ### Ngrok:  
 We use ngrok to expose our local hermes server to the internet, so that we can receive webhooks from Pipedrive.
@@ -231,12 +257,12 @@ You should now have 3 pipelines:
 - `STARTUP`  
 - `ENTERPRISE`
 
-- Now edit each pipeline and set the `dft_entry_pipeline_stage` to the stage that the deal should be set to when it is first created in pipedrive. (warning, dropdown is not filtered by pipeline)  
+Now edit each pipeline and set the `dft_entry_pipeline_stage` to the stage that the deal should be set to when it is first created in pipedrive. (warning, dropdown is not filtered by pipeline)  
   
 
 #### Config Tab  
 
-- Set Price Plan Pipelines to their associated Hermes Pipeline ID i.e ()
+- Set Price Plan Pipelines to their associated Hermes Pipeline ID
 
 
 #### Setup Callbooker:  
@@ -271,19 +297,34 @@ For example we have a new field on the TC2 Cligency called `signup_questionnaire
    7. set the `Linked Object Type` to the hermes object type that the field is linked to (i.e `Company`) 
 
 
+### if in doubt, restart the server
+- When updating and saving anything in the hermes admin, you should restart the server to ensure the changes are picked up. :exploading_head:
+
+
+### Basic setup dumps
+
+- I have created a couple basic setup dumps that you can use to get started with the basic setup of the system, you can find them [here](https://drive.google.com/drive/folders/1b-ldYBI5gyUQiC62zNLgglmux0_n4U-y?usp=drive_link)
+
 ## Testing  
 
 Unittests can be run with `make test`. You will need to install the test dependencies with `make install-dev` first.
 
 
+- be sure to login to meta with one of ur newly created admins and NOT `testing@tutorcruncher.com`, as superadmins dont trigger actions and webhooks to be sent :exploding_head:
+- you can set the password of one of your newly created admins like this:
+```
+Administrator.objects.get(id=68).user
+user = _
+user.set_password('testing')
+user.save(update_fields=['password'])
+```
 ### Example testing workflows:
 
 #### Company Signup:
-- in TC2 signup form, fill in the details and submit
+- in TC2 signup form (`/start/1`), fill in the details and submit
 - This will create the Cligency in TC2
 - This will trigger a webhook to create a Company in Hermes
 - Hermes will create the Organization in Pipedrive
-
 
 
 
