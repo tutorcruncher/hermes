@@ -1,11 +1,26 @@
 import re
-from typing import Any, Literal, Optional
+from enum import Enum
+from typing import Any, List, Literal, Optional, Union
 
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
 
 from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
+
+
+class PDStatus(str, Enum):
+    PREVIOUS = 'previous'
+    CURRENT = 'current'
+
+
+class PDObjectNames(str, Enum):
+    ORGANISATION = 'organization'
+    PERSON = 'person'
+    DEAL = 'deal'
+    PIPELINE = 'pipeline'
+    STAGE = 'stage'
+    ACTIVITY = 'activity'
 
 
 def _remove_nulls(**kwargs):
@@ -259,6 +274,67 @@ class WebhookMeta(HermesBaseModel):
     object: str
 
 
+async def update_and_delete_objects(
+    objects: List[Union[Company, Contact, Deal]], main_object: Union[Company, Contact, Deal], object_type: str
+):
+    """
+    @param objects: a list of objects to update, can be either Company, Contact or Deal
+    @param main_object: the object to keep
+    @param object_type: the type of object we are dealing with
+    @return:    None
+    """
+    for obj in objects:
+        if object_type == PDObjectNames.ORGANISATION:
+            contacts = await Contact.filter(company=obj)
+            for contact in contacts:
+                contact.company = main_object
+                await contact.save()
+
+            deals = await Deal.filter(company=obj)
+            for deal in deals:
+                deal.company = main_object
+                await deal.save()
+
+        elif object_type == PDObjectNames.PERSON:
+            deals = await Deal.filter(contact=obj)
+            for deal in deals:
+                deal.contact = main_object
+                await deal.save()
+
+            meetings = await Meeting.filter(contact=obj)
+            for meeting in meetings:
+                meeting.contact = main_object
+                await meeting.save()
+
+        elif object_type == PDObjectNames.DEAL:
+            meetings = await Meeting.filter(deal=obj)
+            for meeting in meetings:
+                meeting.deal = main_object
+                await meeting.save()
+
+        if obj.id != main_object.id:
+            await obj.delete()
+
+
+async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
+    """
+    @param hermes_ids: a string of comma-separated hermes IDs
+    @param object_type: the type of object we are dealing with
+    @return: a single hermes ID
+    """
+    if object_type == PDObjectNames.ORGANISATION:
+        objects = await Company.filter(id__in=hermes_ids.split(','))
+    elif object_type == PDObjectNames.PERSON:
+        objects = await Contact.filter(id__in=hermes_ids.split(','))
+    elif object_type == PDObjectNames.DEAL:
+        objects = await Deal.filter(id__in=hermes_ids.split(','))
+
+    main_object = objects[0]
+    await update_and_delete_objects(objects, main_object, object_type)
+
+    return main_object.id
+
+
 class PipedriveEvent(HermesBaseModel):
     # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
@@ -269,31 +345,31 @@ class PipedriveEvent(HermesBaseModel):
     @classmethod
     def validate_object_type(cls, values):
         obj_type = values['meta']['object']
-        for f in ['current', 'previous']:
+        for f in [PDStatus.CURRENT, PDStatus.PREVIOUS]:
             if v := values.get(f):
                 v['obj_type'] = obj_type
             else:
                 values.pop(f, None)
         return values
 
-    @field_validator('current', 'previous', mode='before')
+    @field_validator(PDStatus.CURRENT, PDStatus.PREVIOUS, mode='before')
     @classmethod
     def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
         """
         It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
         rebuild the model when adding custom fields.
         """
-        if v['obj_type'] == 'organization':
+        if v['obj_type'] == PDObjectNames.ORGANISATION:
             return Organisation(**v)
-        elif v['obj_type'] == 'person':
+        elif v['obj_type'] == PDObjectNames.PERSON:
             return Person(**v)
-        elif v['obj_type'] == 'deal':
+        elif v['obj_type'] == PDObjectNames.DEAL:
             return PDDeal(**v)
-        elif v['obj_type'] == 'pipeline':
+        elif v['obj_type'] == PDObjectNames.PIPELINE:
             return PDPipeline(**v)
-        elif v['obj_type'] == 'stage':
+        elif v['obj_type'] == PDObjectNames.STAGE:
             return PDStage(**v)
-        elif v['obj_type'] == 'activity':
+        elif v['obj_type'] == PDObjectNames.ACTIVITY:
             return Activity(**v)
         else:
             raise ValueError(f'Unknown object type {v["obj_type"]}')
