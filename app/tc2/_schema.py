@@ -81,7 +81,7 @@ class TCClientExtraAttr(HermesBaseModel):
 
     @field_validator('value')
     @classmethod
-    def validate_value(cls, v, values):
+    def validate_value(cls, v):
         return v.lower().strip().strip('-')
 
 
