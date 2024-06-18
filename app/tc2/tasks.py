@@ -23,14 +23,14 @@ async def update_client_from_company(company: Company):
                 pipedrive_deal_stage=(await deal.stage).name, pipedrive_pipeline=(await deal.pipeline).name
             )
         custom_fields = await CustomField.filter(
-            linked_object_type=Company.__name__, tc2_machine_name__not=''
+            linked_object_type=Company.__name__, tc2_machine_name__isnull=False
         ).prefetch_related(Prefetch('values', queryset=CustomFieldValue.filter(company=company)))
         for cf in custom_fields:
             if cf.hermes_field_name:
                 val = getattr(company, cf.hermes_field_name, None)
             else:
                 val = cf.values[0].value if cf.values else None
-            extra_attrs[cf.tc2_machine_name] = val # the error is happening here, as bdr person does not have a tc2_machine_name, as it is a meta_agency field not a custom field
+            extra_attrs[cf.tc2_machine_name] = val
 
         for ea in tc_client.extra_attrs:
             if ea.machine_name == 'termination_category':
@@ -38,20 +38,6 @@ async def update_client_from_company(company: Company):
 
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
-
-        # Update the admins
-        if company.support_person:
-            support_person = await company.support_person
-            client_data['associated_admin'] = support_person.tc2_admin_id
-
-        if company.bdr_person:
-            bdr_person = await company.bdr_person
-            client_data['bdr_person'] = bdr_person.tc2_admin_id
-
-        if company.sales_person:
-            sales_person = await company.sales_person
-            client_data['sales_person'] = sales_person.tc2_admin_id
-
         await tc2_request('clients/', method='POST', data=client_data)
 
 
