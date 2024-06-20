@@ -38,6 +38,7 @@ async def callback(event: PipedriveEvent, tasks: BackgroundTasks):
     elif event.meta.object == 'person':
         await _process_pd_person(event.current, event.previous)
     elif event.meta.object == 'organization':
+        debug('Processing organization')
         company = await _process_pd_organisation(event.current, event.previous)
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id

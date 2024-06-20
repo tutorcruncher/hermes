@@ -31,8 +31,10 @@ async def _process_pd_organisation(
         existing_company = None
     company = current_company or old_company or existing_company
     company_custom_fields = await CustomField.filter(linked_object_type='Company')
+    debug(company_custom_fields)
     if company:
         if current_pd_org:
+            debug('Processing company')
             # The org has been updated
             old_org_data = old_pd_org and await old_pd_org.company_dict(company_custom_fields)
             new_org_data = await current_pd_org.company_dict(company_custom_fields)
@@ -48,15 +50,18 @@ async def _process_pd_organisation(
                     'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
                 )
         else:
+            debug('Deleting company')
             # The org has been deleted. The linked custom fields will also be deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
+        debug('Creating company')
         # The org has just been created
-        company = await Company.create(**await current_pd_org.company_dict(company_custom_fields))
+        company = await Company.create(**await current_pd_org.create_company_dict(company_custom_fields)) # this is the only place where we create a Company from the pd_org_info
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
         new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
+        debug(new_company_cf_vals)
         cfs_created = await company.process_custom_field_vals({}, new_company_cf_vals)
         if cfs_created:
             app_logger.info(

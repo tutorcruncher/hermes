@@ -78,9 +78,46 @@ class Organisation(PipedriveBaseModel):
 
         admins_from_hermes = {}
         if hasattr(self, 'support_person') and self.support_person:
+            if isinstance(self.support_person, int):
+                self.support_person = await Admin.get(id=self.support_person)
             admins_from_hermes['support_person_id'] = self.support_person.id
+
         if hasattr(self, 'bdr_person') and self.bdr_person:
+            if isinstance(self.bdr_person, int):
+                self.bdr_person = await Admin.get(id=self.bdr_person)
             admins_from_hermes['bdr_person_id'] = self.bdr_person.id
+
+        debug(admins_from_hermes)
+
+        return {
+            'pd_org_id': self.id,
+            'name': self.name,
+            'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
+            **_remove_nulls(**cf_data_from_hermes),
+            **_remove_nulls(**admins_from_hermes),
+        }
+
+    async def create_company_dict(self, custom_fields: list[CustomField]) -> dict:
+        cf_data_from_hermes = {
+            c.hermes_field_name: getattr(self, c.machine_name)
+            for c in custom_fields
+            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
+        }
+
+        admins_from_hermes = {}
+        if hasattr(self, 'support_person') and self.support_person:
+            if isinstance(self.support_person, int):
+                self.support_person = await Admin.get(id=self.support_person)
+                admins_from_hermes['support_person'] = self.support_person
+            # admins_from_hermes['support_person_id'] = self.support_person.id
+
+        if hasattr(self, 'bdr_person') and self.bdr_person:
+            if isinstance(self.bdr_person, int):
+                self.bdr_person = await Admin.get(id=self.bdr_person)
+                admins_from_hermes['bdr_person'] = self.bdr_person
+            # admins_from_hermes['bdr_person_id'] = self.bdr_person.id
+
+        debug(admins_from_hermes)
 
         return {
             'pd_org_id': self.id,

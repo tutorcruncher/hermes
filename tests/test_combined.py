@@ -11,13 +11,14 @@ from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import fake_gcal_builder
 from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
-from tests.test_tc2 import client_full_event_data, mock_tc2_request
+from tests.test_tc2 import client_full_event_data, mock_tc2_request, FakeTC2, fake_tc2_request
 
 
 class TestMultipleServices(HermesTestCase):
     def setUp(self):
         super().setUp()
         self.pipedrive = FakePipedrive()
+        self.tc2 = FakeTC2()
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -309,3 +310,110 @@ class TestMultipleServices(HermesTestCase):
         assert company.sales_person_id == sales_admin.id
 
     # lets write a test which has a company setup in pipedrive and tc2 and hermes, then lets mock a a webhook from pipedrive updating the bdr person and check company.bdr_person is updated and that the bdr person updated
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pipedrive_cb_create_then_update_bdr_person_across_tc2_and_hermes(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = fake_tc2_request(self.tc2)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+
+        bdr_person_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='234_bdr_person_id_567',
+            hermes_field_name='bdr_person',
+            name='BDR Person',
+            field_type='int',
+        )
+        await build_custom_field_schema()
+
+        pd_org_data = {
+            'v': 1,
+            'matches_filters': {'current': []},
+            'meta': {'action': 'updated', 'object': 'organization'},
+            'current': {
+                'owner_id': 10,
+                'id': 20,
+                'name': 'Test company',
+                'address_country': None,
+                '123_source_456': None,
+                '234_bdr_person_id_567': admin.id,
+            },
+            'previous': {},
+            'event': 'updated.organization',
+        }
+
+        r = await self.client.post('/pipedrive/callback/', json=pd_org_data)
+        assert r.status_code == 200, r.json()
+        debug(await Company.all())
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == admin.id
+        debug(company.bdr_person)
+        assert await company.bdr_person == admin
+        # check bdr person has been updated
+
+        assert not await CustomFieldValue.exists()
+
+        # now check tc2 has been updated
+
+        assert self.tc2.db['clients'] == {
+            10: {
+                'user': {
+                    'email': 'mary@booth.com',
+                    'phone': None,
+                    'first_name': 'Mary',
+                    'last_name': 'Booth',
+                },
+                'status': 'live',
+                'sales_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'bdr_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'associated_admin': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'paid_recipients': [
+                    {
+                        'email': 'mary@booth.com',
+                        'first_name': 'Mary',
+                        'last_name': 'Booth',
+                    },
+                ],
+                'extra_attrs': {
+                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+                    'pipedrive_id': 20,
+                    'who_are_you_trying_to_reach': 'support',
+                    'company_domain': None,
+                },
+            }
+        }
+
+        await source_field.delete()
+        await bdr_person_field.delete()
+        await build_custom_field_schema()
