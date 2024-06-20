@@ -45,14 +45,11 @@ async def update_client_from_company(company: Company):
 
         if company.sales_person:
             sales_person = await company.sales_person
-            debug(sales_person.__dict__)
             client_data['sales_person'] = sales_person.tc2_admin_id
 
         client_data.pop('associated_admin_id', None)
         client_data.pop('bdr_person_id', None)
         client_data.pop('sales_person_id', None)
-
-        debug(client_data)
 
         with logfire.span('POST to TC2 clients/'):
             await tc2_request('clients/', method='POST', data=client_data)

@@ -307,3 +307,5 @@ class TestMultipleServices(HermesTestCase):
         assert company.name == 'MyTutors'
         assert company.bdr_person_id == bdr_person.id
         assert company.sales_person_id == sales_admin.id
+
+    # lets write a test which has a company setup in pipedrive and tc2 and hermes, then lets mock a a webhook from pipedrive updating the bdr person and check company.bdr_person is updated and that the bdr person updated
