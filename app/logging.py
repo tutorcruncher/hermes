@@ -15,6 +15,7 @@ config = {
     'handlers': {
         'default': {'formatter': 'default', 'class': 'logging.StreamHandler', 'stream': 'ext://sys.stderr'},
         'access': {'formatter': 'access', 'class': 'logging.StreamHandler', 'stream': 'ext://sys.stdout'},
+        'logfire': {'class': 'logfire.integrations.logging.LogfireLoggingHandler'},
     },
     'loggers': {
         'hermes': {'handlers': ['default'], 'level': logging_level, 'propagate': False},
