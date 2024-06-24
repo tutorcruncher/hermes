@@ -11,7 +11,7 @@ from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import fake_gcal_builder
 from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
-from tests.test_tc2 import client_full_event_data, mock_tc2_request, FakeTC2, fake_tc2_request
+from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
 
 class TestMultipleServices(HermesTestCase):
@@ -312,7 +312,7 @@ class TestMultipleServices(HermesTestCase):
     # lets write a test which has a company setup in pipedrive and tc2 and hermes, then lets mock a a webhook from pipedrive updating the bdr person and check company.bdr_person is updated and that the bdr person updated
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_pipedrive_cb_create_then_update_bdr_person_across_tc2_and_hermes(self, mock_pd_request, mock_tc2_get):
+    async def test_tc2_cb_create_company_create_org_update_org(self, mock_pd_request, mock_tc2_get):
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
         mock_tc2_get.side_effect = fake_tc2_request(self.tc2)
 
@@ -321,99 +321,49 @@ class TestMultipleServices(HermesTestCase):
             first_name='Brain',
             last_name='Johnson',
             username='brian@tc.com',
-            password='foo',
-            pd_owner_id=10,
         )
 
-        source_field = await CustomField.create(
+        await CustomField.create(
             linked_object_type='Company',
-            pd_field_id='123_source_456',
-            name='Source',
-            field_type='str',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
         )
 
-        bdr_person_field = await CustomField.create(
+        await CustomField.create(
             linked_object_type='Company',
-            pd_field_id='234_bdr_person_id_567',
+            pd_field_id='123_bdr_person_456',
             hermes_field_name='bdr_person',
             name='BDR Person',
-            field_type='int',
+            field_type=CustomField.TYPE_FK_FIELD,
         )
         await build_custom_field_schema()
 
-        pd_org_data = {
-            'v': 1,
-            'matches_filters': {'current': []},
-            'meta': {'action': 'updated', 'object': 'organization'},
-            'current': {
-                'owner_id': 10,
-                'id': 20,
-                'name': 'Test company',
-                'address_country': None,
-                '123_source_456': None,
-                '234_bdr_person_id_567': admin.id,
-            },
-            'previous': {},
-            'event': 'updated.organization',
-        }
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['name'] = 'MyTutors'
+        modified_data['subject']['bdr_person'] = None
+        events = [modified_data]
 
-        r = await self.client.post('/pipedrive/callback/', json=pd_org_data)
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
-        debug(await Company.all())
+
+        assert await Company.exists()
         company = await Company.get()
-        assert company.name == 'Test company'
-        assert company.sales_person_id == admin.id
-        debug(company.bdr_person)
-        assert await company.bdr_person == admin
-        # check bdr person has been updated
+        assert company.name == 'MyTutors'
+        assert not company.bdr_person
+        assert await company.support_person == await company.sales_person == admin
 
-        assert not await CustomFieldValue.exists()
-
-        # now check tc2 has been updated
-
-        assert self.tc2.db['clients'] == {
-            10: {
-                'user': {
-                    'email': 'mary@booth.com',
-                    'phone': None,
-                    'first_name': 'Mary',
-                    'last_name': 'Booth',
-                },
-                'status': 'live',
-                'sales_person': {
-                    'id': 30,
-                    'first_name': 'Brain',
-                    'last_name': 'Johnson',
-                    'email': 'brian@tc.com',
-                },
-                'bdr_person': {
-                    'id': 30,
-                    'first_name': 'Brain',
-                    'last_name': 'Johnson',
-                    'email': 'brian@tc.com',
-                },
-                'associated_admin': {
-                    'id': 30,
-                    'first_name': 'Brain',
-                    'last_name': 'Johnson',
-                    'email': 'brian@tc.com',
-                },
-                'paid_recipients': [
-                    {
-                        'email': 'mary@booth.com',
-                        'first_name': 'Mary',
-                        'last_name': 'Booth',
-                    },
-                ],
-                'extra_attrs': {
-                    'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
-                    'pipedrive_id': 20,
-                    'who_are_you_trying_to_reach': 'support',
-                    'company_domain': None,
-                },
+        # check that pipedrive has the correct data
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': None,
+                '123_hermes_id_456': company.id,
+                '123_sales_person_456': admin.id,
+                '123_bdr_person_456': None,
             }
         }
-
-        await source_field.delete()
-        await bdr_person_field.delete()
-        await build_custom_field_schema()
