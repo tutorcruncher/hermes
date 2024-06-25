@@ -23,9 +23,10 @@ async def prepare_event_data(event_data: dict) -> dict:
     """
     hermes_id_cf_fields = await CustomField.filter(machine_name='hermes_id').values_list('pd_field_id', flat=True)
     for hermes_id_pd_field_id in hermes_id_cf_fields:
-        for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
+        for state in [PDStatus.PREVIOUS.value, PDStatus.CURRENT.value]:
             if (
                 state in event_data
+                and event_data[state]
                 and hermes_id_pd_field_id in event_data[state]
                 and isinstance(event_data[state][hermes_id_pd_field_id], str)
             ):
@@ -42,7 +43,7 @@ async def callback(event: dict, tasks: BackgroundTasks):
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     TODO: This has 0 security, we should add some.
     """
-
+    debug(event)
     event_data = await prepare_event_data(event)
     event_instance = PipedriveEvent(**event_data)
 
