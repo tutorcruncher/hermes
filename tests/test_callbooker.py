@@ -79,7 +79,6 @@ class MeetingBookingTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=meeting_data)
         assert r.status_code == 422
         detail = r.json()['detail']
-        detail[0].pop('url')
         assert detail == [
             {
                 'type': 'value_error',
