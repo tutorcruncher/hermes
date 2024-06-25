@@ -43,7 +43,6 @@ async def callback(event: dict, tasks: BackgroundTasks):
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     TODO: This has 0 security, we should add some.
     """
-    debug(event)
     event_data = await prepare_event_data(event)
     event_instance = PipedriveEvent(**event_data)
 
