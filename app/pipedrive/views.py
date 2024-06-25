@@ -26,6 +26,7 @@ async def prepare_event_data(event_data: dict) -> dict:
         for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
             if (
                 state in event_data
+                and event_data[state]
                 and hermes_id_pd_field_id in event_data[state]
                 and isinstance(event_data[state][hermes_id_pd_field_id], str)
             ):
