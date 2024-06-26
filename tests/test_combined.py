@@ -408,7 +408,7 @@ class TestMultipleServices(HermesTestCase):
         modified_data = client_full_event_data()
         modified_data['subject']['meta_agency']['name'] = 'MyTutors'
         modified_data['subject']['bdr_person'] = None
-        modified_data['subject']['signup_questionnaire'] = {
+        modified_data['subject']['meta_agency']['signup_questionnaire'] = {
             'question1': 'answer1',
             'question2': 'answer2',
         }
