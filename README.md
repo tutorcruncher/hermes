@@ -199,21 +199,22 @@ Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), 
 
 #### Template Custom Field setup:  
 
-| ID | machine_name | name | field_type | hermes_field_name | tc2_machine_name | pd_field_id | linked_object_type |
-|---|-------------|------|------------|-------------------|------------------|-------------|--------------------|
-| 1 | website | Website | str        | website           |  | xxxxxxxxxxx | Company            |
-| 2 | paid_invoice_count | Paid Invoice Count | int        | paid_invoice_count |  | xxxxxxxxxxx | Company            |
-| 3 | tc2_status | TC2 Status | str        | tc2_status        |  | xxxxxxxxxxx | Company            |
-| 4 | tc2_cligency_url | TC2 Cligency URL | str        | tc2_cligency_url  |  | xxxxxxxxxxx | Company            |
-| 5 | utm_source | UTM Source | str        | utm_source        |  | xxxxxxxxxxx | Company            |
-| 6 | utm_campaign | UTM Campaign | str        | utm_campaign      |  | xxxxxxxxxxx | Company            |
+| ID | machine_name | name | field_type | hermes_field_name | tc2_machine_name         | pd_field_id | linked_object_type |
+|---|-------------|------|------------|-------------------|--------------------------|-------------|--------------------|
+| 1 | website | Website | str        | website           | website                  | xxxxxxxxxxx | Company            |
+| 2 | paid_invoice_count | Paid Invoice Count | int        | paid_invoice_count |                          | xxxxxxxxxxx | Company            |
+| 3 | tc2_status | TC2 Status | str        | tc2_status        |                          | xxxxxxxxxxx | Company            |
+| 4 | tc2_cligency_url | TC2 Cligency URL | str        | tc2_cligency_url  |                          | xxxxxxxxxxx | Company            |
+| 5 | utm_source | UTM Source | str        | utm_source        | utm_source               | xxxxxxxxxxx | Company            |
+| 6 | utm_campaign | UTM Campaign | str        | utm_campaign      |    utm_campaign                      | xxxxxxxxxxx | Company            |
 | 7 | estimated_monthly_income | Estimated Monthly Income | str        | estimated_income | estimated_monthly_income | xxxxxxxxxxx | Company            |
-| 8 | currency | Currency | str        | currency          | currency | xxxxxxxxxxx | Company            |
-| 8 | support_person_id | Support Person ID | int        | support_person    |  | xxxxxxxxxxx | Company            |
-| 9 | bdr_person_id | BDR Person ID | int        | bdr_person        |  | xxxxxxxxxxx | Company            |
-| 10 | hermes_id | Hermes ID | fk_field   | id                |  | xxxxxxxxxxx | Company            |
-| 11 | hermes_id | Hermes ID | fk_field        | id                |  | xxxxxxxxxxx | Contact            |
-| 12 | hermes_id | Hermes ID | fk_field        | id                |  | xxxxxxxxxxx | Deal               |
+| 8 | currency | Currency | str        | currency          | currency                 | xxxxxxxxxxx | Company            |
+| 8 | support_person_id | Support Person ID | int        | support_person    |                          | xxxxxxxxxxx | Company            |
+| 9 | bdr_person_id | BDR Person ID | int        | bdr_person        |                          | xxxxxxxxxxx | Company            |
+| 10 | signup_questionnaire | Signup Questionnaire | str        | signup_questionnaire | signup_questionnaire     | xxxxxxxxxxx | Company            |
+| 10 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Company            |
+| 11 | hermes_id | Hermes ID | fk_field        | id                |                          | xxxxxxxxxxx | Contact            |
+| 12 | hermes_id | Hermes ID | fk_field        | id                |                          | xxxxxxxxxxx | Deal               |
 
 
 - replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
