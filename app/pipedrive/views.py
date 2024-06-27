@@ -1,3 +1,5 @@
+from typing import Union, Callable
+
 from fastapi import APIRouter
 from starlette.background import BackgroundTasks
 
@@ -18,22 +20,35 @@ pipedrive_router = APIRouter()
 
 async def prepare_event_data(event_data: dict) -> dict:
     """
-    This function retrieves all the pd_field_ids for the custom field 'hermes_id' and then checks if the previous value
-    is a string. If it is, it calls handle_duplicate_hermes_ids to handle the duplicate hermes_id.
+    This function, `prepare_event_data`, processes the event data by handling custom fields 'hermes_id' and
+    'signup_questionnaire'.
+    For 'hermes_id', it retrieves all the pd_field_ids and checks if the previous value is a
+    string. If it is, it calls the function `handle_duplicate_hermes_ids` to handle any duplicate hermes_id.
+    For 'signup_questionnaire', it retrieves all the pd_field_ids and checks if the current and previous values are
+    different. If they are, it sets the current value back to the previous value.
     """
-    hermes_id_cf_fields = await CustomField.filter(machine_name='hermes_id').values_list('pd_field_id', flat=True)
-    for hermes_id_pd_field_id in hermes_id_cf_fields:
-        for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
-            if (
-                state in event_data
-                and event_data[state]
-                and hermes_id_pd_field_id in event_data[state]
-                and isinstance(event_data[state][hermes_id_pd_field_id], str)
-            ):
-                event_data[state][hermes_id_pd_field_id] = await handle_duplicate_hermes_ids(
-                    event_data[state][hermes_id_pd_field_id], event_data['meta']['object']
-                )
 
+    async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None):
+        cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
+        for pd_field_id in cf_fields:
+            for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
+                if (
+                        data.get(state)
+                        and pd_field_id in data[state]
+                        and isinstance(data[state][pd_field_id], str)
+                ):
+                    if handle_func == 'revert changes':
+                        if state == PDStatus.PREVIOUS:
+                            data[PDStatus.CURRENT][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
+
+                    if callable(handle_func):
+                        data[state][pd_field_id] = await handle_func(
+                            data[state][pd_field_id], data['meta']['object']
+                        )
+        return data
+
+    event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
+    event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
     return event_data
 
 
