@@ -220,6 +220,7 @@ class Company(HermesModel):
     utm_campaign = fields.CharField(max_length=255, null=True)
     utm_source = fields.CharField(max_length=255, null=True)
     narc = fields.BooleanField(default=False)
+
     signup_questionnaire = fields.JSONField(null=True)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
@@ -398,13 +399,10 @@ class CustomField(models.Model):
     TYPE_STR = 'str'
     TYPE_BOOL = 'bool'
     TYPE_FK_FIELD = 'fk_field'
-    TYPE_JSON = 'json'
     TYPE_CHOICES = (
         (TYPE_INT, TYPE_INT),
         (TYPE_STR, TYPE_STR),
         (TYPE_BOOL, TYPE_BOOL),
-        (TYPE_FK_FIELD, TYPE_FK_FIELD),
-        (TYPE_JSON, TYPE_JSON),
     )
 
     id = fields.IntField(pk=True)
@@ -412,7 +410,7 @@ class CustomField(models.Model):
     name = fields.CharField(max_length=255)
     machine_name = fields.CharField(max_length=255, null=True)
     field_type = fields.CharField(
-        max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD, TYPE_JSON), description='The type of field.'
+        max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD), description='The type of field.'
     )
 
     hermes_field_name = fields.CharField(

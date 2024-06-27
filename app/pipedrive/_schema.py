@@ -1,4 +1,3 @@
-import json
 import re
 from enum import Enum
 from typing import Any, List, Literal, Optional, Union
@@ -74,7 +73,6 @@ class Organisation(PipedriveBaseModel):
 
     @classmethod
     async def from_company(cls, company: Company) -> 'Organisation':
-        debug(company.signup_questionnaire)
         cls_kwargs = dict(
             name=company.name,
             owner_id=(await company.sales_person).pd_owner_id,
@@ -84,8 +82,6 @@ class Organisation(PipedriveBaseModel):
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))
         final_kwargs = _remove_nulls(**cls_kwargs)
-        debug(final_kwargs)
-        debug(cls(**final_kwargs))
         return cls(**final_kwargs)
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:

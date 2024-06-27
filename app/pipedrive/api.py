@@ -125,9 +125,7 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     @param company: Company object
     @return: Organisation object
     """
-    debug(company.__dict__)
     hermes_org = await Organisation.from_company(company)
-    debug(hermes_org.__dict__)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
     if company.pd_org_id:
         # get by pipedrive Org ID

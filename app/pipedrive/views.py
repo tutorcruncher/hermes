@@ -1,4 +1,4 @@
-from typing import Union, Callable
+from typing import Callable, Union
 
 from fastapi import APIRouter
 from starlette.background import BackgroundTasks
@@ -32,19 +32,13 @@ async def prepare_event_data(event_data: dict) -> dict:
         cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
         for pd_field_id in cf_fields:
             for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
-                if (
-                        data.get(state)
-                        and pd_field_id in data[state]
-                        and isinstance(data[state][pd_field_id], str)
-                ):
+                if data.get(state) and pd_field_id in data[state] and isinstance(data[state][pd_field_id], str):
                     if handle_func == 'revert changes':
                         if state == PDStatus.PREVIOUS:
                             data[PDStatus.CURRENT][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
 
                     if callable(handle_func):
-                        data[state][pd_field_id] = await handle_func(
-                            data[state][pd_field_id], data['meta']['object']
-                        )
+                        data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['object'])
         return data
 
     event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)

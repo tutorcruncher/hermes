@@ -1937,14 +1937,25 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
-        company = await Company.create(name='Old test company', sales_person=self.admin, signup_questionnaire={
-            'question1': 'answer1',
-            'question2': 'answer2',
-        })
+        company = await Company.create(
+            name='Old test company',
+            sales_person=self.admin,
+            signup_questionnaire={
+                'question1': 'answer1',
+                'question2': 'answer2',
+            },
+        )
         data = copy.deepcopy(basic_pd_org_data())
         data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id, **{'123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}'})
-        data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_signup_questionnaire_456': '{"question1": "answer123", "question2": "answer2456"}'})
+        data[PDStatus.PREVIOUS].update(
+            hermes_id=company.id, **{'123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}'}
+        )
+        data[PDStatus.CURRENT].update(
+            **{
+                'name': 'New test company',
+                '123_signup_questionnaire_456': '{"question1": "answer123", "question2": "answer2456"}',
+            }
+        )
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()

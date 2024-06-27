@@ -83,9 +83,7 @@ async def update_from_client_event(
     """
     if isinstance(tc2_subject, TCSubject):
         try:
-            debug(tc2_subject.__dict__)
             tc2_client = TCClient(**tc2_subject.model_dump())
-            debug(tc2_client.__dict__)
         except ValidationError as e:
             # If the user has been deleted, then we'll only get very simple data about them in the webhook. Therefore
             # we know to delete their details from our database.
