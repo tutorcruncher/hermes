@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING, Any, Optional, Type
 
 from fastapi.exceptions import RequestValidationError
@@ -165,11 +166,17 @@ class HermesBaseModel(BaseModel):
                             val = getattr(obj, cf.hermes_field_name, None)
                         else:
                             val = getattr(obj, pk_field_name, None)
+                elif cf.hermes_field_name == 'signup_questionnaire':
+                    val = getattr(obj, cf.hermes_field_name, None)
+                    if val:
+                        val = json.dumps(val)
+
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
             else:
                 val = cf.values[0].value if cf.values else None
             cf_data[cf.machine_name] = val
+
         return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)

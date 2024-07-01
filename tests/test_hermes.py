@@ -628,6 +628,7 @@ class GetCompaniesTestCase(HermesTestCase):
                 'utm_campaign': None,
                 'utm_source': None,
                 'narc': False,
+                'signup_questionnaire': None,
                 'sales_person': {
                     'username': 'admin_1@example.com',
                     'password': None,
@@ -689,6 +690,7 @@ class GetCompaniesTestCase(HermesTestCase):
                 'utm_campaign': None,
                 'utm_source': None,
                 'narc': False,
+                'signup_questionnaire': None,
                 'sales_person': {
                     'username': 'admin_1@example.com',
                     'password': None,

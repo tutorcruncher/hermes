@@ -221,6 +221,8 @@ class Company(HermesModel):
     utm_source = fields.CharField(max_length=255, null=True)
     narc = fields.BooleanField(default=False)
 
+    signup_questionnaire = fields.JSONField(null=True)
+
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)
     bdr_person = fields.ForeignKeyField('models.Admin', related_name='leads', null=True)
@@ -401,7 +403,6 @@ class CustomField(models.Model):
         (TYPE_INT, TYPE_INT),
         (TYPE_STR, TYPE_STR),
         (TYPE_BOOL, TYPE_BOOL),
-        (TYPE_FK_FIELD, TYPE_FK_FIELD),
     )
 
     id = fields.IntField(pk=True)

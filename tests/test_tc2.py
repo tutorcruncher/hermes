@@ -42,6 +42,12 @@ def _client_data():
             'last_name': 'Johnson',
             'email': 'brian@tc.com',
         },
+        'bdr_person': {
+            'id': 30,
+            'first_name': 'Brain',
+            'last_name': 'Johnson',
+            'email': 'brian@tc.com',
+        },
         'paid_recipients': [
             {
                 'id': 40,
@@ -227,10 +233,9 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc2_status == 'trial'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 0
-        assert await company.support_person == await company.sales_person == admin
+        assert await company.bdr_person == await company.support_person == await company.sales_person == admin
 
         assert not company.estimated_income
-        assert not company.bdr_person
 
         assert await Contact.all().count() == 0
         deal = await Deal.get()
@@ -299,11 +304,10 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc2_status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert await company.sales_person == admin
+        assert await company.bdr_person == await company.sales_person == admin
         assert not await company.support_person
 
         assert not company.estimated_income
-        assert not company.bdr_person
 
         assert await Contact.all().count() == 0
 
@@ -341,9 +345,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.paid_invoice_count == 2
         assert not await company.support_person
 
-        assert await company.sales_person == admin
+        assert await company.bdr_person == await company.sales_person == admin
         assert not company.estimated_income
-        assert not company.bdr_person
 
         assert await Contact.all().count() == 2
         contact_a = await Contact.get(id=contact_a.id)
@@ -404,10 +407,9 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc2_status == 'trial'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 0
-        assert await company.support_person == await company.sales_person == admin
+        assert await company.bdr_person == await company.support_person == await company.sales_person == admin
 
         assert company.estimated_income == '10000'
-        assert not company.bdr_person
 
         assert await Contact.all().count() == 0
         deal = await Deal.get()
@@ -606,11 +608,9 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc2_status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
-        assert await company.support_person == admin
-        assert await company.sales_person == admin
+        assert await company.bdr_person == await company.support_person == await company.sales_person == admin
 
         assert not company.estimated_income
-        assert not company.bdr_person
 
         contact = await Contact.get()
         assert contact.tc2_sr_id == 40
@@ -677,6 +677,16 @@ def fake_tc2_request(fake_tc2: FakeTC2):
                 for id, obj_data in fake_tc2.db[obj_type].items()
                 if obj_data['user']['email'] == data['user']['email']
             )
+
+            admin_keys = ['sales_person', 'associated_admin', 'bdr_person']
+
+            for key in admin_keys:
+                data[key] = (
+                    fake_tc2.db[obj_type][obj_id][key]
+                    if data.get(key) == fake_tc2.db[obj_type][obj_id][key]['id']
+                    else None
+                )
+
             fake_tc2.db[obj_type][obj_id] = data
             return MockResponse(200, fake_tc2.db[obj_type][obj_id])
 
@@ -709,9 +719,16 @@ class TC2TasksTestCase(HermesTestCase):
     @mock.patch('app.tc2.api.session.request')
     async def test_update_cligency(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
-        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        admin = await Admin.create(
+            pd_owner_id=10, username='testing@example.com', is_sales_person=True, tc2_admin_id=30
+        )
         company = await Company.create(
-            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+            name='Test company',
+            pd_org_id=20,
+            tc2_cligency_id=10,
+            sales_person=admin,
+            price_plan=Company.PP_PAYG,
+            bdr_person=admin,
         )
         await update_client_from_company(company)
         assert self.tc2.db['clients'] == {
@@ -723,9 +740,19 @@ class TC2TasksTestCase(HermesTestCase):
                     'last_name': 'Booth',
                 },
                 'status': 'live',
-                'sales_person_id': 30,
-                'associated_admin_id': 30,
-                'bdr_person_id': None,
+                'sales_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'associated_admin': None,
+                'bdr_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
                 'paid_recipients': [
                     {
                         'email': 'mary@booth.com',
@@ -743,7 +770,9 @@ class TC2TasksTestCase(HermesTestCase):
     @mock.patch('app.tc2.api.session.request')
     async def test_update_cligency_with_deal(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
-        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        admin = await Admin.create(
+            pd_owner_id=10, username='testing@example.com', is_sales_person=True, tc2_admin_id=30
+        )
         company = await Company.create(
             name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
         )
@@ -767,9 +796,14 @@ class TC2TasksTestCase(HermesTestCase):
                     'last_name': 'Booth',
                 },
                 'status': 'live',
-                'sales_person_id': 30,
-                'associated_admin_id': 30,
-                'bdr_person_id': None,
+                'sales_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'associated_admin': None,
+                'bdr_person': None,
                 'paid_recipients': [
                     {
                         'email': 'mary@booth.com',
@@ -789,7 +823,9 @@ class TC2TasksTestCase(HermesTestCase):
     @mock.patch('app.tc2.api.session.request')
     async def test_update_cligency_custom_fields(self, mock_request):
         mock_request.side_effect = fake_tc2_request(self.tc2)
-        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        admin = await Admin.create(
+            pd_owner_id=10, username='testing@example.com', is_sales_person=True, tc2_admin_id=30
+        )
         company = await Company.create(
             name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
         )
@@ -818,9 +854,14 @@ class TC2TasksTestCase(HermesTestCase):
                     'last_name': 'Booth',
                 },
                 'status': 'live',
-                'sales_person_id': 30,
-                'associated_admin_id': 30,
-                'bdr_person_id': None,
+                'sales_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'bdr_person': None,
+                'associated_admin': None,
                 'paid_recipients': [
                     {
                         'email': 'mary@booth.com',
@@ -847,7 +888,9 @@ class TC2TasksTestCase(HermesTestCase):
         """
 
         mock_request.side_effect = fake_tc2_request(self.tc2)
-        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        admin = await Admin.create(
+            pd_owner_id=10, username='testing@example.com', is_sales_person=True, tc2_admin_id=30
+        )
         company = await Company.create(
             name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
         )
@@ -876,9 +919,14 @@ class TC2TasksTestCase(HermesTestCase):
                     'last_name': 'Booth',
                 },
                 'status': 'live',
-                'sales_person_id': 30,
-                'associated_admin_id': 30,
-                'bdr_person_id': None,
+                'sales_person': {
+                    'id': 30,
+                    'first_name': 'Brain',
+                    'last_name': 'Johnson',
+                    'email': 'brian@tc.com',
+                },
+                'bdr_person': None,
+                'associated_admin': None,
                 'paid_recipients': [
                     {
                         'email': 'mary@booth.com',

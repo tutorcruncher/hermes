@@ -146,6 +146,7 @@ class CompanyResource(Model):
         'utm_campaign',
         'utm_source',
         'narc',
+        'signup_questionnaire',
         Field('sales_person_id', input_=inputs.ForeignKey(model=Admin)),
         Field('bdr_person_id', input_=inputs.ForeignKey(model=Admin)),
         Field('support_person_id', input_=inputs.ForeignKey(model=Admin)),
