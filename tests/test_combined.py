@@ -309,7 +309,6 @@ class TestMultipleServices(HermesTestCase):
         assert company.bdr_person_id == bdr_person.id
         assert company.sales_person_id == sales_admin.id
 
-    # lets write a test which has a company setup in pipedrive and tc2 and hermes, then lets mock a a webhook from pipedrive updating the bdr person and check company.bdr_person is updated and that the bdr person updated
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_cb_create_company_create_org_update_org(self, mock_pd_request, mock_tc2_get):
@@ -355,7 +354,6 @@ class TestMultipleServices(HermesTestCase):
         assert not company.bdr_person
         assert await company.support_person == await company.sales_person == admin
 
-        # check that pipedrive has the correct data
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
