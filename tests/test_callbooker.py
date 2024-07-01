@@ -159,6 +159,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert company.estimated_income == '1000'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
@@ -204,6 +205,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert await company.sales_person == sales_person
         assert not company.bdr_person_id
@@ -251,6 +253,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
@@ -299,6 +302,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
         assert await company.sales_person == sales_person
@@ -345,6 +349,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Junes Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
 
@@ -392,6 +397,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
 
@@ -433,6 +439,7 @@ class MeetingBookingTestCase(HermesTestCase):
         company = await Company.get()
         assert not company.tc2_cligency_id
         assert company.name == 'Junes Ltd'
+        assert company.has_booked_call
         assert (await company.bdr_person) == bdr_person
         assert (await company.sales_person) == sales_person
 
@@ -493,6 +500,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.name == 'Julies Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
+        assert company.has_booked_call
         assert not company.support_person_id
         assert not company.bdr_person_id
 

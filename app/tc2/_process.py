@@ -24,6 +24,10 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
         raise ValidationError('Company must have a sales_person, Please add one in TC2')
 
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
+
+    company.has_signed_up = True
+    await company.save()
+
     if not created:
         company = await company.update_from_dict(company_data)
         await company.save()
