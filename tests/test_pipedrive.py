@@ -1924,6 +1924,51 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_signup_questionnaire_custom_field(self, mock_request):
+        website_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_signup_questionnaire_456',
+            hermes_field_name='signup_questionnaire',
+            tc2_machine_name='signup_questionnaire',
+            name='Signup Questionnaire',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(
+            name='Old test company',
+            sales_person=self.admin,
+            signup_questionnaire={
+                'question1': 'answer1',
+                'question2': 'answer2',
+            },
+        )
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.PREVIOUS].update(
+            hermes_id=company.id, **{'123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}'}
+        )
+        data[PDStatus.CURRENT].update(
+            **{
+                'name': 'New test company',
+                '123_signup_questionnaire_456': '{"question1": "answer123", "question2": "answer2456"}',
+            }
+        )
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+        assert company.signup_questionnaire == {
+            'question1': 'answer1',
+            'question2': 'answer2',
+        }
+
+        await website_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_merged(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 

@@ -40,6 +40,7 @@ class _TCAgency(HermesBaseModel):
     created: datetime = Field(exclude=True)
     price_plan: str
     narc: Optional[bool] = False
+    signup_questionnaire: Optional[dict] = None
 
     @field_validator('price_plan')
     @classmethod
@@ -163,6 +164,7 @@ class TCClient(HermesBaseModel):
             paid_invoice_count=self.meta_agency.paid_invoice_count,
             price_plan=self.meta_agency.price_plan,
             narc=self.meta_agency.narc,
+            signup_questionnaire=self.meta_agency.signup_questionnaire,
             **cf_data_from_hermes,
         )
 
