@@ -234,6 +234,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert company.paid_invoice_count == 0
         assert await company.bdr_person == await company.support_person == await company.sales_person == admin
+        assert company.has_signed_up
+        assert not company.has_booked_call
 
         assert not company.estimated_income
 
@@ -305,6 +307,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
         assert await company.bdr_person == await company.sales_person == admin
+        assert company.has_signed_up
+        assert not company.has_booked_call
         assert not await company.support_person
 
         assert not company.estimated_income
@@ -343,6 +347,8 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.tc2_status == 'active'
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
+        assert company.has_signed_up
+        assert not company.has_booked_call
         assert not await company.support_person
 
         assert await company.bdr_person == await company.sales_person == admin
@@ -765,6 +771,24 @@ class TC2TasksTestCase(HermesTestCase):
                     'who_are_you_trying_to_reach': 'support',
                 },
             }
+        }
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_termination(self, mock_request):
+        fake_tc2 = FakeTC2()
+        fake_tc2.db['clients'][10]['extra_attrs'] += [
+            {'machine_name': 'termination_category', 'value': 'Too Complicated'}
+        ]
+        mock_request.side_effect = fake_tc2_request(fake_tc2)
+        admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+        await update_client_from_company(company)
+        assert fake_tc2.db['clients'][10]['extra_attrs'] == {
+            'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+            'who_are_you_trying_to_reach': 'support',
+            'termination_category': 'too-complicated',
         }
 
     @mock.patch('app.tc2.api.session.request')

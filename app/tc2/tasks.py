@@ -32,6 +32,11 @@ async def update_client_from_company(company: Company):
             else:
                 val = cf.values[0].value if cf.values else None
             extra_attrs[cf.tc2_machine_name] = val
+
+        for ea in tc_client.extra_attrs:
+            if ea.machine_name == 'termination_category':
+                extra_attrs['termination_category'] = ea.value.replace(' ', '-')
+
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
 

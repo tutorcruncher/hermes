@@ -1566,7 +1566,7 @@ def basic_pd_org_data():
         'matches_filters': {PDStatus.CURRENT: []},
         'meta': {'action': 'updated', 'object': 'organization'},
         PDStatus.CURRENT: {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
-        PDStatus.PREVIOUS: {},
+        PDStatus.PREVIOUS: None,
         'event': 'updated.organization',
     }
 
@@ -1605,7 +1605,7 @@ def basic_pd_deal_data():
             'pipeline_id': 60,
             'user_id': 10,
         },
-        PDStatus.PREVIOUS: {},
+        PDStatus.PREVIOUS: None,
         'event': 'updated.deal',
     }
 
