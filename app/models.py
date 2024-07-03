@@ -403,6 +403,7 @@ class CustomField(models.Model):
         (TYPE_INT, TYPE_INT),
         (TYPE_STR, TYPE_STR),
         (TYPE_BOOL, TYPE_BOOL),
+        (TYPE_FK_FIELD, TYPE_FK_FIELD),
     )
 
     id = fields.IntField(pk=True)
