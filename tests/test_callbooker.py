@@ -79,7 +79,6 @@ class MeetingBookingTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=meeting_data)
         assert r.status_code == 422
         detail = r.json()['detail']
-        detail[0].pop('url')
         assert detail == [
             {
                 'type': 'value_error',
@@ -162,6 +161,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.estimated_income == '1000'
         assert not company.support_person
         assert not company.bdr_person
+        assert company.has_booked_call
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -206,6 +206,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert not company.support_person
+        assert company.has_booked_call
         assert await company.sales_person == sales_person
         assert not company.bdr_person
 
@@ -254,6 +255,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
+        assert company.has_booked_call
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -302,6 +304,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
+        assert company.has_booked_call
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -348,7 +351,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-
+        assert company.has_booked_call
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'Junes'
@@ -395,7 +398,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-
+        assert company.has_booked_call
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'J'
@@ -434,6 +437,7 @@ class MeetingBookingTestCase(HermesTestCase):
         company = await Company.get()
         assert not company.tc2_cligency_id
         assert company.name == 'Junes Ltd'
+        assert company.has_booked_call
         assert (await company.bdr_person) == bdr_person
         assert (await company.sales_person) == sales_person
 
@@ -496,7 +500,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-
+        assert company.has_booked_call
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'J'

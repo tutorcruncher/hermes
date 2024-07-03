@@ -354,7 +354,6 @@ class TestMultipleServices(HermesTestCase):
         assert not company.bdr_person
         assert await company.support_person == await company.sales_person == admin
 
-        # check that pipedrive has the correct data
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,

@@ -1566,7 +1566,7 @@ def basic_pd_org_data():
         'matches_filters': {PDStatus.CURRENT: []},
         'meta': {'action': 'updated', 'object': 'organization'},
         PDStatus.CURRENT: {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
-        PDStatus.PREVIOUS: {},
+        PDStatus.PREVIOUS: None,
         'event': 'updated.organization',
     }
 
@@ -1605,7 +1605,7 @@ def basic_pd_deal_data():
             'pipeline_id': 60,
             'user_id': 10,
         },
-        PDStatus.PREVIOUS: {},
+        PDStatus.PREVIOUS: None,
         'event': 'updated.deal',
     }
 
@@ -2102,6 +2102,46 @@ class PipedriveCallbackTestCase(HermesTestCase):
         cf_val = await CustomFieldValue.get()
         assert cf_val.value == str(admin.id)
         assert await cf_val.custom_field == support_person_field
+
+        await support_person_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_associated_custom_fk_field_error(self, mock_request):
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+
+        support_person_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_support_person_id_456',
+            hermes_field_name='support_person',
+            name='Support Person ID',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await build_custom_field_schema()
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Old test company', sales_person=self.admin)
+
+        await CustomFieldValue.create(custom_field=support_person_field, company=company, value=admin.id)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
+        data[PDStatus.CURRENT].update(
+            **{
+                'name': 'New test company',
+                '123_support_person_id_456': 400,
+            }
+        )
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 422  # valadation error
 
         await support_person_field.delete()
         await build_custom_field_schema()

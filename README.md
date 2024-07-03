@@ -55,7 +55,7 @@ Create 5 Admins in TC2, for each of the following:
 - bdr
   
 #### Meta Client Custom Fields:
-Navigate to ... > Settings > Custom Fields > Add Custom Field
+Navigate to System > Settings > Custom Fields > Add Custom Field
 ```
 estimated_monthly_income: str (Short Textbox)     # estimated monthly income of the Cligency
 utm_source: str (Short Textbox)                  # utm source of the Cligency
@@ -63,8 +63,6 @@ utm_campaign: str (Short Textbox)                # utm campaign of the Cligency
 currency: str (Short Textbox)                    # currency of the Cligency
 referer: str (Short Textbox)                     # referer of the Cligency
 ```
-
-`bdr_person_id` ??
   
 #### Add API Integration to META:  
 
@@ -90,6 +88,9 @@ Navigate to Profile > Tools and apps > Webhooks > Create 7 new webhooks:
 Navigate to Company Settings > Data Fields
 
 ###### Organization Default Custom Fields:
+
+Hint: Look at Extra Tips (at the bottom of README) for a more detailed guide on how to add a new custom field to Pipedrive
+
 ```  
 website  
 paid_invoice_count  
@@ -97,14 +98,17 @@ paid_invoice_count
 [//]: # (has_booked_call  )
 
 [//]: # (has_signed_up  )
-tc2_status  
-tc2_cligency_url
-hermes_id
-bdr_person_id
-utm_campaign
-utm_source
-estimated_monthly_income
-currency
+tc2_status: Large text  
+tc2_cligency_url: Large text
+hermes_id: Numerical
+bdr_person_id: Numerical
+utm_campaign: Large text
+utm_source: Large text
+estimated_monthly_income: Large text
+currency: Large text
+support_person_id: Numerical
+signup_questionnaire: Large text
+website: Large text
 ```  
 ###### Person Default Custom Fields:
 ```
@@ -117,18 +121,18 @@ hermes_id
 
 #### Setup Pipedrive Users:
 
-Navigate to ... > User Overview > Add User
+-> Navigate to Company settings > Manage users > Add User
 
 Now we should setup a couple of users in Pipedrive:
 - `payg / startup sales`
 - `enterprise sales`
 - `bdr`
 
-You can user your email address for each user, i.e sebastian+pdbdrperson@tutorcruncher.com
+You can use your email address for each user, i.e sebastian+pdbdrperson@tutorcruncher.com
 
 
 Get your Pipedrive Owner ID for your Hermes Admins:  
-- Navigate to ... > User Overview > select your user  
+- Navigate to ... -> Navigate to Company settings > Manage users > select your user  
 - Copy the number at the end of the URL
 
   
@@ -206,15 +210,16 @@ Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), 
 | 3 | tc2_status | TC2 Status | str        | tc2_status        |                          | xxxxxxxxxxx | Company            |
 | 4 | tc2_cligency_url | TC2 Cligency URL | str        | tc2_cligency_url  |                          | xxxxxxxxxxx | Company            |
 | 5 | utm_source | UTM Source | str        | utm_source        | utm_source               | xxxxxxxxxxx | Company            |
-| 6 | utm_campaign | UTM Campaign | str        | utm_campaign      |    utm_campaign                      | xxxxxxxxxxx | Company            |
+| 6 | utm_campaign | UTM Campaign | str        | utm_campaign      | utm_campaign             | xxxxxxxxxxx | Company            |
 | 7 | estimated_monthly_income | Estimated Monthly Income | str        | estimated_income | estimated_monthly_income | xxxxxxxxxxx | Company            |
 | 8 | currency | Currency | str        | currency          | currency                 | xxxxxxxxxxx | Company            |
-| 8 | support_person_id | Support Person ID | int        | support_person    |                          | xxxxxxxxxxx | Company            |
-| 9 | bdr_person_id | BDR Person ID | int        | bdr_person        |                          | xxxxxxxxxxx | Company            |
+| 8 | support_person_id | Support Person ID | fk_field   | support_person    |                          | xxxxxxxxxxx | Company            |
+| 9 | bdr_person_id | BDR Person ID | fk_field   | bdr_person        |                          | xxxxxxxxxxx | Company            |
 | 10 | signup_questionnaire | Signup Questionnaire | str        | signup_questionnaire | signup_questionnaire     | xxxxxxxxxxx | Company            |
-| 10 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Company            |
-| 11 | hermes_id | Hermes ID | fk_field        | id                |                          | xxxxxxxxxxx | Contact            |
-| 12 | hermes_id | Hermes ID | fk_field        | id                |                          | xxxxxxxxxxx | Deal               |
+| 11 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Company            |
+| 12 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Contact            |
+| 13 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Deal               |
+>>>>>>> fix-bdr-sales
 
 
 - replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
@@ -263,7 +268,7 @@ Now edit each pipeline and set the `dft_entry_pipeline_stage` to the stage that 
 
 #### Config Tab  
 
-- Set Price Plan Pipelines to their associated Hermes Pipeline ID
+- Edit existing config and set the pipline stages to their associated Hermes Stage IDs
 
 
 #### Setup Callbooker:  
