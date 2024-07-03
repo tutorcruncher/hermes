@@ -219,7 +219,6 @@ Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), 
 | 11 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Company            |
 | 12 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Contact            |
 | 13 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Deal               |
->>>>>>> fix-bdr-sales
 
 
 - replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
