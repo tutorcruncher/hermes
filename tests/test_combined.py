@@ -11,13 +11,14 @@ from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import fake_gcal_builder
 from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
-from tests.test_tc2 import client_full_event_data, mock_tc2_request
+from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
 
 class TestMultipleServices(HermesTestCase):
     def setUp(self):
         super().setUp()
         self.pipedrive = FakePipedrive()
+        self.tc2 = FakeTC2()
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -307,3 +308,135 @@ class TestMultipleServices(HermesTestCase):
         assert company.name == 'MyTutors'
         assert company.bdr_person_id == bdr_person.id
         assert company.sales_person_id == sales_admin.id
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_cb_create_company_create_org_update_org(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = fake_tc2_request(self.tc2)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+        )
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_bdr_person_456',
+            hermes_field_name='bdr_person',
+            name='BDR Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await build_custom_field_schema()
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['name'] = 'MyTutors'
+        modified_data['subject']['bdr_person'] = None
+        events = [modified_data]
+
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        assert await Company.exists()
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert not company.bdr_person
+        assert await company.support_person == await company.sales_person == admin
+
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': None,
+                '123_hermes_id_456': company.id,
+                '123_sales_person_456': admin.id,
+                '123_bdr_person_456': None,
+            }
+        }
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_cb_create_company_cf_json(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = fake_tc2_request(self.tc2)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+        )
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_bdr_person_456',
+            hermes_field_name='bdr_person',
+            name='BDR Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_signup_questionnaire_456',
+            hermes_field_name='signup_questionnaire',
+            name='Agency Questionnaire',
+            field_type=CustomField.TYPE_STR,
+        )
+        await build_custom_field_schema()
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['meta_agency']['name'] = 'MyTutors'
+        modified_data['subject']['bdr_person'] = None
+        modified_data['subject']['meta_agency']['signup_questionnaire'] = {
+            'question1': 'answer1',
+            'question2': 'answer2',
+        }
+        events = [modified_data]
+
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        assert await Company.exists()
+        company = await Company.get()
+        assert company.name == 'MyTutors'
+        assert not company.bdr_person
+        assert await company.support_person == await company.sales_person == admin
+        assert company.signup_questionnaire == {
+            'question1': 'answer1',
+            'question2': 'answer2',
+        }
+
+        # check that pipedrive has the correct data
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': None,
+                '123_hermes_id_456': company.id,
+                '123_sales_person_456': admin.id,
+                '123_bdr_person_456': None,
+                '123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}',
+            }
+        }

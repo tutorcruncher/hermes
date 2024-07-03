@@ -33,6 +33,7 @@ async def callback(
         if event.subject.model == 'Client':
             if not event.action == 'DELETED_A_CLIENT' and not hasattr(event.subject, 'meta_agency'):
                 continue
+
             company, deal = await update_from_client_event(event.subject)
         elif event.subject.model == 'Invoice':
             company, deal = await update_from_invoice_event(event.subject)
