@@ -366,3 +366,16 @@ Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring
 python patch.py <patch_name>
 ```
 
+## Shell
+
+tortoise-orm has a shell command that can be used to interact with the database.
+
+first install [tortoise-cli](https://github.com/tortoise/tortoise-cli)
+
+to run the shell, use the following command inside your hermes virtual environment:
+```
+tortoise-cli shell
+```
+
+hint1: you will need to import the models you want to use in the shell, i.e `from app.models import *`
+hint2: you can use the `await` keyword to run async functions in the shell, i.e `await Company.all()`

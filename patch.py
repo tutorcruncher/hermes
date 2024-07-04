@@ -1,5 +1,11 @@
 import asyncio
 import os
+
+from app.base_schema import build_custom_field_schema
+from app.pipedrive._process import _process_pd_organisation
+from app.pipedrive._schema import Organisation, PipedriveEvent
+from app.pipedrive.api import pipedrive_request
+
 os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 
 from datetime import datetime
@@ -15,7 +21,9 @@ import logfire
 async def init():
     # Initialize Tortoise ORM
     await Tortoise.init(config=TORTOISE_ORM)
+    await build_custom_field_schema()
     await Tortoise.generate_schemas()
+
 
 commands = []
 
@@ -26,22 +34,45 @@ def command(func):
 # Start of patch commands
 
 @command
-async def send_companies_with_bdr_or_sales_to_tc2():
+async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_info():
     """
-    This patch sends companies with a BDR or Sales person to TC2.
+    This patch gets all companies with missing BDR or Sales person and updates them from Pipedrive,
+    then updates the TC2 cligencies
     """
-    print('Sending companies with BDR or Sales person to TC2')
-
+    # Get companies to update
     companies = await Company.filter(
-        Q(sales_person=None) | Q(bdr_person=None)
+        Q(sales_person_id=None) | Q(bdr_person_id=None)
     )
-
-    print(f'Found {len(companies)} companies with BDR or Sales person')
+    print(f'Sending {len(companies)} companies with BDR or Sales person to TC2')
+    # make request to get companies from Pipedrive
     for company in companies:
         try:
-            await update_client_from_company(company)
+            # get Organisation from Pipedrive
+            pd_data = await pipedrive_request(f'organizations/{company.pd_org_id}')
+            mock_event = {
+                'meta': {'action': 'updated', 'object': 'organization'},
+                'current': pd_data['data'],
+                'previous': None
+            }
+            event_instance = PipedriveEvent(**mock_event)
+            event_instance.current and await event_instance.current.a_validate()
+
+
+            # Update Company from Organisation
+            await _process_pd_organisation(current_pd_org=event_instance.current, old_pd_org=None)
+
+            try:
+                # Update company in TC2
+                company = await Company.get(id=company.id)
+                await update_client_from_company(company)
+            except Exception as e:
+                print(f'Error updating cligency for company {company.id}: {e}')
+
         except Exception as e:
-            print(f'Error updating company {company.id}: {e}')
+            print(f'Error updating company from org {company.id}: {e}')
+            continue
+
+
 
 
 # End of patch commands
