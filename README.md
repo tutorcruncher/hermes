@@ -353,4 +353,16 @@ More details can be found in the aerich docs.
 
 ## Deploying to Heroku  
 Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes. 
-  
+
+
+## Writing a Patch
+
+- In the patch.py file, create a new function that will be your patch.
+- The function needs to be made between the # Start of patch commands and # End of patch commands.
+- The function needs to have the @command decorator.
+
+#### Running a Patch
+```
+python patch.py <patch_name>
+```
+
