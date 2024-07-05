@@ -353,4 +353,29 @@ More details can be found in the aerich docs.
 
 ## Deploying to Heroku  
 Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes. 
-  
+
+
+## Writing a Patch
+
+- In the patch.py file, create a new function that will be your patch.
+- The function needs to be made between the # Start of patch commands and # End of patch commands.
+- The function needs to have the @command decorator.
+
+#### Running a Patch
+```
+python patch.py <patch_name>
+```
+
+## Shell
+
+tortoise-orm has a shell command that can be used to interact with the database.
+
+first install [tortoise-cli](https://github.com/tortoise/tortoise-cli)
+
+to run the shell, use the following command inside your hermes virtual environment:
+```
+tortoise-cli shell
+```
+
+hint1: you will need to import the models you want to use in the shell, i.e `from app.models import *`
+hint2: you can use the `await` keyword to run async functions in the shell, i.e `await Company.all()`
