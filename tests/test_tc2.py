@@ -777,7 +777,7 @@ class TC2TasksTestCase(HermesTestCase):
     async def test_update_cligency_termination(self, mock_request):
         fake_tc2 = FakeTC2()
         fake_tc2.db['clients'][10]['extra_attrs'] += [
-            {'machine_name': 'termination_category', 'value': 'Too Complicated'}
+            {'machine_name': 'termination_category', 'value': "Doesn't suit business model"},
         ]
         mock_request.side_effect = fake_tc2_request(fake_tc2)
         admin = await Admin.create(pd_owner_id=10, username='testing@example.com', is_sales_person=True)
@@ -788,7 +788,7 @@ class TC2TasksTestCase(HermesTestCase):
         assert fake_tc2.db['clients'][10]['extra_attrs'] == {
             'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
             'who_are_you_trying_to_reach': 'support',
-            'termination_category': 'too-complicated',
+            'termination_category': 'doesnt-suit-business-model',
         }
 
     @mock.patch('app.tc2.api.session.request')
