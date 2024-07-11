@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import unicodedata
 from typing import TYPE_CHECKING
 
 import aioredis
@@ -44,3 +45,27 @@ async def get_config() -> 'Config':
     # When testing locally, you can add your own admin user here. Set the pd_owner_id to your own Pipedrive user ID.
 
     return config
+
+
+def sanitise_string(input_string: str) -> str:
+    """
+    Sanitises the input string based on the specified rules:
+    - Convert to ASCII
+    - Convert spaces to hyphens
+    - Remove characters that aren't alphanumerics, underscores, or hyphens
+    - Convert to lowercase
+    - Strip leading and trailing whitespace
+    to match django's slugify function
+    """
+
+    # Convert to ASCII
+    ascii_string = unicodedata.normalize('NFKD', input_string).encode('ascii', 'ignore').decode()
+
+    # Convert spaces to hyphens and strip leading/trailing whitespace
+    hyphenated_string = ascii_string.replace(' ', '-').strip()
+
+    # Remove characters that aren't alphanumerics, underscores, or hyphens
+    sanitized_string = ''.join(char for char in hyphenated_string if char.isalnum() or char in ['_', '-'])
+
+    # Convert to lowercase
+    return sanitized_string.lower()

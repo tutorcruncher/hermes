@@ -7,6 +7,7 @@ from app.base_schema import HermesBaseModel
 from app.models import Company, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient
 from app.tc2.api import tc2_request
+from app.utils import sanitise_string
 
 
 async def update_client_from_company(company: Company):
@@ -35,7 +36,7 @@ async def update_client_from_company(company: Company):
 
         for ea in tc_client.extra_attrs:
             if ea.machine_name == 'termination_category':
-                extra_attrs['termination_category'] = ea.value.replace(' ', '-')
+                extra_attrs['termination_category'] = sanitise_string(ea.value)
 
         client_data = tc_client.model_dump()
         client_data['extra_attrs'] = extra_attrs
