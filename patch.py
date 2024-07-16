@@ -78,7 +78,6 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
 async def update_pd_org_price_plans():
     """
     This patch sends a webhook to Pipedrive to update the price plan of all companies with a price plan
-    @return:
     """
     companies = await Company.filter(~Q(price_plan=None))
     print(f'{len(companies)} companies with price plan to update')
