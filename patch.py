@@ -92,6 +92,24 @@ async def update_pd_org_price_plans():
 
     print(f'Updated {companies_updated} companies')
 
+@command
+async def update_pd_org_price_plans():
+    """
+    This patch sends a webhook to Pipedrive to update the price plan of all companies with a price plan
+    """
+    companies = await Company.filter(~Q(price_plan=None))
+    print(f'{len(companies)} companies with price plan to update')
+    companies_updated = 0
+    for company in companies:
+        try:
+            await get_and_create_or_update_organisation(company)
+            companies_updated += 1
+        except Exception as e:
+            print(f'Error updating company {company.id}: {e}')
+            continue
+
+    print(f'Updated {companies_updated} companies')
+
 
 # End of patch commands
 
