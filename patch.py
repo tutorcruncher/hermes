@@ -79,7 +79,7 @@ async def update_pd_org_price_plans():
     """
     This patch sends a webhook to Pipedrive to update the price plan of all companies with a price plan
     """
-    companies = await Company.filter(~Q(price_plan=None))
+    companies = await Company.exclude(price_plan=None)
     print(f'{len(companies)} companies with price plan to update')
     companies_updated = 0
     for company in companies:
