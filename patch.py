@@ -4,7 +4,7 @@ import os
 from app.base_schema import build_custom_field_schema
 from app.pipedrive._process import _process_pd_organisation
 from app.pipedrive._schema import Organisation, PipedriveEvent
-from app.pipedrive.api import pipedrive_request
+from app.pipedrive.api import pipedrive_request, get_and_create_or_update_organisation
 
 os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 
@@ -72,6 +72,23 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
             print(f'Error updating company from org {company.id}: {e}')
             continue
 
+@command
+async def update_pd_org_price_plans():
+    """
+    This patch sends a webhook to Pipedrive to update the price plan of all companies with a price plan
+    """
+    companies = await Company.exclude(price_plan=None)
+    print(f'{len(companies)} companies with price plan to update')
+    companies_updated = 0
+    for company in companies:
+        try:
+            await get_and_create_or_update_organisation(company)
+            companies_updated += 1
+        except Exception as e:
+            print(f'Error updating company {company.id}: {e}')
+            continue
+
+    print(f'Updated {companies_updated} companies')
 
 
 # End of patch commands
