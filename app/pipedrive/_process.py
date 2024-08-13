@@ -5,6 +5,7 @@ from tortoise.exceptions import DoesNotExist
 from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
+from app.pipedrive.api import get_and_create_or_update_pd_deal
 
 
 async def _process_pd_organisation(
@@ -41,12 +42,23 @@ async def _process_pd_organisation(
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
             old_company_cf_vals = await old_pd_org.custom_field_values(company_custom_fields) if old_org_data else {}
+            debug(old_company_cf_vals)
             new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
+            debug(new_company_cf_vals)
             cfs_updated = await company.process_custom_field_vals(old_company_cf_vals, new_company_cf_vals)
             if cfs_updated:
                 app_logger.info(
                     'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
                 )
+
+            for cf in company_custom_fields:
+                if cf.deal_pd_field_id:
+                    for deal in await company.deals:
+                        old_pd_deal = await PDDeal.get(pd_deal_id=deal.pd_deal_id)
+                        new_pd_deal = await PDDeal.get(pd_deal_id=cf.deal_pd_field_id)
+                        new_pd_deal_data = await new_pd_deal.deal_dict()
+                        new_pd_deal_data
+                        await get_and_create_or_update_pd_deal(new_pd_deal)
         else:
             # The org has been deleted. The linked custom fields will also be deleted
             await company.delete()

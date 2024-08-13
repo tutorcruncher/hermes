@@ -43,6 +43,8 @@ async def callback(
             if company.narc:
                 tasks.add_task(pd_post_purge_client_event, company, deal)
             else:
+                debug('Adding task pd_post_process_client_event')
                 tasks.add_task(pd_post_process_client_event, company, deal)
+                debug('Task added')
 
     return {'status': 'ok'}

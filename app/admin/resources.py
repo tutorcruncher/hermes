@@ -238,6 +238,7 @@ class CustomFieldResource(Model):
         'hermes_field_name',
         'tc2_machine_name',
         'pd_field_id',
+        'deal_pd_field_id',
         'linked_object_type',
         # Field(
         #     'linked_object_type',

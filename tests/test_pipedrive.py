@@ -907,6 +907,89 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         assert await Deal.all().count() == 1
 
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_tc2_client_event_company_cf_on_deal(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        await CustomField.create(
+            name='TC2 status',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='123_tc2_status_456',
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            website='https://junes.com',
+            country='GB',
+            sales_person=admin,
+            status=Company.STATUS_TRIAL,
+        )
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=None,
+        )
+
+        await pd_post_process_client_event(company, deal)
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 99,
+                '123_hermes_id_456': company.id,
+                '123_tc2_status_456': company.tc2_status,
+            },
+        }
+        assert (await Company.get()).pd_org_id == 1
+        assert self.pipedrive.db['persons'] == {
+            1: {
+                'id': 1,
+                'name': 'Brian Junes',
+                'owner_id': 99,
+                'email': ['brain@junes.com'],
+                'phone': None,
+                'org_id': 1,
+                '234_hermes_id_567': contact.id,
+            },
+        }
+        assert (await Contact.get()).pd_person_id == 1
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': None,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        assert await Deal.all().count() == 1
+
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event_narc_no_pd(self, mock_request):
         """

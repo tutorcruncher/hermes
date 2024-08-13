@@ -209,6 +209,8 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
     Get and create or update a Deal within Pipedrive.
     """
+    debug('get_and_create_or_update_pd_deal')
+    debug(deal.__dict__)
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
     if deal.pd_deal_id:

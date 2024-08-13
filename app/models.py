@@ -157,11 +157,30 @@ class Admin(AbstractAdmin):
 
 class HermesModel(models.Model):
     async def process_custom_field_vals(self, old_cf_vals, new_cf_vals) -> tuple[int, int, int]:
+        """
+        Process and update custom field values for a model instance. These are not connected to CustomField objects
+
+        This method compares old and new custom field values, identifies which values need to be created, updated, or deleted,
+        and performs the necessary database operations.
+
+        Args:
+            old_cf_vals (dict): A dictionary of old custom field values.
+            new_cf_vals (dict): A dictionary of new custom field values.
+
+        Returns:
+            tuple[int, int, int]: A tuple containing the counts of created, updated, and deleted custom field values.
+        """
+        # Identify new or updated custom field values
         updated_created_vals = {k: v for k, v in new_cf_vals.items() if k not in old_cf_vals and v is not None}
         updated_created_vals |= {k: new_cf_vals[k] for k, v in old_cf_vals.items() if v != new_cf_vals[k]}
+
+        # Identify custom field values to be deleted
         deleted_vals = [k for k, v in old_cf_vals.items() if not v and not new_cf_vals.get(k)]
+
         created, updated, deleted = 0, 0, 0
         linked_obj_name = self.__class__.__name__.lower()
+
+        # Create or update custom field values
         for cf_id, cf_val in updated_created_vals.items():
             _, created = await CustomFieldValue.update_or_create(
                 **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
@@ -170,7 +189,10 @@ class HermesModel(models.Model):
                 created += 1
             else:
                 updated += 1
+
+        # Delete custom field values
         deleted = await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
+
         return created, updated, deleted
 
     @classmethod
@@ -423,6 +445,8 @@ class CustomField(models.Model):
         max_length=255, null=True, description='The machine name of the Custom Field in TC2, if not in the normal data.'
     )
     pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
+    deal_pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of associated deal Custom '
+                                                                               'Field in Pipedrive')
     linked_object_type = fields.CharField(
         max_length=255,
         description='The name of the model this is linked to, ' '("Company", "Contact", "Deal", "Meeting")',
