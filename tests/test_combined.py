@@ -612,5 +612,8 @@ class TestMultipleServices(HermesTestCase):
                 'id': 1,
                 'user_id': 10,
                 '345_hermes_id_678': deal.id,
-            }
+                '234_sales_person_567': admin.id,
+                '234_bdr_person_567': admin.id,
+
+        }
         }
