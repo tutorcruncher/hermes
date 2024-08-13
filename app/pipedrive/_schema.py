@@ -58,7 +58,21 @@ class PipedriveBaseModel(HermesBaseModel):
         When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
         Pipedrive model.
         """
-        return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
+        # Initialize an empty dictionary to store the custom field values
+        custom_field_values = {}
+
+        # Iterate over each custom field in the custom_fields list
+        for c in custom_fields:
+            # Check if the custom field does not have a hermes_field_name
+            if not c.hermes_field_name:
+                # Retrieve the attribute value from the current object (self) using the machine_name of the custom field
+                attribute_value = getattr(self, c.machine_name)
+                # Add the custom field id and the retrieved attribute value to the dictionary
+                custom_field_values[c.id] = attribute_value
+
+        # Return the dictionary containing the custom field values
+        return custom_field_values
+        # return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
 class Organisation(PipedriveBaseModel):

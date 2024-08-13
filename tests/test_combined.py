@@ -541,7 +541,7 @@ class TestMultipleServices(HermesTestCase):
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
-            deal_field_id='234_sales_person_567',
+            deal_pd_field_id='234_sales_person_567',
             hermes_field_name='sales_person',
             name='Sales Person',
             field_type=CustomField.TYPE_FK_FIELD,
@@ -550,7 +550,7 @@ class TestMultipleServices(HermesTestCase):
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_bdr_person_456',
-            deal_field_id='234_bdr_person_567',
+            deal_pd_field_id='234_bdr_person_567',
             hermes_field_name='bdr_person',
             name='BDR Person',
             field_type=CustomField.TYPE_FK_FIELD,
@@ -615,5 +615,5 @@ class TestMultipleServices(HermesTestCase):
                 '234_sales_person_567': admin.id,
                 '234_bdr_person_567': admin.id,
 
-        }
+            }
         }

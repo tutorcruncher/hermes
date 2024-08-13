@@ -18,8 +18,9 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     """
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
-    await get_and_create_or_update_organisation(company)
+    org = await get_and_create_or_update_organisation(company)
     await get_and_create_or_update_person(contact)
+    debug('pd_post_process_sales_call')
     pd_deal = await get_and_create_or_update_pd_deal(deal)
     await create_activity(meeting, pd_deal)
 
@@ -38,7 +39,6 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     Called after a client event from TC2. For example, a client paying an invoice.
     """
     debug('Processing client event')
-    debug(company.__dict__)
     await get_and_create_or_update_organisation(company)
     for contact in await company.contacts:
         await get_and_create_or_update_person(contact)
@@ -62,17 +62,30 @@ MODEL_PD_LU = {Company: Organisation, Contact: Person, Deal: PDDeal, Meeting: Ac
 async def pd_rebuild_schema_with_custom_fields() -> list[Type[PipedriveBaseModel]]:
     """
     Adds extra fields to the schema for the Pipedrive models based on CustomFields in the DB
+    if the model is a Deal, it also adds the custom fields that are inherited to the deal.
     """
     models_to_rebuild = []
     for model, pd_model in MODEL_PD_LU.items():
         custom_fields = await CustomField.filter(linked_object_type=model.__name__)
+
+        if model == Deal:
+            deal_inherited_cfs = await CustomField.filter(deal_pd_field_id__isnull=False)
+            custom_fields += deal_inherited_cfs
+
         # First we reset the custom fields
         pd_model.model_fields = {
             k: v for k, v in pd_model.model_fields.items() if not (v.json_schema_extra or {}).get('custom')
         }
         for field in custom_fields:
+            if model == Deal and field.deal_pd_field_id:
+                serialization_alias = field.deal_pd_field_id
+                validation_alias = field.deal_pd_field_id
+            else:
+                serialization_alias = field.pd_field_id
+                validation_alias = field.pd_field_id
+
             pd_model.model_fields[field.machine_name] = await get_custom_fieldinfo(
-                field, model, serialization_alias=field.pd_field_id, validation_alias=field.pd_field_id
+                field, model, serialization_alias=serialization_alias, validation_alias=validation_alias
             )
         models_to_rebuild.append(pd_model)
     return models_to_rebuild
