@@ -148,15 +148,11 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
 
     else:
         # if company is not linked to pipedrive and there is no match, create a new org
-
-        debug(hermes_org_data)
         created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
-        debug(created_org)
         pipedrive_org = Organisation(**created_org)
         company.pd_org_id = pipedrive_org.id
         await company.save()
         app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-        debug(pipedrive_org.__dict__)
         return pipedrive_org
 
 
@@ -215,32 +211,15 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     Get and create or update a Deal within Pipedrive. Ensuring to get any custom fields with deal_pd_field_id.
     """
     debug('get_and_create_or_update_pd_deal')
-    debug(deal.__dict__)
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
 
-
     company = await deal.company
-
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
-    debug(hermes_org_data)
     deal_inherited_fields = await CustomField.filter(linked_object_type='Company', deal_pd_field_id__isnull=False)
-    debug(deal_inherited_fields)
     for field in deal_inherited_fields:
-        debug(field.__dict__)
-
         pd_deal_data[field.deal_pd_field_id] = hermes_org_data[field.pd_field_id]
-
-    # custom_field_values = await pipedrive_org.custom_field_values(deal_inherited_fields)
-    # debug(custom_field_values)
-
-
-    # cfs_updated = await pd_deal.process_custom_field_vals({}, custom_field_values)
-
-
-
-
 
     if deal.pd_deal_id:
         pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])

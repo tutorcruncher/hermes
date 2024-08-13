@@ -22,7 +22,6 @@ class TestMultipleServices(HermesTestCase):
         self.tc2_callback = '/tc2/callback/'
         self.pipedrive_callback = '/pipedrive/callback/'
 
-
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         kwargs = dict(
@@ -524,6 +523,14 @@ class TestMultipleServices(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_cb_client_event_company_org_deal(self, mock_pd_request):
+        """
+        call booked
+        create company with cfs
+        no contact
+        create deal with orgs cfs
+        create org
+        create deal
+        """
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
 
         assert await Company.all().count() == 0
@@ -555,12 +562,29 @@ class TestMultipleServices(HermesTestCase):
             name='BDR Person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
+
+        # this field is a custom field that would be inherited by the deal from the org, however its source is only
+        # from TC2
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            deal_pd_field_id='234_source_567',
+            hermes_field_name=None,
+            tc2_machine_name='client_marketing_source',
+            name='Source',
+            machine_name='source',
+            field_type=CustomField.TYPE_STR,
+        )
+
         await build_custom_field_schema()
 
         modified_data = client_full_event_data()
         modified_data['subject']['paid_recipients'] = []
         modified_data['subject']['meta_agency']['status'] = 'trial'
         modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        modified_data['subject']['extra_attrs'] += [
+            {'machine_name': 'client_marketing_source', 'value': 'Google'},
+        ]
 
         events = [modified_data]
         data = {'_request_time': 123, 'events': events}
@@ -598,6 +622,7 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': admin.id,
+                '123_source_456': 'google',
             }
         }
 
@@ -614,6 +639,6 @@ class TestMultipleServices(HermesTestCase):
                 '345_hermes_id_678': deal.id,
                 '234_sales_person_567': admin.id,
                 '234_bdr_person_567': admin.id,
-
+                '234_source_567': 'google',
             }
         }

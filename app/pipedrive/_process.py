@@ -42,9 +42,7 @@ async def _process_pd_organisation(
                 await company.save()
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
             old_company_cf_vals = await old_pd_org.custom_field_values(company_custom_fields) if old_org_data else {}
-            debug(old_company_cf_vals)
             new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
-            debug(new_company_cf_vals)
             cfs_updated = await company.process_custom_field_vals(old_company_cf_vals, new_company_cf_vals)
             if cfs_updated:
                 app_logger.info(
