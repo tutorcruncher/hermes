@@ -2,14 +2,17 @@ import copy
 import hashlib
 import hmac
 import json
+from datetime import datetime
 from unittest import mock
+from pytz import utc
+
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline
-from app.pipedrive.tasks import pd_post_process_client_event
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Meeting
+from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
 from app.utils import settings
 from tests._common import HermesTestCase
-from tests.test_callbooker import fake_gcal_builder
+from tests.test_callbooker import fake_gcal_builder, CB_MEETING_DATA
 from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
 from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
@@ -407,7 +410,6 @@ class TestMultipleServices(HermesTestCase):
         modified_data['subject']['meta_agency']['status'] = Company.STATUS_TRIAL
 
         events = [modified_data]
-        debug(events)
 
         data = {'_request_time': 123, 'events': events}
         r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
@@ -444,7 +446,6 @@ class TestMultipleServices(HermesTestCase):
                 '345_hermes_id_678': deal.id,
             }
         }
-        debug(self.pipedrive.db['deals'])
 
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
@@ -521,10 +522,36 @@ class TestMultipleServices(HermesTestCase):
             }
         }
 
+
+class TestDealCustomFieldInheritance(HermesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.pipedrive = FakePipedrive()
+        self.tc2 = FakeTC2()
+        self.tc2_callback = '/tc2/callback/'
+        self.pipedrive_callback = '/pipedrive/callback/'
+        self.callbooker_callback = '/callbooker/sales/book/'
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        kwargs = dict(
+            tc2_machine_name='hermes_id',
+            name='Hermes ID',
+            hermes_field_name='id',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await CustomField.create(linked_object_type='Company', pd_field_id='123_hermes_id_456', **kwargs)
+        await CustomField.create(linked_object_type='Contact', pd_field_id='234_hermes_id_567', **kwargs)
+        await CustomField.create(linked_object_type='Deal', pd_field_id='345_hermes_id_678', **kwargs)
+        await build_custom_field_schema()
+
+    def _tc2_sig(self, payload):
+        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+
     @mock.patch('app.pipedrive.api.session.request')
     async def test_cb_client_event_company_org_deal(self, mock_pd_request):
         """
-        call booked
+        tc2 callback
         create company with cfs
         no contact
         create deal with orgs cfs
@@ -642,3 +669,108 @@ class TestMultipleServices(HermesTestCase):
                 '234_source_567': 'google',
             }
         }
+
+    # need a test for a callbooker create company
+    @mock.patch('app.pipedrive.api.session.request')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_com_cli_create_update_org_deal(self, mock_gcal_builder, mock_pd_request):
+        """
+        Book a new meeting
+        Company doesn't exist so create
+        Contact doesn't exist so create
+        Create with admin
+
+        create org
+        create deal
+        """
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            deal_pd_field_id='234_sales_person_567',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+        await build_custom_field_schema()
+
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True, pd_owner_id=10, sells_payg = True, sells_gb = True
+        )
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        r = await self.client.post(self.callbooker_callback, json={'admin_id': sales_person.id, **CB_MEETING_DATA})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
+        assert company.website == 'https://junes.com'
+        assert company.country == 'GB'
+        assert company.estimated_income == '1000'
+        assert not company.support_person
+        assert not company.bdr_person
+        assert company.has_booked_call
+        assert await company.sales_person == sales_person
+
+        contact = await Contact.get()
+        assert contact.first_name == 'Brain'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == sales_person
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+
+        deal = await Deal.get()
+        assert deal.name == 'Junes Ltd'
+        assert await deal.pipeline == self.pipeline
+        assert await deal.stage == self.stage
+        assert await deal.contact == contact
+        assert await deal.company == company
+        assert await deal.admin == sales_person
+
+
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+
+
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': 10,
+                '123_hermes_id_456': company.id,
+                '123_sales_person_456': sales_person.id,
+            }
+        }
+
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'MyTutors',
+                'org_id': 1,
+                'person_id': None,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 10,
+                '345_hermes_id_678': deal.id,
+                '234_sales_person_567': sales_person.id,
+            }
+        }
+
+    # need a test of creating a company from a pd org webhook
+
+    # need a test when we receive a deal webhook from pd where thay have changed these custom fields we dont update the deal in hermes, but overwrite their changes.
+
+    # test for when they update the inherited custom fields on a pd org, we then receive a webhook of the org with changed, we then need to update all the associated deals accordinly
+
+    # test for when a company already exists with multiple deals we update the inherited cfs on all those deals

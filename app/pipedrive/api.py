@@ -126,7 +126,6 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     @param company: Company object
     @return: Organisation object
     """
-    debug('get_and_create_or_update_organisation')
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
     if company.pd_org_id:
@@ -218,6 +217,10 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     hermes_org = await Organisation.from_company(company)
     hermes_org_data = hermes_org.model_dump(by_alias=True)
     deal_inherited_fields = await CustomField.filter(linked_object_type='Company', deal_pd_field_id__isnull=False)
+
+
+
+    # needs to be when we update the company
     for field in deal_inherited_fields:
         pd_deal_data[field.deal_pd_field_id] = hermes_org_data[field.pd_field_id]
 
