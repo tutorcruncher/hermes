@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 from pytz import utc
 
-from app.models import Company, Contact, CustomField, Deal
+from app.models import Company, Contact, CustomField, Deal, CustomFieldValue
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
@@ -58,9 +58,41 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
     """
     Get or create an Open deal.
     """
-    debug('_get_or_create_deal')
-    debug(company.__dict__)
+
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
+
+    debug('_get_or_create_deal')
+
+    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
+
+    debug(deal_custom_field_machine_names)
+
+    company_custom_fields_to_inherit = await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names).exclude(machine_name='hermes_id').prefetch_related('values')
+    debug(company_custom_fields_to_inherit)
+
+    for cf in company_custom_fields_to_inherit:
+        debug(cf.__dict__, await cf.values)
+        if cf.values:
+            debug(cf.values[0].value)
+            # create a custom field value for the deal
+            deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+            if deal_cf:
+                await CustomFieldValue.create(deal=deal, custom_field=deal_cf, value=cf.values[0].value)
+
+        else:
+            # these custom fields are hardcoded to the company
+            if cf.hermes_field_name:
+                val = getattr(company, cf.hermes_field_name, None)
+                deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+                debug(cf.hermes_field_name, val, deal_cf)
+                if deal_cf:
+                    await CustomFieldValue.create(deal=deal, custom_field=deal_cf, value=val)
+            else:
+                raise ValueError(f'No value for custom field {cf}')
+
+
+
     config = await get_config()
     if not deal:
         match company.price_plan:

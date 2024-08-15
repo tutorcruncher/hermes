@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 from datetime import datetime
+from platform import machine
 from unittest import mock
 from pytz import utc
 
@@ -383,24 +384,42 @@ class TestMultipleServices(HermesTestCase):
             last_name='Johnson',
             username='brian@tc.com',
         )
-
+        # org cfs
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
-            deal_field_id='234_sales_person_567',
             hermes_field_name='sales_person',
             name='Sales Person',
+            machine_name='sales_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_bdr_person_456',
-            deal_field_id='234_bdr_person_567',
             hermes_field_name='bdr_person',
             name='BDR Person',
+            machine_name='bdr_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
+
+        # deal cfs
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_sales_person_567',
+            name='Sales Person',
+            machine_name='sales_person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_bdr_person_567',
+            name='BDR Person',
+            machine_name='bdr_person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
         await build_custom_field_schema()
 
         modified_data = client_full_event_data()
@@ -577,6 +596,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             pd_field_id='123_sales_person_456',
             hermes_field_name='sales_person',
             name='Sales Person',
+            machine_name='sales_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
@@ -585,6 +605,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             pd_field_id='123_bdr_person_456',
             hermes_field_name='bdr_person',
             name='BDR Person',
+            machine_name='bdr_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
         # this field is a custom field that would be inherited by the deal from the org, however its source is only
@@ -604,6 +625,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             linked_object_type='Deal',
             pd_field_id='234_sales_person_567',
             name='Sales Person',
+            machine_name='sales_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
@@ -611,6 +633,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             linked_object_type='Deal',
             pd_field_id='234_bdr_person_567',
             name='BDR Person',
+            machine_name='bdr_person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
@@ -618,6 +641,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             linked_object_type='Deal',
             pd_field_id='234_source_567',
             name='Source',
+            machine_name='source',
             field_type=CustomField.TYPE_STR,
         )
 
