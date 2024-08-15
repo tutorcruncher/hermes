@@ -207,23 +207,11 @@ async def delete_persons(contacts: list[Contact]):
 
 async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
-    Get and create or update a Deal within Pipedrive. Ensuring to get any custom fields with deal_pd_field_id.
+    Get and create or update a Deal within Pipedrive.
     """
     debug('get_and_create_or_update_pd_deal')
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
-
-    company = await deal.company
-    hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.model_dump(by_alias=True)
-    deal_inherited_fields = await CustomField.filter(linked_object_type='Company', deal_pd_field_id__isnull=False)
-
-
-
-    # needs to be when we update the company
-    for field in deal_inherited_fields:
-        pd_deal_data[field.deal_pd_field_id] = hermes_org_data[field.pd_field_id]
-
     if deal.pd_deal_id:
         pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
         if pd_deal_data != pipedrive_deal.model_dump(by_alias=True):

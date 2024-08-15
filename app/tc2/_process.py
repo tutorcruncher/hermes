@@ -32,6 +32,10 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
         company = await company.update_from_dict(company_data)
         await company.save()
     # TC2 doesn't tell us which custom fields have been updated, so we have to check them all.
+    for cf in company_custom_fields:
+        debug(cf.__dict__, await tc2_client.custom_field_values([cf]))
+
+    await tc2_client.custom_field_values(company_custom_fields)
     await company.process_custom_field_vals({}, await tc2_client.custom_field_values(company_custom_fields))
     return created, company
 
@@ -54,6 +58,8 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
     """
     Get or create an Open deal.
     """
+    debug('_get_or_create_deal')
+    debug(company.__dict__)
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
     config = await get_config()
     if not deal:
@@ -85,6 +91,7 @@ async def update_from_client_event(
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db. if the Client is a narc, then we delete the Company and all related objects.
     """
+    debug('update_from_client_event')
     if isinstance(tc2_subject, TCSubject):
         try:
             tc2_client = TCClient(**tc2_subject.model_dump())
@@ -104,6 +111,7 @@ async def update_from_client_event(
     else:
         tc2_client = tc2_subject
     deal, contact = None, None
+    debug(tc2_client)
     await tc2_client.a_validate()
     company_created, company = await _create_or_update_company(tc2_client)
     if not company.narc:

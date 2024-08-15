@@ -445,8 +445,6 @@ class CustomField(models.Model):
         max_length=255, null=True, description='The machine name of the Custom Field in TC2, if not in the normal data.'
     )
     pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
-    deal_pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of associated deal Custom '
-                                                                               'Field in Pipedrive')
     linked_object_type = fields.CharField(
         max_length=255,
         description='The name of the model this is linked to, ' '("Company", "Contact", "Deal", "Meeting")',

@@ -571,11 +571,10 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             password='foo',
             pd_owner_id=10,
         )
-
+        # org cfs
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
-            deal_pd_field_id='234_sales_person_567',
             hermes_field_name='sales_person',
             name='Sales Person',
             field_type=CustomField.TYPE_FK_FIELD,
@@ -584,24 +583,45 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_bdr_person_456',
-            deal_pd_field_id='234_bdr_person_567',
             hermes_field_name='bdr_person',
             name='BDR Person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
-
         # this field is a custom field that would be inherited by the deal from the org, however its source is only
         # from TC2
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_source_456',
-            deal_pd_field_id='234_source_567',
             hermes_field_name=None,
             tc2_machine_name='client_marketing_source',
             name='Source',
             machine_name='source',
             field_type=CustomField.TYPE_STR,
         )
+
+        # deal cfs
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_sales_person_567',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_bdr_person_567',
+            name='BDR Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_source_567',
+            name='Source',
+            field_type=CustomField.TYPE_STR,
+        )
+
+
 
         await build_custom_field_schema()
 
