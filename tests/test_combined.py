@@ -9,7 +9,9 @@ from pytz import utc
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.pipedrive._schema import PDStatus
 from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
+from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import CB_MEETING_DATA, fake_gcal_builder
@@ -724,10 +726,128 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             }
         }
 
-    # need a test of creating a company from a pd org webhook
-
     # need a test when we receive a deal webhook from pd where thay have changed these custom fields we dont update the deal in hermes, but overwrite their changes.
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_custom_field_val_created_with_inherited_deal_cf(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_source_456',
+            name='Source',
+            field_type='str',
+        )
+
+        deal_source_field = await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_source_567',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        company = await Company.create(name='Old test company', sales_person=admin)
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 10,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 10,
+                '123_hermes_id_456': company.id,
+                '123_source_456': 'Google',
+            },
+        }
+
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=1,
+        )
+
+        self.pipedrive.db['deals'] = {
+            1: {
+                'id': 1,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': 99,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal.id,
+            }
+        }
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
+        data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_source_456': 'Google'})
+        r = await self.client.post(self.pipedrive_callback, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New test company'
+
+        await update_client_from_company(company)
+
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 10,
+                'name': 'Julies Ltd',
+                'address_country': 'GB',
+                'owner_id': 10,
+                '123_hermes_id_456': company.id,
+                '123_source_456': 'Google',
+            }
+        }
+
+        assert self.pipedrive.db['deals'] == {
+            1: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 20,
+                'person_id': None,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 10,
+                '345_hermes_id_678': deal.id,
+                '234_source_567': 'Google',
+            }
+        }
+
+        counter = 0
+        cf_vals = await CustomFieldValue.all()
+        for cf_val in cf_vals:
+            custom_field = await cf_val.custom_field
+            if custom_field.machine_name == 'source':
+                assert cf_val.value == 'Google'
+                counter += 1
+
+        assert counter == 2
+
+        await source_field.delete()
+        await deal_source_field.delete()
+        await build_custom_field_schema()
 
     # test for when they update the inherited custom fields on a pd org, we then receive a webhook of the org with changed, we then need to update all the associated deals accordinly
 
     # test for when a company already exists with multiple deals we update the inherited cfs on all those deals
+
+    # need a test of creating a company from a pd org webhook

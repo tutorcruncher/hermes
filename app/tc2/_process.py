@@ -54,6 +54,7 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
 async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
     """
     Get or create an Open deal.
+    always update the custom fields of the deal with the custom fields of the company
     """
 
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()

@@ -2,9 +2,45 @@ from typing import Optional
 
 from tortoise.exceptions import DoesNotExist
 
-from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
+from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
+from app.pipedrive.api import get_and_create_or_update_pd_deal
+
+
+async def _update_or_create_inherited_deal_custom_field_values(deal, company):
+    """
+    Update the inherited custom field values of a deal with the custom field values of the company
+    then send to pipedrive to update the deal
+    """
+    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
+    company_custom_fields_to_inherit = (
+        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
+        .exclude(machine_name='hermes_id')
+        .prefetch_related('values')
+    )
+
+    for cf in company_custom_fields_to_inherit:
+        if cf.values:
+            deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+            if deal_cf:
+                await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=cf.values[0].value)
+
+        else:
+            # these custom fields are hardcoded to the company
+            if cf.hermes_field_name:
+                val = getattr(company, cf.hermes_field_name, None)
+                deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+                if deal_cf:
+                    val = val.id
+                    await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=val)
+
+            else:
+                raise ValueError(f'No value for custom field {cf}')
+
+    # post to pipedrive to update the deal
+    await get_and_create_or_update_pd_deal(deal)
 
 
 async def _process_pd_organisation(
@@ -62,6 +98,11 @@ async def _process_pd_organisation(
             app_logger.info(
                 'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
             )
+
+    # here we should check if any cf values have been updated which should be inherited by the deal
+    if deals := await company.deals:
+        for deal in deals:
+            await _update_or_create_inherited_deal_custom_field_values(deal, company)
 
     return company
 
