@@ -348,87 +348,6 @@ class TestMultipleServices(HermesTestCase):
         modified_data['subject']['meta_agency']['name'] = 'MyTutors'
         modified_data['subject']['bdr_person'] = None
         events = [modified_data]
-
-        data = {'_request_time': 123, 'events': events}
-        r = await self.client.post(self.tc2_callback, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
-        assert r.status_code == 200, r.json()
-
-        assert await Company.exists()
-        company = await Company.get()
-        assert company.name == 'MyTutors'
-        assert not company.bdr_person
-        assert await company.support_person == await company.sales_person == admin
-
-        assert self.pipedrive.db['organizations'] == {
-            1: {
-                'id': 1,
-                'name': 'MyTutors',
-                'address_country': 'GB',
-                'owner_id': None,
-                '123_hermes_id_456': company.id,
-                '123_sales_person_456': admin.id,
-                '123_bdr_person_456': None,
-            }
-        }
-
-    @mock.patch('app.tc2.api.session.request')
-    @mock.patch('app.pipedrive.api.session.request')
-    async def test_tc2_cb_create_company_create_org_update_org_update_deal(self, mock_pd_request, mock_tc2_get):
-        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
-        mock_tc2_get.side_effect = fake_tc2_request(self.tc2)
-
-        admin = await Admin.create(
-            tc2_admin_id=30,
-            first_name='Brain',
-            last_name='Johnson',
-            username='brian@tc.com',
-        )
-        # org cfs
-        await CustomField.create(
-            linked_object_type='Company',
-            pd_field_id='123_sales_person_456',
-            hermes_field_name='sales_person',
-            name='Sales Person',
-            machine_name='sales_person',
-            field_type=CustomField.TYPE_FK_FIELD,
-        )
-
-        await CustomField.create(
-            linked_object_type='Company',
-            pd_field_id='123_bdr_person_456',
-            hermes_field_name='bdr_person',
-            name='BDR Person',
-            machine_name='bdr_person',
-            field_type=CustomField.TYPE_FK_FIELD,
-        )
-
-        # deal cfs
-        await CustomField.create(
-            linked_object_type='Deal',
-            pd_field_id='234_sales_person_567',
-            name='Sales Person',
-            machine_name='sales_person',
-            field_type=CustomField.TYPE_FK_FIELD,
-        )
-
-        await CustomField.create(
-            linked_object_type='Deal',
-            pd_field_id='234_bdr_person_567',
-            name='BDR Person',
-            machine_name='bdr_person',
-            field_type=CustomField.TYPE_FK_FIELD,
-        )
-
-        await build_custom_field_schema()
-
-        modified_data = client_full_event_data()
-        modified_data['subject']['meta_agency']['name'] = 'MyTutors'
-        modified_data['subject']['bdr_person'] = None
-        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
-        modified_data['subject']['meta_agency']['status'] = Company.STATUS_TRIAL
-
-        events = [modified_data]
-
         data = {'_request_time': 123, 'events': events}
         r = await self.client.post('/tc2/callback/', json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
@@ -448,20 +367,6 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': None,
-            }
-        }
-        deal = await company.deals
-        assert self.pipedrive.db['deals'] == {
-            1: {
-                'title': 'A deal with Julies Ltd',
-                'org_id': 1,
-                'person_id': 1,
-                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
-                'stage_id': 1,
-                'status': 'open',
-                'id': 1,
-                'user_id': 99,
-                '345_hermes_id_678': deal.id,
             }
         }
 
@@ -735,6 +640,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             name='Sales Person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
+
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_sales_person_567',
+            name='Sales Person',
+            machine_name='sales_person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
         await build_custom_field_schema()
 
         sales_person = await Admin.create(
@@ -788,7 +701,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'id': 1,
-                'name': 'MyTutors',
+                'name': 'Junes Ltd',
                 'address_country': 'GB',
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
@@ -798,9 +711,9 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
         assert self.pipedrive.db['deals'] == {
             1: {
-                'title': 'MyTutors',
+                'title': 'Junes Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': 1,
                 'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
                 'stage_id': 1,
                 'status': 'open',

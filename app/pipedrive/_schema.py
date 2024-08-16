@@ -200,6 +200,8 @@ class Activity(PipedriveBaseModel):
     @classmethod
     async def from_meeting(cls, meeting: Meeting):
         contact = await meeting.contact
+        admin = await meeting.admin
+        meeting.admin = admin
         return cls(
             **_remove_nulls(
                 **{
