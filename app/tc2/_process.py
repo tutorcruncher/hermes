@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 from pytz import utc
 
-from app.models import Company, Contact, CustomField, Deal, CustomFieldValue
+from app.models import Company, Contact, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
@@ -32,9 +32,6 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
         company = await company.update_from_dict(company_data)
         await company.save()
     # TC2 doesn't tell us which custom fields have been updated, so we have to check them all.
-    for cf in company_custom_fields:
-        debug(cf.__dict__, await tc2_client.custom_field_values([cf]))
-
     await tc2_client.custom_field_values(company_custom_fields)
     await company.process_custom_field_vals({}, await tc2_client.custom_field_values(company_custom_fields))
     return created, company
@@ -60,39 +57,6 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
     """
 
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
-
-    debug('_get_or_create_deal')
-
-    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
-    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
-
-    debug(deal_custom_field_machine_names)
-
-    company_custom_fields_to_inherit = await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names).exclude(machine_name='hermes_id').prefetch_related('values')
-    debug(company_custom_fields_to_inherit)
-
-    for cf in company_custom_fields_to_inherit:
-        debug(cf.__dict__, await cf.values)
-        if cf.values:
-            debug(cf.values[0].value)
-            # create a custom field value for the deal
-            deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
-            if deal_cf:
-                await CustomFieldValue.create(deal=deal, custom_field=deal_cf, value=cf.values[0].value)
-
-        else:
-            # these custom fields are hardcoded to the company
-            if cf.hermes_field_name:
-                val = getattr(company, cf.hermes_field_name, None)
-                deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
-                debug(cf.hermes_field_name, val, deal_cf)
-                if deal_cf:
-                    await CustomFieldValue.create(deal=deal, custom_field=deal_cf, value=val)
-            else:
-                raise ValueError(f'No value for custom field {cf}')
-
-
-
     config = await get_config()
     if not deal:
         match company.price_plan:
@@ -113,6 +77,33 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             admin_id=company.sales_person_id,
             stage_id=pipeline.dft_entry_stage_id,
         )
+
+    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
+    company_custom_fields_to_inherit = (
+        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
+        .exclude(machine_name='hermes_id')
+        .prefetch_related('values')
+    )
+
+    for cf in company_custom_fields_to_inherit:
+        if cf.values:
+            deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+            if deal_cf:
+                await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=cf.values[0].value)
+
+        else:
+            # these custom fields are hardcoded to the company
+            if cf.hermes_field_name:
+                val = getattr(company, cf.hermes_field_name, None)
+                deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+                if deal_cf:
+                    val = val.id
+                    await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=val)
+
+            else:
+                raise ValueError(f'No value for custom field {cf}')
+
     return deal
 
 
@@ -123,7 +114,6 @@ async def update_from_client_event(
     When an action happens in TC where the subject is a Client, we check to see if we need to update the Company/Contact
     in our db. if the Client is a narc, then we delete the Company and all related objects.
     """
-    debug('update_from_client_event')
     if isinstance(tc2_subject, TCSubject):
         try:
             tc2_client = TCClient(**tc2_subject.model_dump())
@@ -143,7 +133,6 @@ async def update_from_client_event(
     else:
         tc2_client = tc2_subject
     deal, contact = None, None
-    debug(tc2_client)
     await tc2_client.a_validate()
     company_created, company = await _create_or_update_company(tc2_client)
     if not company.narc:

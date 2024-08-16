@@ -173,10 +173,19 @@ class HermesBaseModel(BaseModel):
 
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
-            else:
+            elif cf.tc2_machine_name:
                 val = cf.values[0].value if cf.values else None
-            cf_data[cf.machine_name] = val
 
+            else:  # this is to handle the deal inherited custom fields
+                if cf.field_type == CustomField.TYPE_FK_FIELD:
+                    if cf.values:
+                        val_id_str = cf.values[0].value
+                        val = int(val_id_str)
+
+                else:
+                    val = cf.values[0].value if cf.values else None
+
+            cf_data[cf.machine_name] = val
         return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)

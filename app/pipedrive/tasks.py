@@ -18,9 +18,8 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     """
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
-    org = await get_and_create_or_update_organisation(company)
+    await get_and_create_or_update_organisation(company)
     await get_and_create_or_update_person(contact)
-    debug('pd_post_process_sales_call')
     pd_deal = await get_and_create_or_update_pd_deal(deal)
     await create_activity(meeting, pd_deal)
 
@@ -38,7 +37,6 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     """
     Called after a client event from TC2. For example, a client paying an invoice.
     """
-    debug('Processing client event')
     await get_and_create_or_update_organisation(company)
     for contact in await company.contacts:
         await get_and_create_or_update_person(contact)

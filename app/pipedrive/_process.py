@@ -5,11 +5,10 @@ from tortoise.exceptions import DoesNotExist
 from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
-from app.pipedrive.api import get_and_create_or_update_pd_deal
 
 
 async def _process_pd_organisation(
-        current_pd_org: Optional[Organisation], old_pd_org: Optional[Organisation]
+    current_pd_org: Optional[Organisation], old_pd_org: Optional[Organisation]
 ) -> Company | None:
     """
     Processes a Pipedrive Organisation/Company event. Creates the Organisation/Company if it didn't exist in Hermes,
@@ -48,26 +47,13 @@ async def _process_pd_organisation(
                 app_logger.info(
                     'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
                 )
-
-            # for deal in company.deals:
-            #     # get the deal and update the custom field with the value from the associated customfield on the org
-            #     old_pd_deal = await PDDeal.get(pd_deal_id=deal.pd_deal_id)
-            #     # new_pd_deal = await PDDeal.get(pd_deal_id=cf.deal_pd_field_id)
-            #     new_pd_deal_data = await old_pd_deal.deal_dict()
-            #     for cf in company_custom_fields:
-            #         if cf.deal_pd_field_id:
-            #             new_pd_deal_data[cf.deal_pd_field_id] = new_company_cf_vals[cf.id]
-            #     debug('in process_pd_organisation where company exists')
-            #     await get_and_create_or_update_pd_deal(new_pd_deal_data)
         else:
             # The org has been deleted. The linked custom fields will also be deleted
             await company.delete()
             app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
     elif current_pd_org:
         # The org has just been created
-        debug(company_custom_fields.__dict__)
         company = await Company.create(**await current_pd_org.company_dict(company_custom_fields))
-        debug(company.__dict__)
         # post to pipedrive to update the hermes_id
         app_logger.info('Callback: creating Company %s from Organisation %s', company.id, current_pd_org.id)
         new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
@@ -76,21 +62,6 @@ async def _process_pd_organisation(
             app_logger.info(
                 'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
             )
-
-            # for deal in company.deals:
-            #     # get the deal and update the custom field with the value from the associated customfield on the org
-            #     old_pd_deal = await PDDeal.get(pd_deal_id=deal.pd_deal_id)
-            #     # new_pd_deal = await PDDeal.get(pd_deal_id=cf.deal_pd_field_id)
-            #     new_pd_deal_data = await old_pd_deal.deal_dict()
-            #     for cf in company_custom_fields:
-            #         debug(2)
-            #         if cf.deal_pd_field_id:
-            #             debug(3)
-            #             new_pd_deal_data[cf.deal_pd_field_id] = new_company_cf_vals[cf.id]
-            #
-            #     debug('in process_pd_organisation where company does not exist')
-            #
-            #     await get_and_create_or_update_pd_deal(new_pd_deal_data)
 
     return company
 
@@ -175,7 +146,7 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
 
 
 async def _process_pd_pipeline(
-        current_pd_pipeline: Optional[PDPipeline], old_pd_pipeline: Optional[PDPipeline]
+    current_pd_pipeline: Optional[PDPipeline], old_pd_pipeline: Optional[PDPipeline]
 ) -> Pipeline | None:
     """
     Processes a Pipedrive Pipeline event. Creates the Pipeline if it didn't exist in Hermes, updates if it did .

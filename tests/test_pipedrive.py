@@ -907,7 +907,6 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         assert await Deal.all().count() == 1
 
-
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event_company_cf_on_deal(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)

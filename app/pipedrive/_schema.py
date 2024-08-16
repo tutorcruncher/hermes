@@ -58,21 +58,7 @@ class PipedriveBaseModel(HermesBaseModel):
         When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
         Pipedrive model.
         """
-        # Initialize an empty dictionary to store the custom field values
-        custom_field_values = {}
-
-        # Iterate over each custom field in the custom_fields list
-        for c in custom_fields:
-            # Check if the custom field does not have a hermes_field_name
-            if not c.hermes_field_name:
-                # Retrieve the attribute value from the current object (self) using the machine_name of the custom field
-                attribute_value = getattr(self, c.machine_name)
-                # Add the custom field id and the retrieved attribute value to the dictionary
-                custom_field_values[c.id] = attribute_value
-
-        # Return the dictionary containing the custom field values
-        return custom_field_values
-        # return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
+        return {c.id: getattr(self, c.machine_name) for c in custom_fields if not c.hermes_field_name}
 
 
 class Organisation(PipedriveBaseModel):
@@ -249,19 +235,19 @@ class PDDeal(PipedriveBaseModel):
         contact = deal.contact_id and await deal.contact
         pipeline = await deal.pipeline
         stage = await deal.stage
-        obj = cls(
-            **_remove_nulls(
-                title=deal.name,
-                org_id=company and company.pd_org_id,
-                user_id=(await deal.admin).pd_owner_id,
-                person_id=contact and contact.pd_person_id,
-                pipeline_id=pipeline.pd_pipeline_id,
-                stage_id=stage.pd_stage_id,
-                status=deal.status,
-                **await cls.get_custom_field_vals(deal),
-            )
+
+        cls_kwargs = dict(
+            title=deal.name,
+            org_id=company.pd_org_id,
+            user_id=(await deal.admin).pd_owner_id,
+            person_id=contact and contact.pd_person_id,
+            pipeline_id=pipeline.pd_pipeline_id,
+            stage_id=stage.pd_stage_id,
+            status=deal.status,
         )
-        return obj
+        cls_kwargs.update(await cls.get_custom_field_vals(deal))
+        final_kwargs = _remove_nulls(**cls_kwargs)
+        return cls(**final_kwargs)
 
     async def deal_dict(self) -> dict:
         return {

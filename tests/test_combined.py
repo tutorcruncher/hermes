@@ -3,17 +3,16 @@ import hashlib
 import hmac
 import json
 from datetime import datetime
-from platform import machine
 from unittest import mock
+
 from pytz import utc
 
-
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Meeting
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
 from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
 from app.utils import settings
 from tests._common import HermesTestCase
-from tests.test_callbooker import fake_gcal_builder, CB_MEETING_DATA
+from tests.test_callbooker import CB_MEETING_DATA, fake_gcal_builder
 from tests.test_pipedrive import FakePipedrive, basic_pd_org_data, fake_pd_request
 from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
@@ -645,8 +644,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_STR,
         )
 
-
-
         await build_custom_field_schema()
 
         modified_data = client_full_event_data()
@@ -730,7 +727,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
 
-
         await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
@@ -742,7 +738,13 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await build_custom_field_schema()
 
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True, pd_owner_id=10, sells_payg = True, sells_gb = True
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_support_person=True,
+            pd_owner_id=10,
+            sells_payg=True,
+            sells_gb=True,
         )
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
@@ -781,9 +783,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert await deal.company == company
         assert await deal.admin == sales_person
 
-
         await pd_post_process_sales_call(company, contact, meeting, deal)
-
 
         assert self.pipedrive.db['organizations'] == {
             1: {

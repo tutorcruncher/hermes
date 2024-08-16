@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 import logfire
 import requests
 
-from app.models import Company, Contact, Deal, Meeting, CustomField
+from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
 from app.pipedrive._utils import app_logger
 from app.utils import settings
@@ -141,7 +141,6 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     elif org := await _search_for_organisation(company):
         # get by cligency url or contact email/phone
         company.pd_org_id = org.id
-
         await company.save()
         await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
 
@@ -209,7 +208,6 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     """
     Get and create or update a Deal within Pipedrive.
     """
-    debug('get_and_create_or_update_pd_deal')
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
     if deal.pd_deal_id:
