@@ -846,7 +846,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await deal_source_field.delete()
         await build_custom_field_schema()
 
-
     # test for when a company already exists with multiple deals we update the inherited cfs on all those deals
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_custom_field_val_created_with_multiple_child_deals(self, mock_request):
@@ -933,7 +932,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'stage_id': 1,
                 'status': 'open',
                 '345_hermes_id_678': deal2.id,
-            }
+            },
         }
 
         data = copy.deepcopy(basic_pd_org_data())
@@ -982,7 +981,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'user_id': 10,
                 '345_hermes_id_678': deal2.id,
                 '234_source_567': 'Google',
-            }
+            },
         }
 
         counter = 0
