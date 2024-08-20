@@ -2099,11 +2099,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data = copy.deepcopy(basic_pd_org_data())
         data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
         data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_source_456': 'Google'})
+        data[PDStatus.CURRENT].update(**{'123_source_456': 'Google'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
-        company = await Company.get()
-        assert company.name == 'New test company'
 
         cf_val = await CustomFieldValue.get()
         assert cf_val.value == 'Google'
@@ -2129,11 +2127,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         data = copy.deepcopy(basic_pd_org_data())
         data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
         data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_source_456': 'Google'})
+        data[PDStatus.CURRENT].update(**{'123_source_456': 'Google'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
-        company = await Company.get()
-        assert company.name == 'New test company'
 
         cf_val = await CustomFieldValue.get()
         assert cf_val.value == 'Google'

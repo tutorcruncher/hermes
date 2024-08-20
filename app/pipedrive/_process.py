@@ -78,10 +78,29 @@ async def _process_pd_organisation(
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
             old_company_cf_vals = await old_pd_org.custom_field_values(company_custom_fields) if old_org_data else {}
             new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
-            cfs_updated = await company.process_custom_field_vals(old_company_cf_vals, new_company_cf_vals)
+            cfs_created, cfs_updated, cfs_deleted = await company.process_custom_field_vals(
+                old_company_cf_vals, new_company_cf_vals
+            )
+            if cfs_created:
+                app_logger.info(
+                    'Callback: creating Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_created),
+                    current_pd_org.id,
+                )
             if cfs_updated:
                 app_logger.info(
-                    'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+                    'Callback: updating Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_updated),
+                    current_pd_org.id,
+                )
+            if cfs_deleted:
+                app_logger.info(
+                    'Callback: deleting Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_deleted),
+                    current_pd_org.id,
                 )
         else:
             # The org has been deleted. The linked custom fields will also be deleted
@@ -165,6 +184,7 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     current_deal = getattr(current_pd_deal, 'deal', None) if current_pd_deal else None
     old_deal = getattr(old_pd_deal, 'deal', None) if old_pd_deal else None
     deal = current_deal or old_deal
+
     if deal:
         if current_pd_deal:
             # The deal has been updated
