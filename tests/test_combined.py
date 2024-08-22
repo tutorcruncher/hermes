@@ -1002,7 +1002,9 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
     # test if they update a deal, and update the inherited cfs, we dont update the deal in hermes, but overwrite their changes in pipedrive.
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_overwrite_deal_cf_val(self, mock_request):
+    async def test_updated_org_and_deals_from_deal(self, mock_request):
+        # this test should actually check that if a sales person updated one of the inherited cfs on a deal,
+        # we should update that cf on the hermes deal, Company, pd Org and all associated deals.
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         admin = await Admin.create(
@@ -1031,10 +1033,10 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         )
         await build_custom_field_schema()
 
-        company = await Company.create(name='Julies Ltd', sales_person=admin, pd_org_id=20)
+        company = await Company.create(name='Julies Ltd', sales_person=admin, pd_org_id=1, country='GB')
         self.pipedrive.db['organizations'] = {
             1: {
-                'id': 20,
+                'id': 1,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 10,
@@ -1056,11 +1058,21 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             pd_deal_id=1,
         )
 
+        deal2 = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=2,
+        )
+
         self.pipedrive.db['deals'] = {
             1: {
                 'id': 1,
                 'title': 'A deal with Julies Ltd',
-                'org_id': 20,
+                'org_id': 1,
                 'person_id': 1,
                 'user_id': admin.pd_owner_id,
                 'pipeline_id': self.pipeline.pd_pipeline_id,
@@ -1069,20 +1081,32 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '345_hermes_id_678': deal.id,
                 '234_source_567': 'Google',
             },
+            2: {
+                'id': 2,
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': 1,
+                'user_id': admin.pd_owner_id,
+                'pipeline_id': self.pipeline.pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                '345_hermes_id_678': deal2.id,
+                '234_source_567': 'Google',
+            },
         }
 
         await CustomFieldValue.create(custom_field=source_field, company=company, value='Google')
-        assert await CustomFieldValue.all().count() == 1
         await CustomFieldValue.create(custom_field=deal_source_field, deal=deal, value='Google')
-        assert await CustomFieldValue.all().count() == 2
+        await CustomFieldValue.create(custom_field=deal_source_field, deal=deal2, value='Google')
 
         data = copy.deepcopy(basic_pd_deal_data())
         data[PDStatus.CURRENT]['pipeline_id'] = self.pipeline.pd_pipeline_id
         data[PDStatus.CURRENT]['stage_id'] = self.stage.id
         data[PDStatus.CURRENT]['user_id'] = admin.pd_owner_id
-        data[PDStatus.CURRENT]['org_id'] = 20
+        data[PDStatus.CURRENT]['org_id'] = 1
         data[PDStatus.CURRENT]['person_id'] = 1
         data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.PREVIOUS].update(**{'234_source_567': 'Google', 'hermes_id': deal.id})
         data[PDStatus.PREVIOUS].update(hermes_id=deal.id)
         data[PDStatus.CURRENT].update(**{'234_source_567': 'Yahoo', 'hermes_id': deal.id})
         r = await self.client.post(self.pipedrive_callback, json=data)
@@ -1091,41 +1115,57 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
         await update_client_from_company(company)
 
+        counter = 0
+        cf_vals = await CustomFieldValue.all()
+        for cf_val in cf_vals:
+            custom_field = await cf_val.custom_field
+            if custom_field.machine_name == 'source':
+                assert cf_val.value == 'Yahoo'
+                counter += 1
+
+        assert counter == 3
+
         assert self.pipedrive.db['organizations'] == {
             1: {
-                'id': 20,
+                'id': 1,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
-                '123_source_456': 'Google',
+                '123_source_456': 'Yahoo',
             }
         }
 
         assert self.pipedrive.db['deals'] == {
             1: {
                 'title': 'A deal with Julies Ltd',
-                'org_id': 20,
-                'person_id': 1,
+                'org_id': 1,
+                'person_id': None,
                 'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
                 'stage_id': 1,
                 'status': 'open',
                 'id': 1,
                 'user_id': 10,
                 '345_hermes_id_678': deal.id,
-                '234_source_567': 'Google',
+                '234_source_567': 'Yahoo',
             },
+            2: {
+                'title': 'A deal with Julies Ltd',
+                'org_id': 1,
+                'person_id': None,
+                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 2,
+                'user_id': 10,
+                '345_hermes_id_678': deal2.id,
+                '234_source_567': 'Yahoo',
+            }
         }
 
-        counter = 0
-        cf_vals = await CustomFieldValue.all()
-        for cf_val in cf_vals:
-            custom_field = await cf_val.custom_field
-            if custom_field.machine_name == 'source':
-                assert cf_val.value == 'Google'
-                counter += 1
 
-        assert counter == 2
+
+
 
         await source_field.delete()
         await deal_source_field.delete()

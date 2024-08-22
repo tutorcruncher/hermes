@@ -33,7 +33,7 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
     @param data: data to send in the request body
     @return: json response
     """
-
+    debug(data, method)
     query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
     with logfire.span('{method} {url!r}', url=url, method=method):

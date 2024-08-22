@@ -194,6 +194,23 @@ class HermesModel(models.Model):
         await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
         deleted.extend(deleted_vals)
 
+
+        # if the self model is a deal
+        if self.__class__.__name__ == 'Deal':
+            debug('hello')
+            company = await self.company
+            # get all company custom fields
+            # check if the created or changed custom fields have the same machine name to Company custom fields
+            # if they do, update the company custom field value
+            company_custom_fields = await CustomField.filter(linked_object_type='Company')
+            for cf_id, cf_val in updated_created_vals.items():
+                for company_cf in company_custom_fields:
+                    deal_cf = await CustomField.get(id=cf_id)
+                    if company_cf.machine_name == deal_cf.machine_name and company_cf.machine_name != 'hermes_id':
+                        await CustomFieldValue.update_or_create(
+                            **{'custom_field_id': company_cf.id, 'company': company, 'defaults': {'value': cf_val}}
+                        )
+
         return created, updated, deleted
 
     @classmethod
