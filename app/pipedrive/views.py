@@ -56,7 +56,6 @@ async def callback(event: dict, tasks: BackgroundTasks):
     event_instance = PipedriveEvent(**event_data)
     event_instance.current and await event_instance.current.a_validate()
     event_instance.previous and await event_instance.previous.a_validate()
-    debug(event_instance)
     app_logger.info(f'Callback: event_instance received for {event_instance.meta.object}: {event_instance}')
     if event_instance.meta.object == 'deal':
         deal = await _process_pd_deal(event_instance.current, event_instance.previous)

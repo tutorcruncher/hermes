@@ -2,11 +2,10 @@ from typing import Optional
 
 from tortoise.exceptions import DoesNotExist
 
-from app.models import Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage, Company
+from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
-from app.pipedrive.api import get_and_create_or_update_pd_deal, get_and_create_or_update_organisation
-from app.tc2.tasks import update_client_from_company
+from app.pipedrive.api import get_and_create_or_update_organisation, get_and_create_or_update_pd_deal
 
 
 async def update_or_create_inherited_deal_custom_field_values(company):
@@ -16,10 +15,11 @@ async def update_or_create_inherited_deal_custom_field_values(company):
     """
     deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
     deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
-    company_custom_fields_to_inherit = await CustomField.filter(
-        linked_object_type='Company',
-        machine_name__in=deal_custom_field_machine_names
-    ).exclude(machine_name='hermes_id').prefetch_related('values')
+    company_custom_fields_to_inherit = (
+        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
+        .exclude(machine_name='hermes_id')
+        .prefetch_related('values')
+    )
 
     deals = await company.deals
 
@@ -36,18 +36,11 @@ async def update_or_create_inherited_deal_custom_field_values(company):
             raise ValueError(f'No value for custom field {cf}')
 
         for deal in deals:
-            debug('updating deal cf', deal.id, cf.machine_name, value)
-            # await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=value)
             await CustomFieldValue.update_or_create(
                 **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
             )
-            all_cfvs = await CustomFieldValue.filter(deal=deal)
-            for acfv in all_cfvs:
-                debug((await acfv.custom_field).id, acfv.id, acfv.value)
 
             await get_and_create_or_update_pd_deal(deal)
-
-
 
 
 async def _process_pd_organisation(
@@ -129,8 +122,6 @@ async def _process_pd_organisation(
     if await company.deals:
         await update_or_create_inherited_deal_custom_field_values(company)
 
-
-
     return company
 
 
@@ -200,8 +191,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
 
-            debug(old_data, new_data)
-
             if old_data != new_data:
                 await deal.update_from_dict(new_data)
                 await deal.save()
@@ -209,20 +198,29 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
 
             old_deal_cf_vals = await old_pd_deal.custom_field_values(deal_custom_fields) if old_data else {}
             new_deal_cf_vals = await current_pd_deal.custom_field_values(deal_custom_fields)
-            cfs_created, cfs_updated, cfs_deleted = await deal.process_custom_field_vals(old_deal_cf_vals, new_deal_cf_vals)
-            debug(old_deal_cf_vals, new_deal_cf_vals)
-            debug(cfs_created, cfs_updated, cfs_deleted)
+            cfs_created, cfs_updated, cfs_deleted = await deal.process_custom_field_vals(
+                old_deal_cf_vals, new_deal_cf_vals
+            )
             if cfs_created:
                 app_logger.info(
-                    'Callback: creating Deal %s cf ids %s from PDDeal %s', deal.id, list(cfs_created), current_pd_deal.id
+                    'Callback: creating Deal %s cf ids %s from PDDeal %s',
+                    deal.id,
+                    list(cfs_created),
+                    current_pd_deal.id,
                 )
             if cfs_updated:
                 app_logger.info(
-                    'Callback: updating Deal %s cf ids %s from PDDeal %s', deal.id, list(cfs_updated), current_pd_deal.id
+                    'Callback: updating Deal %s cf ids %s from PDDeal %s',
+                    deal.id,
+                    list(cfs_updated),
+                    current_pd_deal.id,
                 )
             if cfs_deleted:
                 app_logger.info(
-                    'Callback: deleting Deal %s cf ids %s from PDDeal %s', deal.id, list(cfs_deleted), current_pd_deal.id
+                    'Callback: deleting Deal %s cf ids %s from PDDeal %s',
+                    deal.id,
+                    list(cfs_deleted),
+                    current_pd_deal.id,
                 )
 
             if cfs_updated or cfs_created:
@@ -232,7 +230,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 # update the company in pipedrive
                 await get_and_create_or_update_organisation(company)
                 # then update all the other deals
-                debug('updating all pd deals')
                 await update_or_create_inherited_deal_custom_field_values(company)
 
         else:

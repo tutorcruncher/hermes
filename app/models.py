@@ -194,10 +194,8 @@ class HermesModel(models.Model):
         await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
         deleted.extend(deleted_vals)
 
-
         # if the self model is a deal
         if self.__class__.__name__ == 'Deal':
-            debug('hello')
             company = await self.company
             # get all company custom fields
             # check if the created or changed custom fields have the same machine name to Company custom fields

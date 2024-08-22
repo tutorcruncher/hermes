@@ -1160,12 +1160,8 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'user_id': 10,
                 '345_hermes_id_678': deal2.id,
                 '234_source_567': 'Yahoo',
-            }
+            },
         }
-
-
-
-
 
         await source_field.delete()
         await deal_source_field.delete()
