@@ -497,7 +497,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             pd_owner_id=10,
         )
         # org cfs
-        await CustomField.create(
+        sales_custom_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
             hermes_field_name='sales_person',
@@ -506,7 +506,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
-        await CustomField.create(
+        bdr_custom_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_bdr_person_456',
             hermes_field_name='bdr_person',
@@ -516,7 +516,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         )
         # this field is a custom field that would be inherited by the deal from the org, however its source is only
         # from TC2
-        await CustomField.create(
+        source_custom_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_source_456',
             hermes_field_name=None,
@@ -527,7 +527,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         )
 
         # deal cfs
-        await CustomField.create(
+        deal_sales_custom_field = await CustomField.create(
             linked_object_type='Deal',
             pd_field_id='234_sales_person_567',
             name='Sales Person',
@@ -535,7 +535,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
-        await CustomField.create(
+        deal_bdr_custom_field = await CustomField.create(
             linked_object_type='Deal',
             pd_field_id='234_bdr_person_567',
             name='BDR Person',
@@ -543,7 +543,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
-        await CustomField.create(
+        deal_source_custom_field = await CustomField.create(
             linked_object_type='Deal',
             pd_field_id='234_source_567',
             name='Source',
@@ -618,6 +618,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             }
         }
 
+        await sales_custom_field.delete()
+        await bdr_custom_field.delete()
+        await source_custom_field.delete()
+        await deal_sales_custom_field.delete()
+        await deal_bdr_custom_field.delete()
+        await deal_source_custom_field.delete()
+        await build_custom_field_schema()
+
     # need a test for a callbooker create company
     @mock.patch('app.pipedrive.api.session.request')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
@@ -634,7 +642,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         mock_gcal_builder.side_effect = fake_gcal_builder()
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
 
-        await CustomField.create(
+        custom_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
             deal_pd_field_id='234_sales_person_567',
@@ -643,7 +651,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
-        await CustomField.create(
+        deal_custom_field = await CustomField.create(
             linked_object_type='Deal',
             pd_field_id='234_sales_person_567',
             name='Sales Person',
@@ -726,7 +734,10 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             }
         }
 
-    # need a test when we receive a deal webhook from pd where thay have changed these custom fields we dont update the deal in hermes, but overwrite their changes.
+        await custom_field.delete()
+        await deal_custom_field.delete()
+        await build_custom_field_schema()
+
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_custom_field_val_created_with_child_deal_cf(self, mock_request):
