@@ -100,6 +100,7 @@ class HermesBaseModel(BaseModel):
                 hermes_field_name = extra_schema['hermes_field_name']
 
                 from app.pipedrive._schema import PDDeal
+
                 if is_custom and field_name != 'hermes_id' and not isinstance(self, PDDeal):
                     model = model._meta.fields_map[hermes_field_name].related_model
                     to_field = hermes_field_name

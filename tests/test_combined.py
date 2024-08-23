@@ -738,7 +738,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await deal_custom_field.delete()
         await build_custom_field_schema()
 
-
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_custom_field_val_created_with_child_deal_cf(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
@@ -1011,11 +1010,8 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await deal_source_field.delete()
         await build_custom_field_schema()
 
-    # test if they update a deal, and update the inherited cfs, we dont update the deal in hermes, but overwrite their changes in pipedrive.
     @mock.patch('app.pipedrive.api.session.request')
     async def test_ignore_update_of_inherited_custom_field_on_deal(self, mock_request):
-        # this test should actually check that if a sales person updated one of the inherited cfs on a deal,
-        # we should update that cf on the hermes deal, Company, pd Org and all associated deals.
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         admin = await Admin.create(
@@ -1109,10 +1105,9 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await CustomFieldValue.create(custom_field=source_field, company=company, value='Google')
         await CustomFieldValue.create(custom_field=deal_source_field, deal=deal, value='Google')
         await CustomFieldValue.create(custom_field=deal_source_field, deal=deal2, value='Google')
-
         data = copy.deepcopy(basic_pd_deal_data())
         data[PDStatus.CURRENT]['pipeline_id'] = self.pipeline.pd_pipeline_id
-        data[PDStatus.CURRENT]['stage_id'] = self.stage.id
+        data[PDStatus.CURRENT]['stage_id'] = self.stage.pd_stage_id
         data[PDStatus.CURRENT]['user_id'] = admin.pd_owner_id
         data[PDStatus.CURRENT]['org_id'] = 1
         data[PDStatus.CURRENT]['person_id'] = 1
@@ -1151,7 +1146,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': 1,
                 'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
                 'stage_id': 1,
                 'status': 'open',
@@ -1163,7 +1158,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             2: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': 1,
                 'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
                 'stage_id': 1,
                 'status': 'open',
