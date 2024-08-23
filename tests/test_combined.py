@@ -639,6 +639,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         create org
         create deal
         """
+        debug('----------------------------test_com_cli_create_update_org_deal---------------------------------------')
         mock_gcal_builder.side_effect = fake_gcal_builder()
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
 
@@ -665,10 +666,11 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             last_name='Jobs',
             username='climan@example.com',
             is_support_person=True,
-            pd_owner_id=10,
+            pd_owner_id=5,
             sells_payg=True,
             sells_gb=True,
         )
+        debug(sales_person.id)
         assert await Company.all().count() == 0
         assert await Contact.all().count() == 0
         r = await self.client.post(self.callbooker_callback, json={'admin_id': sales_person.id, **CB_MEETING_DATA})
@@ -706,6 +708,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert await deal.company == company
         assert await deal.admin == sales_person
 
+        debug(deal.__dict__)
         await pd_post_process_sales_call(company, contact, meeting, deal)
 
         assert self.pipedrive.db['organizations'] == {
@@ -713,12 +716,13 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'id': 1,
                 'name': 'Junes Ltd',
                 'address_country': 'GB',
-                'owner_id': 10,
+                'owner_id': sales_person.pd_owner_id,
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': sales_person.id,
             }
         }
-
+        debug(sales_person.id)
+        debug(sales_person.pd_owner_id)
         assert self.pipedrive.db['deals'] == {
             1: {
                 'title': 'Junes Ltd',
@@ -728,7 +732,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'stage_id': 1,
                 'status': 'open',
                 'id': 1,
-                'user_id': 10,
+                'user_id': sales_person.pd_owner_id,
                 '345_hermes_id_678': deal.id,
                 '234_sales_person_567': sales_person.id,
             }

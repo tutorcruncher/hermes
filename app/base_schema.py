@@ -99,9 +99,7 @@ class HermesBaseModel(BaseModel):
                 is_custom = extra_schema['custom']
                 hermes_field_name = extra_schema['hermes_field_name']
 
-                from app.pipedrive._schema import PDDeal
-
-                if is_custom and field_name != 'hermes_id' and not isinstance(self, PDDeal):
+                if is_custom and field_name != 'hermes_id':
                     model = model._meta.fields_map[hermes_field_name].related_model
                     to_field = hermes_field_name
 
@@ -158,6 +156,7 @@ class HermesBaseModel(BaseModel):
         custom_fields = await cls.get_custom_fields(obj)
         cf_data = {}
         for cf in custom_fields:
+            val = None
             if cf.hermes_field_name:
                 if cf.field_type == CustomField.TYPE_FK_FIELD:
                     pk_field_name = cf.hermes_field_name + '_id'
@@ -180,14 +179,20 @@ class HermesBaseModel(BaseModel):
 
             else:  # this is to handle the deal inherited custom fields
                 if cf.field_type == CustomField.TYPE_FK_FIELD:
+                    debug(val)
+                    debug('3', cf.machine_name, cls.__name__, cf.field_type)
                     if cf.values:
+                        debug('4', cf.values[0].value)
                         val_id_str = cf.values[0].value
+                        debug(val_id_str)
                         val = int(val_id_str)
 
                 else:
                     val = cf.values[0].value if cf.values else None
 
             cf_data[cf.machine_name] = val
+            debug('final cf value')
+            debug(cf.machine_name, val)
         return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
