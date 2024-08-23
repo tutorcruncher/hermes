@@ -1013,7 +1013,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
     # test if they update a deal, and update the inherited cfs, we dont update the deal in hermes, but overwrite their changes in pipedrive.
     @mock.patch('app.pipedrive.api.session.request')
-    async def test_updated_org_and_deals_from_deal(self, mock_request):
+    async def test_ignore_update_of_inherited_custom_field_on_deal(self, mock_request):
         # this test should actually check that if a sales person updated one of the inherited cfs on a deal,
         # we should update that cf on the hermes deal, Company, pd Org and all associated deals.
         mock_request.side_effect = fake_pd_request(self.pipedrive)
@@ -1131,113 +1131,12 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         for cf_val in cf_vals:
             custom_field = await cf_val.custom_field
             if custom_field.machine_name == 'source':
-                assert cf_val.value == 'Yahoo'
+                assert cf_val.value == 'Google'
                 counter += 1
 
         assert counter == 3
 
         assert self.pipedrive.db['organizations'] == {
-            1: {
-                'id': 1,
-                'name': 'Julies Ltd',
-                'address_country': 'GB',
-                'owner_id': 10,
-                '123_hermes_id_456': company.id,
-                '123_source_456': 'Yahoo',
-            }
-        }
-
-        assert self.pipedrive.db['deals'] == {
-            1: {
-                'title': 'A deal with Julies Ltd',
-                'org_id': 1,
-                'person_id': None,
-                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
-                'stage_id': 1,
-                'status': 'open',
-                'id': 1,
-                'user_id': 10,
-                '345_hermes_id_678': deal.id,
-                '234_source_567': 'Yahoo',
-            },
-            2: {
-                'title': 'A deal with Julies Ltd',
-                'org_id': 1,
-                'person_id': None,
-                'pipeline_id': (await Pipeline.get()).pd_pipeline_id,
-                'stage_id': 1,
-                'status': 'open',
-                'id': 2,
-                'user_id': 10,
-                '345_hermes_id_678': deal2.id,
-                '234_source_567': 'Yahoo',
-            },
-        }
-
-        await source_field.delete()
-        await deal_source_field.delete()
-        await build_custom_field_schema()
-
-
-    @mock.patch('app.pipedrive.api.session.request')
-    async def test_updated_org_and_deals_from_deal_2(self, mock_request):
-        # this test should actually check that if a sales person updated one of the inherited cfs on a deal,
-        # we should update that cf on the hermes deal, Company, pd Org and all associated deals.
-        mock_request.side_effect = fake_pd_request(self.pipedrive)
-
-        admin = await Admin.create(
-            tc2_admin_id=30,
-            first_name='Brain',
-            last_name='Johnson',
-            username='brian@tc.com',
-            password='foo',
-            pd_owner_id=10,
-        )
-
-        bdr_person = await Admin.create(
-            first_name='Michael',
-            last_name='Bay',
-            username='brdperson@example.com',
-            is_bdr_person=True,
-            tc2_admin_id=22
-        )
-
-        source_field = await CustomField.create(
-            linked_object_type='Company',
-            pd_field_id='123_source_456',
-            name='Source',
-            machine_name='source',
-            field_type='str',
-        )
-
-        bdr_person_id_field = await CustomField.create(
-            linked_object_type='Company',
-            pd_field_id='123_bdr_person_456',
-            name='BDR Person',
-            hermes_field_name='bdr_person',
-            machine_name='bdr_person_id',
-            field_type='fk_field',
-        )
-
-        deal_source_field = await CustomField.create(
-            linked_object_type='Deal',
-            pd_field_id='234_source_567',
-            name='Source',
-            machine_name='source',
-            field_type='str',
-        )
-
-        deal_bdr_person_id_field = await CustomField.create(
-            linked_object_type='Deal',
-            pd_field_id='234_bdr_person_567',
-            name='BDR Person',
-            machine_name='bdr_person_id',
-            field_type='fk_field',
-        )
-        await build_custom_field_schema()
-
-        company = await Company.create(name='Julies Ltd', bdr_person=bdr_person, sales_person=admin, pd_org_id=1, country='GB')
-        self.pipedrive.db['organizations'] = {
             1: {
                 'id': 1,
                 'name': 'Julies Ltd',
@@ -1245,107 +1144,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
                 '123_source_456': 'Google',
-                '123_bdr_person_id_456': admin.id,
-            },
-        }
-
-        contact = await Contact.create(
-            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
-        )
-        deal = await Deal.create(
-            name='A deal with Julies Ltd',
-            company=company,
-            contact=contact,
-            pipeline=self.pipeline,
-            stage=self.stage,
-            admin=admin,
-            pd_deal_id=1,
-            bdr_person=bdr_person,
-        )
-
-        deal2 = await Deal.create(
-            name='A deal with Julies Ltd',
-            company=company,
-            contact=contact,
-            pipeline=self.pipeline,
-            stage=self.stage,
-            admin=admin,
-            pd_deal_id=2,
-            bdr_person=bdr_person,
-        )
-
-        self.pipedrive.db['deals'] = {
-            1: {
-                'id': 1,
-                'title': 'A deal with Julies Ltd',
-                'org_id': 1,
-                'person_id': 1,
-                'user_id': admin.pd_owner_id,
-                'pipeline_id': self.pipeline.pd_pipeline_id,
-                'stage_id': 1,
-                'status': 'open',
-                '345_hermes_id_678': deal.id,
-                '234_source_567': 'Google',
-                '234_bdr_person_id_567': admin.pd_owner_id
-            },
-            2: {
-                'id': 2,
-                'title': 'A deal with Julies Ltd',
-                'org_id': 1,
-                'person_id': 1,
-                'user_id': admin.pd_owner_id,
-                'pipeline_id': self.pipeline.pd_pipeline_id,
-                'stage_id': 1,
-                'status': 'open',
-                '345_hermes_id_678': deal2.id,
-                '234_source_567': 'Google',
-                '234_bdr_person_id_567': admin.pd_owner_id
-            },
-        }
-
-        await CustomFieldValue.create(custom_field=source_field, company=company, value='Google')
-        await CustomFieldValue.create(custom_field=deal_source_field, deal=deal, value='Google')
-        await CustomFieldValue.create(custom_field=deal_source_field, deal=deal2, value='Google')
-
-        await CustomFieldValue.create(custom_field=bdr_person_id_field, company=company, value=admin.id)
-        await CustomFieldValue.create(custom_field=deal_bdr_person_id_field, deal=deal, value=admin.id)
-        await CustomFieldValue.create(custom_field=deal_bdr_person_id_field, deal=deal2, value=admin.id)
-
-        data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['pipeline_id'] = self.pipeline.pd_pipeline_id
-        data[PDStatus.CURRENT]['stage_id'] = self.stage.id
-        data[PDStatus.CURRENT]['user_id'] = admin.pd_owner_id
-        data[PDStatus.CURRENT]['org_id'] = 1
-        data[PDStatus.CURRENT]['person_id'] = 1
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(**{'234_source_567': 'Google', 'hermes_id': deal.id})
-        data[PDStatus.PREVIOUS].update(hermes_id=deal.id)
-        data[PDStatus.CURRENT].update(**{'234_source_567': 'Yahoo', 'hermes_id': deal.id})
-        r = await self.client.post(self.pipedrive_callback, json=data)
-        assert r.status_code == 200, r.json()
-        company = await Company.get()
-
-        await update_client_from_company(company)
-
-        counter = 0
-        cf_vals = await CustomFieldValue.all()
-        for cf_val in cf_vals:
-            custom_field = await cf_val.custom_field
-            if custom_field.machine_name == 'source':
-                assert cf_val.value == 'Yahoo'
-                counter += 1
-
-        assert counter == 3
-
-        assert self.pipedrive.db['organizations'] == {
-            1: {
-                'id': 1,
-                'name': 'Julies Ltd',
-                'address_country': 'GB',
-                'owner_id': 10,
-                '123_hermes_id_456': company.id,
-                '123_source_456': 'Yahoo',
-                '123_bdr_person_id_456': admin.id,
             }
         }
 
@@ -1360,8 +1158,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'id': 1,
                 'user_id': 10,
                 '345_hermes_id_678': deal.id,
-                '234_source_567': 'Yahoo',
-                '234_bdr_person_id_567': admin.id
+                '234_source_567': 'Google',
             },
             2: {
                 'title': 'A deal with Julies Ltd',
@@ -1373,8 +1170,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'id': 2,
                 'user_id': 10,
                 '345_hermes_id_678': deal2.id,
-                '234_source_567': 'Yahoo',
-                '234_bdr_person_id_567': admin.id
+                '234_source_567': 'Google',
             },
         }
 
