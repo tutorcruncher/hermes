@@ -12,14 +12,17 @@ from app.pipedrive.api import (
     get_and_create_or_update_pd_deal,
     get_and_create_or_update_person,
 )
+from app.utils import update_or_create_inherited_deal_custom_field_values
 
 
 async def pd_post_process_sales_call(company: Company, contact: Contact, meeting: Meeting, deal: Deal):
     """
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
+    we also update the deal with the company's custom field values to be inherited.
     """
-    await get_and_create_or_update_organisation(company)
+    company = await get_and_create_or_update_organisation(company)
     await get_and_create_or_update_person(contact)
+    await update_or_create_inherited_deal_custom_field_values(company)
     pd_deal = await get_and_create_or_update_pd_deal(deal)
     await create_activity(meeting, pd_deal)
 
@@ -36,8 +39,10 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
 async def pd_post_process_client_event(company: Company, deal: Deal = None):
     """
     Called after a client event from TC2. For example, a client paying an invoice.
+    we also update the deal with the company's custom field values to be inherited.
     """
-    await get_and_create_or_update_organisation(company)
+    company = await get_and_create_or_update_organisation(company)
+    await update_or_create_inherited_deal_custom_field_values(company)
     for contact in await company.contacts:
         await get_and_create_or_update_person(contact)
     if deal:

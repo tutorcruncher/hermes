@@ -2,45 +2,10 @@ from typing import Optional
 
 from tortoise.exceptions import DoesNotExist
 
-from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
+from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
-from app.pipedrive.api import get_and_create_or_update_organisation, get_and_create_or_update_pd_deal
-
-
-async def update_or_create_inherited_deal_custom_field_values(company):
-    """
-    Update the inherited custom field values of all company deals with the custom field values of the company
-    then send to pipedrive to update the deal
-    """
-    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
-    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
-    company_custom_fields_to_inherit = (
-        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
-        .exclude(machine_name='hermes_id')
-        .prefetch_related('values')
-    )
-
-    deals = await company.deals
-
-    for cf in company_custom_fields_to_inherit:
-        deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
-        if not deal_cf:
-            continue
-
-        if cf.values:
-            value = cf.values[0].value
-        elif cf.hermes_field_name:
-            value = getattr(company, cf.hermes_field_name, None).id
-        else:
-            raise ValueError(f'No value for custom field {cf}')
-
-        for deal in deals:
-            await CustomFieldValue.update_or_create(
-                **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
-            )
-
-            await get_and_create_or_update_pd_deal(deal)
+from app.utils import update_or_create_inherited_deal_custom_field_values
 
 
 async def _process_pd_organisation(
@@ -183,7 +148,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     current_deal = getattr(current_pd_deal, 'deal', None) if current_pd_deal else None
     old_deal = getattr(old_pd_deal, 'deal', None) if old_pd_deal else None
     deal = current_deal or old_deal
-    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
 
     if deal:
         if current_pd_deal:
