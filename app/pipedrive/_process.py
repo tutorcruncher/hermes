@@ -195,43 +195,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 await deal.update_from_dict(new_data)
                 await deal.save()
                 app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
-
-            old_deal_cf_vals = await old_pd_deal.custom_field_values(deal_custom_fields) if old_data else {}
-            new_deal_cf_vals = await current_pd_deal.custom_field_values(deal_custom_fields)
-            cfs_created, cfs_updated, cfs_deleted = await deal.process_custom_field_vals(
-                old_deal_cf_vals, new_deal_cf_vals
-            )
-            if cfs_created:
-                app_logger.info(
-                    'Callback: creating Deal %s cf ids %s from PDDeal %s',
-                    deal.id,
-                    list(cfs_created),
-                    current_pd_deal.id,
-                )
-            if cfs_updated:
-                app_logger.info(
-                    'Callback: updating Deal %s cf ids %s from PDDeal %s',
-                    deal.id,
-                    list(cfs_updated),
-                    current_pd_deal.id,
-                )
-            if cfs_deleted:
-                app_logger.info(
-                    'Callback: deleting Deal %s cf ids %s from PDDeal %s',
-                    deal.id,
-                    list(cfs_deleted),
-                    current_pd_deal.id,
-                )
-
-            if cfs_updated or cfs_created:
-                # send webhook to update the company in pipedrive
-                company = await deal.company
-
-                # update the company in pipedrive
-                await get_and_create_or_update_organisation(company)
-                # then update all the other deals
-                await update_or_create_inherited_deal_custom_field_values(company)
-
         else:
             # The deal has been deleted
             await deal.delete()
