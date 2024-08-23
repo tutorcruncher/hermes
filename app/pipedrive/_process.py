@@ -180,13 +180,21 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     if it's been removed.
     """
     # Deal has been set here by PDDeal.a_validate, as we have a custom field `hermes_id` linking it to the Deal
+    debug(current_pd_deal)
+    debug(old_pd_deal)
     current_deal = getattr(current_pd_deal, 'deal', None) if current_pd_deal else None
     old_deal = getattr(old_pd_deal, 'deal', None) if old_pd_deal else None
+    debug(current_deal)
+    debug(old_deal)
     deal = current_deal or old_deal
     deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    debug(deal_custom_fields)
+    debug(deal)
 
     if deal:
+        debug('deal')
         if current_pd_deal:
+            debug('current_pd_deal')
             # The deal has been updated
             old_data = old_pd_deal and await old_pd_deal.deal_dict()
             new_data = await current_pd_deal.deal_dict()
@@ -198,6 +206,8 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
 
             old_deal_cf_vals = await old_pd_deal.custom_field_values(deal_custom_fields) if old_data else {}
             new_deal_cf_vals = await current_pd_deal.custom_field_values(deal_custom_fields)
+            debug(old_deal_cf_vals)
+            debug(new_deal_cf_vals)
             cfs_created, cfs_updated, cfs_deleted = await deal.process_custom_field_vals(
                 old_deal_cf_vals, new_deal_cf_vals
             )

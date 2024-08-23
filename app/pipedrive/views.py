@@ -54,6 +54,7 @@ async def callback(event: dict, tasks: BackgroundTasks):
     """
     event_data = await prepare_event_data(event)
     event_instance = PipedriveEvent(**event_data)
+    debug(event_instance)
     event_instance.current and await event_instance.current.a_validate()
     event_instance.previous and await event_instance.previous.a_validate()
     app_logger.info(f'Callback: event_instance received for {event_instance.meta.object}: {event_instance}')
