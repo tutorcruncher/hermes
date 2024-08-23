@@ -260,6 +260,7 @@ class PDDeal(PipedriveBaseModel):
             stage_id=stage.pd_stage_id,
             status=deal.status,
         )
+        debug(deal.__dict__)
         cls_kwargs.update(await cls.get_custom_field_vals(deal))
         final_kwargs = _remove_nulls(**cls_kwargs)
         return cls(**final_kwargs)
