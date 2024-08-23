@@ -179,20 +179,14 @@ class HermesBaseModel(BaseModel):
 
             else:  # this is to handle the deal inherited custom fields
                 if cf.field_type == CustomField.TYPE_FK_FIELD:
-                    debug(val)
-                    debug('3', cf.machine_name, cls.__name__, cf.field_type)
                     if cf.values:
-                        debug('4', cf.values[0].value)
                         val_id_str = cf.values[0].value
-                        debug(val_id_str)
                         val = int(val_id_str)
 
                 else:
                     val = cf.values[0].value if cf.values else None
 
             cf_data[cf.machine_name] = val
-            debug('final cf value')
-            debug(cf.machine_name, val)
         return cf_data
 
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)

@@ -5,7 +5,7 @@ from tortoise.exceptions import DoesNotExist
 from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
-from app.pipedrive.api import get_and_create_or_update_organisation, get_and_create_or_update_pd_deal
+from app.pipedrive.api import get_and_create_or_update_pd_deal
 
 
 async def update_or_create_inherited_deal_custom_field_values(company):
@@ -31,7 +31,7 @@ async def update_or_create_inherited_deal_custom_field_values(company):
         if cf.values:
             value = cf.values[0].value
         elif cf.hermes_field_name:
-            value = getattr(company, cf.hermes_field_name, None).id
+            value = (await getattr(company, cf.hermes_field_name, None)).id
         else:
             raise ValueError(f'No value for custom field {cf}')
 
@@ -183,8 +183,6 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
     current_deal = getattr(current_pd_deal, 'deal', None) if current_pd_deal else None
     old_deal = getattr(old_pd_deal, 'deal', None) if old_pd_deal else None
     deal = current_deal or old_deal
-    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
-
     if deal:
         if current_pd_deal:
             # The deal has been updated

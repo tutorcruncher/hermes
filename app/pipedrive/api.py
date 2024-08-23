@@ -215,7 +215,6 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
             await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
             app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
     else:
-        debug(pd_deal_data)
         created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
         pipedrive_deal = PDDeal(**created_deal)
         deal.pd_deal_id = pipedrive_deal.id
