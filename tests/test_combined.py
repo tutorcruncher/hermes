@@ -526,6 +526,16 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_STR,
         )
 
+        estimated_monthly_income_custom_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_estimated_monthly_income_456',
+            hermes_field_name='estimated_income',
+            tc2_machine_name='estimated_monthly_income',
+            name='Estimated Monthly Income',
+            machine_name='estimated_monthly_income',
+            field_type=CustomField.TYPE_STR,
+        )
+
         # deal cfs
         deal_sales_custom_field = await CustomField.create(
             linked_object_type='Deal',
@@ -551,6 +561,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             field_type=CustomField.TYPE_STR,
         )
 
+        deal_estimated_monthly_income_custom_field = await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_estimated_monthly_income_567',
+            name='Estimated Monthly Income',
+            machine_name='estimated_monthly_income',
+            field_type=CustomField.TYPE_STR,
+        )
+
         await build_custom_field_schema()
 
         modified_data = client_full_event_data()
@@ -559,6 +577,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
         modified_data['subject']['extra_attrs'] += [
             {'machine_name': 'client_marketing_source', 'value': 'Google'},
+            {'machine_name': 'estimated_monthly_income', 'value': '£20,000 - £50,000'},
         ]
 
         events = [modified_data]
@@ -577,7 +596,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert company.has_signed_up
         assert not company.has_booked_call
 
-        assert not company.estimated_income
+        assert company.estimated_income
 
         assert await Contact.all().count() == 0
         deal = await Deal.get()
@@ -598,6 +617,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': admin.id,
                 '123_source_456': 'google',
+                '123_estimated_monthly_income_456': '£20,000 - £50,000',
             }
         }
 
@@ -615,15 +635,18 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '234_sales_person_567': admin.id,
                 '234_bdr_person_567': admin.id,
                 '234_source_567': 'google',
+                '234_estimated_monthly_income_567': '£20,000 - £50,000',
             }
         }
 
         await sales_custom_field.delete()
         await bdr_custom_field.delete()
         await source_custom_field.delete()
+        await estimated_monthly_income_custom_field.delete()
         await deal_sales_custom_field.delete()
         await deal_bdr_custom_field.delete()
         await deal_source_custom_field.delete()
+        await deal_estimated_monthly_income_custom_field.delete()
         await build_custom_field_schema()
 
     # need a test for a callbooker create company
@@ -855,9 +878,12 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await deal_source_field.delete()
         await build_custom_field_schema()
 
-    # test for when a company already exists with multiple deals we update the inherited cfs on all those deals
+    #
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_custom_field_val_created_with_multiple_child_deals(self, mock_request):
+        """
+        test for when a company already exists with multiple deals we update the inherited cfs on all those deals
+        """
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         admin = await Admin.create(

@@ -91,19 +91,21 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
         if cf.values:
             deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
             if deal_cf:
-                await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=cf.values[0].value)
+                await CustomFieldValue.update_or_create(
+                    **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': cf.values[0].value}}
+                )
 
         else:
             # these custom fields are hardcoded to the company
             if cf.hermes_field_name:
                 val = getattr(company, cf.hermes_field_name, None)
                 deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
-                if deal_cf:
-                    val = val.id
-                    await CustomFieldValue.update_or_create(deal=deal, custom_field=deal_cf, value=val)
-
-            else:
-                raise ValueError(f'No value for custom field {cf}')
+                if deal_cf and val:
+                    if cf.field_type == CustomField.TYPE_FK_FIELD:
+                        val = val.id
+                    await CustomFieldValue.update_or_create(
+                        **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': val}}
+                    )
 
     return deal
 

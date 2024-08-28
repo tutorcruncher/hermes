@@ -28,18 +28,20 @@ async def update_or_create_inherited_deal_custom_field_values(company):
         if not deal_cf:
             continue
 
+        value = None
         if cf.values:
             value = cf.values[0].value
         elif cf.hermes_field_name:
-            value = (await getattr(company, cf.hermes_field_name, None)).id
-        else:
-            raise ValueError(f'No value for custom field {cf}')
+            obj = getattr(company, cf.hermes_field_name, None)
+            if cf.field_type == CustomField.TYPE_FK_FIELD and obj:
+                value = (await obj).id
+            else:
+                value = obj
 
         for deal in deals:
             await CustomFieldValue.update_or_create(
                 **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
             )
-
             await get_and_create_or_update_pd_deal(deal)
 
 
