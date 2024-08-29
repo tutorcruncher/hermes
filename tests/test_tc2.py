@@ -201,6 +201,31 @@ class TC2CallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_ignore_agree_terms(self, mock_add_task):
+        """
+        Ignore AGREE_TERMS event
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        modified_data = client_full_event_data()
+        modified_data['action'] = 'AGREE_TERMS'
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        assert await Deal.all().count() == 0
+
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_cb_client_event_test_1(self, mock_add_task):
         """

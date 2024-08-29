@@ -26,7 +26,6 @@ async def update_or_create_inherited_deal_custom_field_values(company):
     for cf in company_custom_fields_to_inherit:
         deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
 
-        value = None
         if cf.values:
             value = cf.values[0].value
         elif cf.hermes_field_name:
