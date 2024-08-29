@@ -668,9 +668,17 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         custom_field = await CustomField.create(
             linked_object_type='Company',
             pd_field_id='123_sales_person_456',
-            deal_pd_field_id='234_sales_person_567',
             hermes_field_name='sales_person',
             name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        support_person_custom_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_support_person_456',
+            hermes_field_name='support_person',
+            machine_name='support_person',
+            name='Support Person',
             field_type=CustomField.TYPE_FK_FIELD,
         )
 
@@ -679,9 +687,21 @@ class TestDealCustomFieldInheritance(HermesTestCase):
             pd_field_id='234_sales_person_567',
             name='Sales Person',
             machine_name='sales_person',
-            field_type=CustomField.TYPE_FK_FIELD,
+            field_type=CustomField.TYPE_INT,
         )
+
+        deal_support_person_custom_field = await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='234_support_person_567',
+            name='Support Person',
+            machine_name='support_person',
+            field_type=CustomField.TYPE_INT,
+        )
+
         await build_custom_field_schema()
+
+        custom_field_values = await CustomFieldValue.all()
+        assert len(custom_field_values) == 0
 
         sales_person = await Admin.create(
             first_name='Steve',
@@ -707,6 +727,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert not company.bdr_person
         assert company.has_booked_call
         assert await company.sales_person == sales_person
+        assert not company.support_person_id
 
         contact = await Contact.get()
         assert contact.first_name == 'Brain'
@@ -739,6 +760,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'owner_id': sales_person.pd_owner_id,
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': sales_person.id,
+                '123_support_person_456': None,
             }
         }
         assert self.pipedrive.db['deals'] == {
@@ -753,11 +775,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'user_id': sales_person.pd_owner_id,
                 '345_hermes_id_678': deal.id,
                 '234_sales_person_567': sales_person.id,
+                '234_support_person_567': 0,
             }
         }
 
         await custom_field.delete()
         await deal_custom_field.delete()
+        await support_person_custom_field.delete()
+        await deal_support_person_custom_field.delete()
         await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')

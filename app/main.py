@@ -30,9 +30,10 @@ if _app_settings.sentry_dsn:
 
 app = FastAPI()
 
-allowed_origins = ['https://tutorcruncher.com']
-if _app_settings.dev_mode:
-    allowed_origins = ['*']
+# allowed_origins = ['https://tutorcruncher.com']
+# if _app_settings.dev_mode:
+
+allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
 if bool(_app_settings.logfire_token):
     logfire.instrument_fastapi(app)

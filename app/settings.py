@@ -10,7 +10,7 @@ THIS_DIR = Path(__file__).parent.resolve()
 class Settings(BaseSettings):
     # Dev and Test settings
     testing: bool = False
-    dev_mode: bool = False
+    dev_mode: bool = True
     log_level: str = 'INFO'
 
     logfire_token: Optional[str] = None
@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Call booker
-    callbooker_base_url: str = 'https://tutorcruncher.com/book-a-call'
+    # callbooker_base_url: str = 'https://tutorcruncher.com/book-a-call'
+    callbooker_base_url: str = 'http://localhost:8000/book-a-call'
 
     # How long a support link is valid for
     support_ttl_days: int = 4
