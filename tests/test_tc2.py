@@ -201,7 +201,6 @@ class TC2CallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
         assert r.status_code == 200, r.json()
 
-
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_ignore_agree_terms(self, mock_add_task):
         """
