@@ -188,8 +188,6 @@ class HermesBaseModel(BaseModel):
                             val = cf.values[0].value
                             if '_NoneAwaitable' in str(val):
                                 val = None
-                        else:
-                            val = None
 
             cf_data[cf.machine_name] = val
         return cf_data

@@ -34,7 +34,7 @@ async def callback(
             if not event.action == 'DELETED_A_CLIENT' and not hasattr(event.subject, 'meta_agency'):
                 continue
 
-            if event.action == 'AGREE_TERMS':
+            if event.action == 'AGREE_TERMS' and settings.dev_mode:
                 app_logger.info('Ignoring AGREE_TERMS event')
                 break
 
