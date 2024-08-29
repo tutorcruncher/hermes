@@ -180,7 +180,6 @@ class HermesModel(models.Model):
         created, updated, deleted = [], [], []
         linked_obj_name = self.__class__.__name__.lower()
 
-        # Create or update custom field values
         for cf_id, cf_val in updated_created_vals.items():
             _, is_created = await CustomFieldValue.update_or_create(
                 **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
@@ -190,7 +189,6 @@ class HermesModel(models.Model):
             else:
                 updated.append(cf_id)
 
-        # Delete custom field values
         await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
         deleted.extend(deleted_vals)
 

@@ -10,8 +10,8 @@ from app.pipedrive.api import get_and_create_or_update_pd_deal
 
 async def update_or_create_inherited_deal_custom_field_values(company):
     """
-    Update the inherited custom field values of all company deals with the custom field values of the company
-    then send to pipedrive to update the deal
+    Inherited Custom Field: A custom field on a deal with the same machine name as a Company custom field.
+    Update the inherited custom field values of all company deals.
     """
     deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
     deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
@@ -24,20 +24,23 @@ async def update_or_create_inherited_deal_custom_field_values(company):
     deals = await company.deals
 
     for cf in company_custom_fields_to_inherit:
+        # get the associated deal custom field
         deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
 
+        value = None
         if cf.values:
             value = cf.values[0].value
         elif cf.hermes_field_name:
             obj = getattr(company, cf.hermes_field_name, None)
             if cf.field_type == CustomField.TYPE_FK_FIELD and obj:
+                # await and get the id of the admin object
                 value = (await obj).id
             else:
                 value = obj
 
         for deal in deals:
             if not value:
-                # if the custom field value exists in the deal, delete it
+                # if the custom field value does not exists for the company, delete the inherited deal custom field value
                 try:
                     custom_field_value = await CustomFieldValue.get(custom_field=deal_cf, deal=deal)
                     await custom_field_value.delete()
@@ -125,7 +128,7 @@ async def _process_pd_organisation(
                 'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
             )
 
-    # here we should check if any cf values have been updated which should be inherited by the deal
+    # get all the deals of the company and update the inherited custom field values
     if await company.deals:
         await update_or_create_inherited_deal_custom_field_values(company)
 

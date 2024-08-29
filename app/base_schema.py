@@ -177,18 +177,19 @@ class HermesBaseModel(BaseModel):
             elif cf.tc2_machine_name:
                 val = cf.values[0].value if cf.values else None
 
-            else:  # this is to handle the deal inherited custom fields
+            # this is to handle the deal inherited custom fields
+            else:
                 if cf.field_type == CustomField.TYPE_FK_FIELD:
                     if cf.values:
                         val_id_str = cf.values[0].value
                         val = int(val_id_str)
                 else:
+                    # this will only happen when a inherited custom field on a deal is none, calling .value turns the awaitable reference into a string even if it's None
                     if cf.values:
                         if len(await cf.values) > 0:
                             val = cf.values[0].value
                             if '_NoneAwaitable' in str(val):
                                 val = None
-
             cf_data[cf.machine_name] = val
         return cf_data
 

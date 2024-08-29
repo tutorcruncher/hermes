@@ -32,7 +32,6 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
         company = await company.update_from_dict(company_data)
         await company.save()
     # TC2 doesn't tell us which custom fields have been updated, so we have to check them all.
-    await tc2_client.custom_field_values(company_custom_fields)
     await company.process_custom_field_vals({}, await tc2_client.custom_field_values(company_custom_fields))
     return created, company
 
@@ -54,7 +53,7 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
 async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
     """
     Get or create an Open deal.
-    always update the custom fields of the deal with the custom fields of the company
+    always update the inherited custom fields on the deal.
     """
 
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
@@ -79,6 +78,7 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             stage_id=pipeline.dft_entry_stage_id,
         )
 
+    # update the inherited custom fields on the deal
     deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
     deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
     company_custom_fields_to_inherit = (
@@ -96,9 +96,10 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
                 )
 
         else:
-            # these custom fields are hardcoded to the company
+            # these custom fields values are not stored on the model.
             if cf.hermes_field_name:
                 val = getattr(company, cf.hermes_field_name, None)
+                # get the associated deal custom field
                 deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
                 if deal_cf and val:
                     if cf.field_type == CustomField.TYPE_FK_FIELD:

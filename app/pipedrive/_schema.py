@@ -58,19 +58,13 @@ class PipedriveBaseModel(HermesBaseModel):
         When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
         Pipedrive model.
         """
-        # Initialize an empty dictionary to store custom field values
         custom_field_values = {}
 
-        # Iterate over each custom field
         for custom_field in custom_fields:
-            # Check if the custom field does not have a hermes_field_name
             if not custom_field.hermes_field_name:
-                # Get the value of the attribute from the current object using the custom field's machine name
                 value = getattr(self, custom_field.machine_name)
-                # Add the custom field's ID and the retrieved value to the dictionary
                 custom_field_values[custom_field.id] = value
 
-        # Return the dictionary containing custom field values
         return custom_field_values
 
 
@@ -213,6 +207,7 @@ class Activity(PipedriveBaseModel):
     @classmethod
     async def from_meeting(cls, meeting: Meeting):
         contact = await meeting.contact
+        # need to ensure we dont have to await the admin twice
         admin = await meeting.admin
         meeting.admin = admin
         return cls(
