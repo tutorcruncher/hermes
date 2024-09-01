@@ -1,22 +1,22 @@
 aerich==0.7.2
 asyncpg==0.29.0
-fastapi==0.111.1
+fastapi==0.112.2
 pydantic==2.8.2
 pydantic-settings==2.4.0
-uvicorn==0.30.4
+uvicorn==0.30.6
 requests==2.32.3
 aioredis==2.0.1
 fastapi-admin==1.0.4
-sentry-sdk[fastapi]==2.12.0
-httpx==0.27.0
+sentry-sdk[fastapi]==2.13.0
+httpx==0.27.2
 opentelemetry-instrumentation-fastapi
-logfire[fastapi]==0.48.1
+logfire[fastapi]==0.51.0
 tortoise-cli
 
 # Look at all the Google libraries we need to install.
 google==3.0.0
-google-api-core==2.19.1
-google-api-python-client==2.139.0
-google-auth==2.32.0
+google-api-core==2.19.2
+google-api-python-client==2.143.0
+google-auth==2.34.0
 google-auth-httplib2==0.2.0
-googleapis-common-protos==1.63.2
+googleapis-common-protos==1.65.0
