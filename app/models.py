@@ -484,7 +484,7 @@ class CustomFieldValue(models.Model):
         'models.Meeting', related_name='custom_field_values', null=True, on_delete=fields.CASCADE
     )
 
-    value = fields.CharField(max_length=512, null=True)
+    value = fields.CharField(max_length=10000, null=True)
 
     def validate(self):
         if not (self.company or self.contact or self.deal or self.meeting):
