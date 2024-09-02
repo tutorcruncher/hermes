@@ -442,24 +442,24 @@ class TestMultipleServices(HermesTestCase):
         }
 
         # check that pipedrive has the correct data
-        assert self.pipedrive.db["organizations"] == {
+        assert self.pipedrive.db['organizations'] == {
             1: {
-                "id": 1,
-                "name": "MyTutors",
-                "address_country": "GB",
-                "owner_id": None,
-                "123_hermes_id_456": company.id,
-                "123_sales_person_456": admin.id,
-                "123_bdr_person_456": None,
-                "123_signup_questionnaire_456": '{"how-did-you-hear-about-us": "Blog or Article", '
-                                                '"are-lessons-mostly-remote-or-in-person": "Mostly in-person", '
-                                                '"how-do-you-currently-match-your-students-to-tutors": "We assign '
-                                                'tutors to students manually", '
-                                                '"do-you-provide-mostly-one-to-one-lessons-or-group-classes": "Mostly '
-                                                'one to one", '
-                                                '"how-many-students-are-currently-actively-using-your-service": 45, '
-                                                '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
-                                                '"Mostly after the lesson takes place"}',
+                'id': 1,
+                'name': 'MyTutors',
+                'address_country': 'GB',
+                'owner_id': None,
+                '123_hermes_id_456': company.id,
+                '123_sales_person_456': admin.id,
+                '123_bdr_person_456': None,
+                '123_signup_questionnaire_456': '{"how-did-you-hear-about-us": "Blog or Article", '
+                '"are-lessons-mostly-remote-or-in-person": "Mostly in-person", '
+                '"how-do-you-currently-match-your-students-to-tutors": "We assign '
+                'tutors to students manually", '
+                '"do-you-provide-mostly-one-to-one-lessons-or-group-classes": "Mostly '
+                'one to one", '
+                '"how-many-students-are-currently-actively-using-your-service": 45, '
+                '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
+                '"Mostly after the lesson takes place"}',
             }
         }
 
@@ -1238,7 +1238,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await source_field.delete()
         await deal_source_field.delete()
         await build_custom_field_schema()
-
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_pd_post_process_client_event_value_error(self, mock_pd_request):
