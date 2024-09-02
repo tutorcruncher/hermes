@@ -43,6 +43,17 @@ async def prepare_event_data(event_data: dict) -> dict:
 
     event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
     event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
+
+    # ignore any updated inherited custom fields on a deal
+    deal_custom_fields = await CustomField.filter(
+        linked_object_type='Deal', hermes_field_name__isnull=True, tc2_machine_name__isnull=True
+    ).values_list('pd_field_id', flat=True)
+    if event_data.get(PDStatus.PREVIOUS):
+        for pd_field_id in deal_custom_fields:
+            # revert any changes to inherited custom fields on a deal
+            if event_data[PDStatus.PREVIOUS].get(pd_field_id):
+                event_data[PDStatus.CURRENT][pd_field_id] = event_data[PDStatus.PREVIOUS][pd_field_id]
+
     return event_data
 
 
@@ -56,7 +67,6 @@ async def callback(event: dict, tasks: BackgroundTasks):
     event_instance = PipedriveEvent(**event_data)
     event_instance.current and await event_instance.current.a_validate()
     event_instance.previous and await event_instance.previous.a_validate()
-
     app_logger.info(f'Callback: event_instance received for {event_instance.meta.object}: {event_instance}')
     if event_instance.meta.object == 'deal':
         deal = await _process_pd_deal(event_instance.current, event_instance.previous)

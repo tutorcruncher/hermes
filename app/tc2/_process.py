@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pydantic import ValidationError
 from pytz import utc
 
-from app.models import Company, Contact, CustomField, Deal
+from app.models import Company, Contact, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
 from app.tc2._utils import app_logger
 from app.tc2.api import tc2_request
@@ -53,7 +53,9 @@ async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tu
 async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal:
     """
     Get or create an Open deal.
+    always update the inherited custom fields on the deal.
     """
+
     deal = await Deal.filter(company_id=company.id, status=Deal.STATUS_OPEN).first()
     config = await get_config()
     if not deal:
@@ -75,6 +77,37 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             admin_id=company.sales_person_id,
             stage_id=pipeline.dft_entry_stage_id,
         )
+
+    # update the inherited custom fields on the deal
+    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
+    company_custom_fields_to_inherit = (
+        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
+        .exclude(machine_name='hermes_id')
+        .prefetch_related('values')
+    )
+
+    for cf in company_custom_fields_to_inherit:
+        if cf.values:
+            deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+            if deal_cf:
+                await CustomFieldValue.update_or_create(
+                    **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': cf.values[0].value}}
+                )
+
+        else:
+            # these custom fields values are not stored on the model.
+            if cf.hermes_field_name:
+                val = getattr(company, cf.hermes_field_name, None)
+                # get the associated deal custom field
+                deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+                if deal_cf and val:
+                    if cf.field_type == CustomField.TYPE_FK_FIELD:
+                        val = val.id
+                    await CustomFieldValue.update_or_create(
+                        **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': val}}
+                    )
+
     return deal
 
 

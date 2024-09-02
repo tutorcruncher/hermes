@@ -1,7 +1,10 @@
 from typing import Type
 
+import logfire
+
 from app.base_schema import get_custom_fieldinfo
 from app.models import Company, Contact, CustomField, Deal, Meeting
+from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person, PipedriveBaseModel
 from app.pipedrive.api import (
     create_activity,
@@ -21,6 +24,7 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     await get_and_create_or_update_organisation(company)
     await get_and_create_or_update_person(contact)
     pd_deal = await get_and_create_or_update_pd_deal(deal)
+    await update_or_create_inherited_deal_custom_field_values(company)
     await create_activity(meeting, pd_deal)
 
 
@@ -37,11 +41,13 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     """
     Called after a client event from TC2. For example, a client paying an invoice.
     """
-    await get_and_create_or_update_organisation(company)
-    for contact in await company.contacts:
-        await get_and_create_or_update_person(contact)
-    if deal:
-        await get_and_create_or_update_pd_deal(deal)
+    with logfire.span('pd_post_process_client_event'):
+        await get_and_create_or_update_organisation(company)
+        for contact in await company.contacts:
+            await get_and_create_or_update_person(contact)
+        if deal:
+            await get_and_create_or_update_pd_deal(deal)
+            await update_or_create_inherited_deal_custom_field_values(company)
 
 
 async def pd_post_purge_client_event(company: Company, deal: Deal = None):

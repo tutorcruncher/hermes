@@ -239,10 +239,6 @@ class CustomFieldResource(Model):
         'tc2_machine_name',
         'pd_field_id',
         'linked_object_type',
-        # Field(
-        #     'linked_object_type',
-        #     input_=Select(options=((M.__name__, M.__name__) for M in [Company, Contact, Deal, Meeting])),
-        # ),
     ]
 
     async def get_toolbar_actions(self, request: Request):

@@ -33,7 +33,6 @@ async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict
     @param data: data to send in the request body
     @return: json response
     """
-
     query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
     with logfire.span('{method} {url!r}', url=url, method=method):
@@ -141,7 +140,6 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     elif org := await _search_for_organisation(company):
         # get by cligency url or contact email/phone
         company.pd_org_id = org.id
-
         await company.save()
         await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
 

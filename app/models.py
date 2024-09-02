@@ -156,21 +156,42 @@ class Admin(AbstractAdmin):
 
 
 class HermesModel(models.Model):
-    async def process_custom_field_vals(self, old_cf_vals, new_cf_vals) -> tuple[int, int, int]:
+    async def process_custom_field_vals(self, old_cf_vals, new_cf_vals) -> tuple[list[str], list[str], list[str]]:
+        """
+        Process and update custom field values for a model instance. These are not connected to CustomField objects
+
+        This method compares old and new custom field values, identifies which values need to be created, updated, or deleted,
+        and performs the necessary database operations.
+
+        Args:
+            old_cf_vals (dict): A dictionary of old custom field values.
+            new_cf_vals (dict): A dictionary of new custom field values.
+
+        Returns:
+            tuple[list[str], list[str], list[str]]: A tuple containing the lists of custom_field_ids for created, updated, and deleted custom field values.
+        """
+        # Identify new or updated custom field values
         updated_created_vals = {k: v for k, v in new_cf_vals.items() if k not in old_cf_vals and v is not None}
         updated_created_vals |= {k: new_cf_vals[k] for k, v in old_cf_vals.items() if v != new_cf_vals[k]}
+
+        # Identify custom field values to be deleted
         deleted_vals = [k for k, v in old_cf_vals.items() if not v and not new_cf_vals.get(k)]
-        created, updated, deleted = 0, 0, 0
+
+        created, updated, deleted = [], [], []
         linked_obj_name = self.__class__.__name__.lower()
+
         for cf_id, cf_val in updated_created_vals.items():
-            _, created = await CustomFieldValue.update_or_create(
+            _, is_created = await CustomFieldValue.update_or_create(
                 **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
             )
-            if created:
-                created += 1
+            if is_created:
+                created.append(cf_id)
             else:
-                updated += 1
-        deleted = await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
+                updated.append(cf_id)
+
+        await CustomFieldValue.filter(**{'custom_field_id__in': deleted_vals, linked_obj_name: self}).delete()
+        deleted.extend(deleted_vals)
+
         return created, updated, deleted
 
     @classmethod

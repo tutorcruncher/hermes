@@ -92,11 +92,8 @@ Navigate to Company Settings > Data Fields
 Hint: Look at Extra Tips (at the bottom of README) for a more detailed guide on how to add a new custom field to Pipedrive
 
 ```  
-website  
-paid_invoice_count  
 
 [//]: # (has_booked_call  )
-
 [//]: # (has_signed_up  )
 tc2_status: Large text  
 tc2_cligency_url: Large text
@@ -109,6 +106,8 @@ currency: Large text
 support_person_id: Numerical
 signup_questionnaire: Large text
 website: Large text
+paid_invoice_count: Numerical
+price_plan: Large text
 ```  
 ###### Person Default Custom Fields:
 ```
@@ -222,7 +221,6 @@ Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), 
 
 
 - replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
-
 
 
 
@@ -379,3 +377,12 @@ tortoise-cli shell
 
 hint1: you will need to import the models you want to use in the shell, i.e `from app.models import *`
 hint2: you can use the `await` keyword to run async functions in the shell, i.e `await Company.all()`
+
+
+#### Inherited Custom Field setup:
+'Inherited Custom Fields' are custom fields that are inherited from the Company model to the Deal model.
+
+- To create the inherited custom fields, like before, create the data field for the item in pipedrive, then create the custom field
+in Hermes, ensuring the `machine_name` is the same as the parent field connected to the company model.
+- Inherited custom fields do not need a `tc2_machine_name` or `hermes_field_name` as they are always coming from the Company Custom Field.
+- Inherited custom field, field types should be the same as the parent field, except for `fk_field` which should be `int`

@@ -2,9 +2,55 @@ from typing import Optional
 
 from tortoise.exceptions import DoesNotExist
 
-from app.models import Company, Contact, CustomField, Deal, Pipeline, Stage
+from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
+from app.pipedrive.api import get_and_create_or_update_pd_deal
+
+
+async def update_or_create_inherited_deal_custom_field_values(company):
+    """
+    Inherited Custom Field: A custom field on a deal with the same machine name as a Company custom field.
+    Update the inherited custom field values of all company deals.
+    """
+    deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
+    deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
+    company_custom_fields_to_inherit = (
+        await CustomField.filter(linked_object_type='Company', machine_name__in=deal_custom_field_machine_names)
+        .exclude(machine_name='hermes_id')
+        .prefetch_related('values')
+    )
+
+    deals = await company.deals
+
+    for cf in company_custom_fields_to_inherit:
+        # get the associated deal custom field
+        deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+
+        value = None
+        if cf.values:
+            value = cf.values[0].value
+        elif cf.hermes_field_name:
+            obj = getattr(company, cf.hermes_field_name, None)
+            if cf.field_type == CustomField.TYPE_FK_FIELD and obj:
+                # await and get the id of the admin object
+                value = (await obj).id
+            else:
+                value = obj
+
+        for deal in deals:
+            if not value:
+                # if the custom field value does not exists for the company, delete the inherited deal custom field value
+                try:
+                    custom_field_value = await CustomFieldValue.get(custom_field=deal_cf, deal=deal)
+                    await custom_field_value.delete()
+                except DoesNotExist:
+                    app_logger.info('Callback: Custom field value not found for deal %s', deal.id)
+
+            await CustomFieldValue.update_or_create(
+                **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
+            )
+            await get_and_create_or_update_pd_deal(deal)
 
 
 async def _process_pd_organisation(
@@ -42,10 +88,29 @@ async def _process_pd_organisation(
                 app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
             old_company_cf_vals = await old_pd_org.custom_field_values(company_custom_fields) if old_org_data else {}
             new_company_cf_vals = await current_pd_org.custom_field_values(company_custom_fields)
-            cfs_updated = await company.process_custom_field_vals(old_company_cf_vals, new_company_cf_vals)
+            cfs_created, cfs_updated, cfs_deleted = await company.process_custom_field_vals(
+                old_company_cf_vals, new_company_cf_vals
+            )
+            if cfs_created:
+                app_logger.info(
+                    'Callback: creating Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_created),
+                    current_pd_org.id,
+                )
             if cfs_updated:
                 app_logger.info(
-                    'Callback: updating Company %s cf values from Organisation %s', company.id, current_pd_org.id
+                    'Callback: updating Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_updated),
+                    current_pd_org.id,
+                )
+            if cfs_deleted:
+                app_logger.info(
+                    'Callback: deleting Company %s cf ids %s from Organisation %s',
+                    company.id,
+                    list(cfs_deleted),
+                    current_pd_org.id,
                 )
         else:
             # The org has been deleted. The linked custom fields will also be deleted
@@ -62,6 +127,11 @@ async def _process_pd_organisation(
             app_logger.info(
                 'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
             )
+
+    # get all the deals of the company and update the inherited custom field values
+    if await company.deals:
+        await update_or_create_inherited_deal_custom_field_values(company)
+
     return company
 
 
