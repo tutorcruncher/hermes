@@ -414,8 +414,12 @@ class TestMultipleServices(HermesTestCase):
         modified_data['subject']['meta_agency']['name'] = 'MyTutors'
         modified_data['subject']['bdr_person'] = None
         modified_data['subject']['meta_agency']['signup_questionnaire'] = {
-            'question1': 'answer1',
-            'question2': 'answer2',
+            'how-did-you-hear-about-us': 'Blog or Article',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'We assign tutors to students manually',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Mostly one to one',
+            'how-many-students-are-currently-actively-using-your-service': 45,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Mostly after the lesson takes place',
         }
         events = [modified_data]
 
@@ -429,21 +433,33 @@ class TestMultipleServices(HermesTestCase):
         assert not company.bdr_person
         assert await company.support_person == await company.sales_person == admin
         assert company.signup_questionnaire == {
-            'question1': 'answer1',
-            'question2': 'answer2',
+            'how-did-you-hear-about-us': 'Blog or Article',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'We assign tutors to students manually',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Mostly one to one',
+            'how-many-students-are-currently-actively-using-your-service': 45,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Mostly after the lesson takes place',
         }
 
         # check that pipedrive has the correct data
-        assert self.pipedrive.db['organizations'] == {
+        assert self.pipedrive.db["organizations"] == {
             1: {
-                'id': 1,
-                'name': 'MyTutors',
-                'address_country': 'GB',
-                'owner_id': None,
-                '123_hermes_id_456': company.id,
-                '123_sales_person_456': admin.id,
-                '123_bdr_person_456': None,
-                '123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}',
+                "id": 1,
+                "name": "MyTutors",
+                "address_country": "GB",
+                "owner_id": None,
+                "123_hermes_id_456": company.id,
+                "123_sales_person_456": admin.id,
+                "123_bdr_person_456": None,
+                "123_signup_questionnaire_456": '{"how-did-you-hear-about-us": "Blog or Article", '
+                                                '"are-lessons-mostly-remote-or-in-person": "Mostly in-person", '
+                                                '"how-do-you-currently-match-your-students-to-tutors": "We assign '
+                                                'tutors to students manually", '
+                                                '"do-you-provide-mostly-one-to-one-lessons-or-group-classes": "Mostly '
+                                                'one to one", '
+                                                '"how-many-students-are-currently-actively-using-your-service": 45, '
+                                                '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
+                                                '"Mostly after the lesson takes place"}',
             }
         }
 
