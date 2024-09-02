@@ -1238,3 +1238,37 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await source_field.delete()
         await deal_source_field.delete()
         await build_custom_field_schema()
+
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pd_post_process_client_event_value_error(self, mock_pd_request):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        company = await Company.create(
+            name='Test Company',
+            sales_person=admin,
+        )
+
+        sales_person = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await build_custom_field_schema()
+
+        await pd_post_process_client_event(company=company)
+
+        await sales_person.delete()
+        await build_custom_field_schema()
