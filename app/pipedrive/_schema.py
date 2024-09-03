@@ -2,6 +2,7 @@ import re
 from enum import Enum
 from typing import Any, List, Literal, Optional, Union
 
+import logfire
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
 
@@ -345,17 +346,25 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     @param object_type: the type of object we are dealing with
     @return: a single hermes ID
     """
-    if object_type == PDObjectNames.ORGANISATION:
-        objects = await Company.filter(id__in=hermes_ids.split(','))
-    elif object_type == PDObjectNames.PERSON:
-        objects = await Contact.filter(id__in=hermes_ids.split(','))
-    elif object_type == PDObjectNames.DEAL:
-        objects = await Deal.filter(id__in=hermes_ids.split(','))
+    with logfire.span('handle_duplicate_hermes_ids:%s of type %s' % (hermes_ids, object_type)):
+        if ',' in hermes_ids:
+            hermes_ids_list = hermes_ids.split(',')
+        else:
+            hermes_ids_list = [hermes_ids]
 
-    main_object = objects[0]
-    await update_and_delete_objects(objects, main_object, object_type)
+        if object_type == PDObjectNames.ORGANISATION:
+            objects = await Company.filter(id__in=hermes_ids_list)
+        elif object_type == PDObjectNames.PERSON:
+            objects = await Contact.filter(id__in=hermes_ids_list)
+        elif object_type == PDObjectNames.DEAL:
+            objects = await Deal.filter(id__in=hermes_ids_list)
+        else:
+            raise ValueError(f'Unknown object type {object_type}')
 
-    return main_object.id
+        main_object = objects[0]
+        await update_and_delete_objects(objects, main_object, object_type)
+
+        return main_object.id
 
 
 class PipedriveEvent(HermesBaseModel):

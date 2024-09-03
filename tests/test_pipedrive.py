@@ -2806,3 +2806,37 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
         assert stage.name == 'New test stage'
+
+    async def test_duplicate_hermes_ids(self):
+        await Company.create(id=1, name='Old test company', sales_person=self.admin)
+        await Company.create(id=2, name='Old test company', sales_person=self.admin)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
+        assert not await Company.exists(id=2)
+
+    async def test_duplicate_hermes_ids_single(self):
+        await Company.create(name='Old test company', sales_person=self.admin)
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
+
+    async def test_duplicate_hermes_ids_correct_format(self):
+        await Company.create(id=1, name='Old test company', sales_person=self.admin)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': 1})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
