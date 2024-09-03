@@ -8,6 +8,7 @@ from pydantic.main import BaseModel
 
 from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
+from app.pipedrive._utils import app_logger
 
 
 class PDStatus(str, Enum):
@@ -346,6 +347,8 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
     @param object_type: the type of object we are dealing with
     @return: a single hermes ID
     """
+    from app.pipedrive.api import pipedrive_request
+
     with logfire.span('handle_duplicate_hermes_ids:%s of type %s' % (hermes_ids, object_type)):
         if ',' in hermes_ids:
             hermes_ids_list = hermes_ids.split(',')
@@ -363,6 +366,31 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
         main_object = objects[0]
         await update_and_delete_objects(objects, main_object, object_type)
+        # update the hermes_id field of the main object in Pipedrive
+        if object_type == PDObjectNames.ORGANISATION:
+            if main_object.pd_org_id:
+                hermes_org = await Organisation.from_company(main_object)
+                hermes_org_data = hermes_org.model_dump(by_alias=True)
+                await pipedrive_request(f'organizations/{main_object.pd_org_id}', method='PUT', data=hermes_org_data)
+                app_logger.info(
+                    f'Updated org {main_object.pd_org_id} from company {main_object.id} by company.pd_org_id'
+                )
+
+        elif object_type == PDObjectNames.PERSON:
+            if main_object.pd_person_id:
+                hermes_person = await Person.from_contact(main_object)
+                hermes_person_data = hermes_person.model_dump(by_alias=True)
+                await pipedrive_request(f'persons/{main_object.pd_person_id}', method='PUT', data=hermes_person_data)
+                app_logger.info(
+                    f'Updated person {main_object.pd_person_id} from contact {main_object.id} by contact.pd_person_id'
+                )
+
+        elif object_type == PDObjectNames.DEAL:
+            if main_object.pd_deal_id:
+                hermes_deal = await PDDeal.from_deal(main_object)
+                hermes_deal_data = hermes_deal.model_dump(by_alias=True)
+                await pipedrive_request(f'deals/{main_object.pd_deal_id}', method='PUT', data=hermes_deal_data)
+                app_logger.info(f'Updated deal {main_object.pd_deal_id} from deal {main_object.id} by deal.pd_deal_id')
 
         return main_object.id
 

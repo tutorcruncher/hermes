@@ -1271,3 +1271,50 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
         await sales_person.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_duplicate_hermes_ids_in_pd(self, mock_pd_request):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        await Company.create(id=1, name='Old test company', sales_person=admin, pd_org_id=1)
+        await Company.create(id=2, name='Another test company', sales_person=admin, pd_org_id=2)
+
+        self.pipedrive.db['organizations'] = {
+            1: {
+                'id': 1,
+                'name': 'Old test company',
+                'address_country': None,
+                'owner_id': 10,
+                '123_hermes_id_456': '1, 2',
+                '123_sales_person_456': admin.id,
+            },
+        }
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+        r = await self.client.post(self.pipedrive_callback, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
+        assert not await Company.exists(id=2)
+
+        assert self.pipedrive.db['organizations'] == {
+            1: {
+                'id': 1,
+                'name': 'Old test company',
+                'address_country': None,
+                'owner_id': 10,
+                '123_hermes_id_456': 1,
+                '123_sales_person_456': admin.id,
+            },
+        }
