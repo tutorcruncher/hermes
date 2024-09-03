@@ -414,8 +414,12 @@ class TestMultipleServices(HermesTestCase):
         modified_data['subject']['meta_agency']['name'] = 'MyTutors'
         modified_data['subject']['bdr_person'] = None
         modified_data['subject']['meta_agency']['signup_questionnaire'] = {
-            'question1': 'answer1',
-            'question2': 'answer2',
+            'how-did-you-hear-about-us': 'Blog or Article',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'We assign tutors to students manually',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Mostly one to one',
+            'how-many-students-are-currently-actively-using-your-service': 45,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Mostly after the lesson takes place',
         }
         events = [modified_data]
 
@@ -429,8 +433,12 @@ class TestMultipleServices(HermesTestCase):
         assert not company.bdr_person
         assert await company.support_person == await company.sales_person == admin
         assert company.signup_questionnaire == {
-            'question1': 'answer1',
-            'question2': 'answer2',
+            'how-did-you-hear-about-us': 'Blog or Article',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'We assign tutors to students manually',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Mostly one to one',
+            'how-many-students-are-currently-actively-using-your-service': 45,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Mostly after the lesson takes place',
         }
 
         # check that pipedrive has the correct data
@@ -443,7 +451,15 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': None,
-                '123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}',
+                '123_signup_questionnaire_456': '{"how-did-you-hear-about-us": "Blog or Article", '
+                '"are-lessons-mostly-remote-or-in-person": "Mostly in-person", '
+                '"how-do-you-currently-match-your-students-to-tutors": "We assign '
+                'tutors to students manually", '
+                '"do-you-provide-mostly-one-to-one-lessons-or-group-classes": "Mostly '
+                'one to one", '
+                '"how-many-students-are-currently-actively-using-your-service": 45, '
+                '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
+                '"Mostly after the lesson takes place"}',
             }
         }
 
@@ -1221,4 +1237,37 @@ class TestDealCustomFieldInheritance(HermesTestCase):
 
         await source_field.delete()
         await deal_source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pd_post_process_client_event_value_error(self, mock_pd_request):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        company = await Company.create(
+            name='Test Company',
+            sales_person=admin,
+        )
+
+        sales_person = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_sales_person_456',
+            hermes_field_name='sales_person',
+            name='Sales Person',
+            field_type=CustomField.TYPE_FK_FIELD,
+        )
+
+        await build_custom_field_schema()
+
+        await pd_post_process_client_event(company=company)
+
+        await sales_person.delete()
         await build_custom_field_schema()
