@@ -42,16 +42,19 @@ async def update_or_create_inherited_deal_custom_field_values(company):
 
             for deal in deals:
                 if not value:
+                    # delete the custom field value if it exists as the value is None
                     try:
                         custom_field_value = await CustomFieldValue.get(custom_field=deal_cf, deal=deal)
                         await custom_field_value.delete()
                     except DoesNotExist:
                         app_logger.info('Callback: Custom field value not found for deal %s', deal.id)
                 else:
-                    await CustomFieldValue.update_or_create(
-                        **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
-                    )
-                    await get_and_create_or_update_pd_deal(deal)
+                    with logfire.span('create or update deal with id {deal}', deal=deal.id):
+                        # update or create the custom field value
+                        await CustomFieldValue.update_or_create(
+                            **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
+                        )
+                        await get_and_create_or_update_pd_deal(deal)
 
 
 async def _process_pd_organisation(

@@ -15,7 +15,13 @@ from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
 from tests.test_callbooker import CB_MEETING_DATA, fake_gcal_builder
-from tests.test_pipedrive import FakePipedrive, basic_pd_deal_data, basic_pd_org_data, fake_pd_request
+from tests.test_pipedrive import (
+    FakePipedrive,
+    basic_pd_deal_data,
+    basic_pd_org_data,
+    basic_pd_person_data,
+    fake_pd_request,
+)
 from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
 
@@ -1574,3 +1580,120 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert deal.name == 'New test deal'
         meeting2 = await Meeting.get(id=meeting.id)
         assert await meeting2.deal == deal
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_merged_hermes_ids(self, mock_pd_request):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        self.pipedrive.db = {
+            'organizations': {
+                1: {
+                    'id': 1,
+                    'name': 'Test company',
+                    'address_country': 'GB',
+                    'owner_id': None,
+                    '123_hermes_id_456': 1,
+                }
+            },
+            'deals': {
+                1: {
+                    'title': 'Old test deal',
+                    'org_id': 1,
+                    'person_id': None,
+                    'pipeline_id': 1,
+                    'stage_id': 1,
+                    'status': 'open',
+                    'id': 1,
+                    'user_id': 1,
+                    '345_hermes_id_678': 1,
+                },
+                2: {
+                    'title': 'Old test deal2',
+                    'org_id': 1,
+                    'person_id': None,
+                    'pipeline_id': 1,
+                    'stage_id': 1,
+                    'status': 'open',
+                    'id': 2,
+                    'user_id': 1,
+                    '345_hermes_id_678': 2,
+                },
+            },
+            'persons': {
+                1: {
+                    'id': 1,
+                    'name': 'Brian Blessed',
+                    'email': 'brian@tc.com',
+                    'org_id': 1,
+                    '234_hermes_id_567': 1,
+                },
+                2: {
+                    'id': 2,
+                    'name': 'Brian Blessed',
+                    'email': 'brian@tc.com',
+                    'org_id': 1,
+                    '234_hermes_id_567': 2,
+                },
+            },
+            'pipelines': {
+                1: {
+                    'id': 1,
+                    'name': 'Pipeline 1',
+                    'dft_entry_stage_id': 1,
+                }
+            },
+            'stages': {
+                1: {
+                    'id': 1,
+                    'name': 'Stage 2',
+                }
+            },
+        }
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=1,
+        )
+
+        company = await Company.create(name='Test company', pd_org_id=1, sales_person=admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=1, company=company)
+        contact2 = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=2, company=company)
+        await Deal.create(
+            name='Old test deal',
+            pd_deal_id=1,
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+        await Deal.create(
+            name='Old test deal2',
+            pd_deal_id=2,
+            company=company,
+            contact=contact2,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        data = copy.deepcopy(basic_pd_person_data())
+        data[PDStatus.CURRENT].update(
+            **{
+                '234_hermes_id_567': f'{contact.id},{contact2.id}',
+                'name': 'Brian Blessed',
+                'email': 'brian@tc.com',
+                'org_id': 1,
+                'owner_id': 1,
+            }
+        )
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+
+        r = await self.client.post(self.pipedrive_callback, json=data)
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.name == 'Brian Blessed'
