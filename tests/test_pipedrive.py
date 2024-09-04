@@ -2344,7 +2344,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
-        contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
+        contact = await Contact.create(first_name='John', last_name='Smith', company=company)
         contact_2 = await Contact.create(first_name='John', last_name='Smith', pd_person_id=31, company=company)
         deal2 = await Deal.create(
             name='Test deal',
@@ -2547,103 +2547,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert deal.name == 'New test deal'
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
-    async def test_deal_update_merged(self, mock_add_task):
-        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
-        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
-        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
-            name='Old test deal',
-            pd_deal_id=40,
-            company=company,
-            contact=contact,
-            pipeline=pipeline,
-            stage=stage,
-            admin=self.admin,
-        )
-        deal2 = await Deal.create(
-            name='Old test deal2',
-            pd_deal_id=41,
-            company=company,
-            contact=contact,
-            pipeline=pipeline,
-            stage=stage,
-            admin=self.admin,
-        )
-
-        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        meeting = await Meeting.create(
-            company=company,
-            contact=contact,
-            meeting_type=Meeting.TYPE_SALES,
-            start_time=start,
-            end_time=start + timedelta(hours=1),
-            admin=self.admin,
-            deal=deal2,
-        )
-
-        assert await Deal.exists()
-
-        data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}', 'title': 'New test deal'})
-        r = await self.client.post(self.url, json=data)
-        assert r.status_code == 200, r.json()
-        deal = await Deal.get()
-        assert deal.name == 'New test deal'
-        meeting2 = await Meeting.get(id=meeting.id)
-        assert await meeting2.deal == deal
-
-    @mock.patch('fastapi.BackgroundTasks.add_task')
-    async def test_deal_update_merged_previous(self, mock_add_task):
-        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
-        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
-        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
-        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
-        deal = await Deal.create(
-            name='Old test deal',
-            pd_deal_id=40,
-            company=company,
-            contact=contact,
-            pipeline=pipeline,
-            stage=stage,
-            admin=self.admin,
-        )
-        deal2 = await Deal.create(
-            name='Old test deal2',
-            pd_deal_id=41,
-            company=company,
-            contact=contact,
-            pipeline=pipeline,
-            stage=stage,
-            admin=self.admin,
-        )
-
-        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
-        meeting = await Meeting.create(
-            company=company,
-            contact=contact,
-            meeting_type=Meeting.TYPE_SALES,
-            start_time=start,
-            end_time=start + timedelta(hours=1),
-            admin=self.admin,
-            deal=deal2,
-        )
-
-        assert await Deal.exists()
-
-        data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(**{'345_hermes_id_678': f'{deal.id},{deal2.id}'})
-        data[PDStatus.CURRENT].update(title='New test deal')
-        r = await self.client.post(self.url, json=data)
-        assert r.status_code == 200, r.json()
-        deal = await Deal.get()
-        assert deal.name == 'New test deal'
-        meeting2 = await Meeting.get(id=meeting.id)
-        assert await meeting2.deal == deal
-
-    @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_deal_update_no_changes(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
@@ -2806,3 +2709,37 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
         assert stage.name == 'New test stage'
+
+    async def test_duplicate_hermes_ids(self):
+        await Company.create(id=1, name='Old test company', sales_person=self.admin)
+        await Company.create(id=2, name='Old test company', sales_person=self.admin)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
+        assert not await Company.exists(id=2)
+
+    async def test_single_duplicate_hermes_ids(self):
+        await Company.create(id=1, name='Old test company', sales_person=self.admin)
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1'})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)
+
+    async def test_duplicate_hermes_ids_correct_format(self):
+        await Company.create(id=1, name='Old test company', sales_person=self.admin)
+
+        data = copy.deepcopy(basic_pd_org_data())
+        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data[PDStatus.CURRENT].update({'123_hermes_id_456': 1})
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200
+
+        assert await Company.exists(id=1)

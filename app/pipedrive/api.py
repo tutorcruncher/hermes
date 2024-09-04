@@ -210,16 +210,25 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(by_alias=True)
     if deal.pd_deal_id:
-        pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
+        # get by pipedrive Deal ID
+        with logfire.span('getting deal {deal}', deal=deal.id):
+            pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
         if pd_deal_data != pipedrive_deal.model_dump(by_alias=True):
-            await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
-            app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+            with logfire.span('updating deal {deal}', deal=deal.id):
+                try:
+                    await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+                    app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+                # catch 404 Client Error: Not Found
+                except Exception as e:
+                    app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
     else:
-        created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
-        pipedrive_deal = PDDeal(**created_deal)
-        deal.pd_deal_id = pipedrive_deal.id
-        await deal.save()
-        app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
+        # create a new deal
+        with logfire.span('creating deal {deal}', deal=deal.id):
+            created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
+            pipedrive_deal = PDDeal(**created_deal)
+            deal.pd_deal_id = pipedrive_deal.id
+            await deal.save()
+            app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
     return pipedrive_deal
 
 
