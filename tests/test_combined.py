@@ -8,7 +8,7 @@ from unittest import mock
 from pytz import utc
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline, Stage
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
 from app.pipedrive._schema import PDStatus
 from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
 from app.tc2.tasks import update_client_from_company
@@ -806,6 +806,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await support_person_custom_field.delete()
         await deal_support_person_custom_field.delete()
         await build_custom_field_schema()
+
 
     ### TODO: Re-enabled in #281
     # @mock.patch('app.pipedrive.api.session.request')

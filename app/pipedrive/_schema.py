@@ -351,8 +351,6 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
     debug(f'handle_duplicate_hermes_ids: {hermes_ids} of type {object_type}')
 
-    debug(hermes_ids)
-    debug(object_type)
 
     with logfire.span('handle_duplicate_hermes_ids:%s of type %s' % (hermes_ids, object_type)):
         if ',' in hermes_ids:
