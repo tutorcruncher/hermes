@@ -135,9 +135,10 @@ async def _process_pd_organisation(
                     'Callback: creating Company %s cf values from Organisation %s', company.id, current_pd_org.id
                 )
 
-        # get all the deals of the company and update the inherited custom field values
-        if await company.deals:
-            await update_or_create_inherited_deal_custom_field_values(company)
+        # Commented out to stop the infinite loop, need to change to only be triggered if inherited custom fields art changed
+        # # get all the deals of the company and update the inherited custom field values
+        # if await company.deals:
+        #     await update_or_create_inherited_deal_custom_field_values(company)
 
         return company
 
