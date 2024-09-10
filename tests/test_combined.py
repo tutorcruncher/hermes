@@ -8,7 +8,7 @@ from unittest import mock
 from pytz import utc
 
 from app.base_schema import build_custom_field_schema
-from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline, Stage
 from app.pipedrive._schema import PDStatus
 from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
 from app.tc2.tasks import update_client_from_company
@@ -1300,16 +1300,38 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'name': 'Old test company',
                 'address_country': None,
                 'owner_id': 10,
-                '123_hermes_id_456': '1, 2',
+                '123_hermes_id_456': "'1', '2'",
                 '123_sales_person_456': admin.id,
             },
         }
 
+
+        await Deal.create(id=1, name='Old test deal', company_id=1, pd_deal_id=1, admin=admin, pipeline=self.pipeline, stage=self.stage)
+
+        self.pipedrive.db['deals'] = {
+            1: {
+                'title': 'Old test deal',
+                'org_id': 1,
+                'person_id': None,
+                'pipeline_id': 1,
+                'stage_id': 1,
+                'status': 'open',
+                'id': 1,
+                'user_id': 1,
+                '345_hermes_id_678': 1,
+            }
+        }
+
+
         data = copy.deepcopy(basic_pd_org_data())
         data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+        data[PDStatus.CURRENT]['123_hermes_id_456'] = "1, 2"
         r = await self.client.post(self.pipedrive_callback, json=data)
         assert r.status_code == 200
+
+        company = await Company.get()
+
+        await update_client_from_company(company)
 
         assert await Company.exists(id=1)
         assert not await Company.exists(id=2)

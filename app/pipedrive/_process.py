@@ -14,6 +14,7 @@ async def update_or_create_inherited_deal_custom_field_values(company):
     Inherited Custom Field: A custom field on a deal with the same machine name as a Company custom field.
     Update the inherited custom field values of all company deals.
     """
+    debug('update_or_create_inherited_deal_custom_field_values')
     with logfire.span('update_or_create_inherited_deal_custom_field_values'):
         deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
         deal_custom_field_machine_names = [cf.machine_name for cf in deal_custom_fields]
@@ -136,8 +137,9 @@ async def _process_pd_organisation(
                 )
 
         # get all the deals of the company and update the inherited custom field values
+        debug(await company.deals)
         if await company.deals:
-            await update_or_create_inherited_deal_custom_field_values(company)
+            await update_or_create_inherited_deal_custom_field_values(company) # we need to do this only if any of the custom field values have changed
 
         return company
 
