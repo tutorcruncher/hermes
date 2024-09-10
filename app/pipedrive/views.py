@@ -11,7 +11,7 @@ from app.pipedrive._process import (
     _process_pd_pipeline,
     _process_pd_stage,
 )
-from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent, handle_duplicate_hermes_ids
+from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent
 from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company
 
@@ -41,7 +41,9 @@ async def prepare_event_data(event_data: dict) -> dict:
                         data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['object'])
         return data
 
-    event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
+    ## TODO: Re-enable in #282
+    # event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
+
     event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
 
     # ignore any updated inherited custom fields on a deal
