@@ -325,6 +325,57 @@ class MeetingBookingTestCase(HermesTestCase):
     async def test_com_cli_create_update_5(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
+        Company exists - match by cligency_id
+        Contact exists - match by phone
+        """
+        meeting_data = CB_MEETING_DATA.copy()
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+        )
+        meeting_data.update(tc2_cligency_id=10, admin_id=sales_person.id, phone='6692844748')
+        company = await Company.create(
+            tc2_cligency_id=10, name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person
+        )
+        await Contact.create(
+            first_name='B', last_name='J', email='brain@junes.com', company_id=company.id, phone='6692844748'
+        )
+
+        assert await Company.all().count() == 1
+        assert await Contact.all().count() == 1
+
+        r = await self.client.post(self.url, json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.tc2_cligency_id == 10
+        assert company.name == 'Julies Ltd'
+        assert company.website == 'https://junes.com'
+        assert company.country == 'GB'
+        assert not company.support_person
+        assert not company.bdr_person
+        assert company.has_booked_call
+        assert await company.sales_person == sales_person
+
+        contact = await Contact.get()
+        assert contact.first_name == 'B'
+        assert contact.last_name == 'J'
+        assert contact.email == 'brain@junes.com'
+        assert contact.phone == '6692844748'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == sales_person
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_com_cli_create_update_6(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new meeting
         Company exists - match by name
         Contact exists - match by last name
         No admins linked
@@ -367,7 +418,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_6(self, mock_gcal_builder, mock_add_task):
+    async def test_com_cli_create_update_7(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company doesn't exist but checking cligency_id
@@ -414,7 +465,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_com_cli_create_update_7(self, mock_gcal_builder, mock_add_task):
+    async def test_com_cli_create_update_8(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
         Company doesn't exist but checking cligency_id
