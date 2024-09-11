@@ -150,6 +150,7 @@ class HermesBaseModel(BaseModel):
         hermes_model.
 
         FK fields are handled differently because we need to get the ID of the related object.
+        bool fields are handled differently because they are stored as strings in Pipedrive.
         """
         from app.models import CustomField
 
@@ -171,6 +172,15 @@ class HermesBaseModel(BaseModel):
                     val = getattr(obj, cf.hermes_field_name, None)
                     if val:
                         val = json.dumps(val)
+
+                elif cf.field_type == CustomField.TYPE_BOOL:
+                    val = getattr(obj, cf.hermes_field_name, None)
+                    if isinstance(val, str):
+                        val = val.lower() == 'true'
+                    elif isinstance(val, bool):
+                        val = 'true' if val else 'false'
+                    else:
+                        val = 'false'
 
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
