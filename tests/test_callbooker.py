@@ -559,7 +559,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert meeting.meeting_type == Meeting.TYPE_SALES
 
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 11, tzinfo=utc).timestamp()), admin_id=sales_person.id)
+        meeting_data.update(meeting_dt=int(datetime(2026, 8, 3, 11, tzinfo=utc).timestamp()), admin_id=sales_person.id)
 
         r = await self.client.post(self.url, json=meeting_data)
         assert r.status_code == 200, r.json()
@@ -706,7 +706,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert meeting.meeting_type == Meeting.TYPE_SUPPORT
 
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 11, tzinfo=utc).timestamp()), admin_id=admin.id)
+        meeting_data.update(meeting_dt=int(datetime(2026, 8, 3, 11, tzinfo=utc).timestamp()), admin_id=admin.id)
 
         r = await self.client.post('/callbooker/support/book/', json=meeting_data)
         assert r.status_code == 200, r.json()

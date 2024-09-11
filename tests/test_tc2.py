@@ -259,7 +259,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.paid_invoice_count == 0
         assert await company.bdr_person == await company.support_person == await company.sales_person == admin
         assert company.has_signed_up
-        assert not company.has_booked_call
+        assert company.sales_call_count == 0
 
         assert not company.estimated_income
 
@@ -332,7 +332,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.paid_invoice_count == 2
         assert await company.bdr_person == await company.sales_person == admin
         assert company.has_signed_up
-        assert not company.has_booked_call
+        assert company.sales_call_count == 0
         assert not await company.support_person
 
         assert not company.estimated_income
@@ -372,7 +372,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert company.paid_invoice_count == 2
         assert company.has_signed_up
-        assert not company.has_booked_call
+        assert company.sales_call_count == 0
         assert not await company.support_person
 
         assert await company.bdr_person == await company.sales_person == admin

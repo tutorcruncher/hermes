@@ -615,7 +615,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert company.paid_invoice_count == 0
         assert await company.bdr_person == await company.support_person == await company.sales_person == admin
         assert company.has_signed_up
-        assert not company.has_booked_call
+        assert company.sales_call_count == 0
 
         assert company.estimated_income
 
@@ -746,7 +746,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         assert company.estimated_income == '1000'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert await company.sales_person == sales_person
         assert not company.support_person_id
 
