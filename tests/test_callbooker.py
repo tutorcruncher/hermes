@@ -325,43 +325,39 @@ class MeetingBookingTestCase(HermesTestCase):
     async def test_com_cli_create_update_5(self, mock_gcal_builder, mock_add_task):
         """
         Book a new meeting
-        Company exists - match by cligency_id
+        Company exists - match by phone
         Contact exists - match by phone
         """
-        meeting_data = CB_MEETING_DATA.copy()
         mock_gcal_builder.side_effect = fake_gcal_builder()
         sales_person = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
-        meeting_data.update(tc2_cligency_id=10, admin_id=sales_person.id, phone='6692844748')
         company = await Company.create(
-            tc2_cligency_id=10, name='Julies Ltd', website='https://junes.com', country='GB', sales_person=sales_person
+            name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person, phone='1234567'
         )
-        await Contact.create(
-            first_name='B', last_name='J', email='brain@junes.com', company_id=company.id, phone='6692844748'
-        )
+        await Contact.create(first_name='B', last_name='Junes', email='b@junes.com', company_id=company.id)
 
         assert await Company.all().count() == 1
         assert await Contact.all().count() == 1
 
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(admin_id=sales_person.id, phone='1234567')
         r = await self.client.post(self.url, json=meeting_data)
         assert r.status_code == 200, r.json()
 
         company = await Company.get()
-        assert company.tc2_cligency_id == 10
-        assert company.name == 'Julies Ltd'
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
         assert company.has_booked_call
-        assert await company.sales_person == sales_person
-
         contact = await Contact.get()
         assert contact.first_name == 'B'
-        assert contact.last_name == 'J'
-        assert contact.email == 'brain@junes.com'
-        assert contact.phone == '6692844748'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'b@junes.com'
+        assert contact.phone == '1234567'
         assert contact.company_id == company.id
 
         meeting = await Meeting.get()
