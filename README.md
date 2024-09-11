@@ -93,8 +93,9 @@ Hint: Look at Extra Tips (at the bottom of README) for a more detailed guide on 
 
 ```  
 
-[//]: # (has_booked_call  )
 [//]: # (has_signed_up  )
+support_call_count: Numerical
+sales_call_count: Numerical
 tc2_status: Large text  
 tc2_cligency_url: Large text
 hermes_id: Numerical

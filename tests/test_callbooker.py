@@ -161,7 +161,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.estimated_income == '1000'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -206,7 +206,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.website == 'https://junes.com'
         assert company.country == 'GB'
         assert not company.support_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert await company.sales_person == sales_person
         assert not company.bdr_person
 
@@ -255,7 +255,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -304,7 +304,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert await company.sales_person == sales_person
 
         contact = await Contact.get()
@@ -351,7 +351,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'Junes'
@@ -398,7 +398,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'J'
@@ -437,7 +437,7 @@ class MeetingBookingTestCase(HermesTestCase):
         company = await Company.get()
         assert not company.tc2_cligency_id
         assert company.name == 'Junes Ltd'
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         assert (await company.bdr_person) == bdr_person
         assert (await company.sales_person) == sales_person
 
@@ -500,7 +500,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert company.country == 'GB'
         assert not company.support_person
         assert not company.bdr_person
-        assert company.has_booked_call
+        assert company.sales_call_count == 1
         contact = await Contact.get()
         assert contact.first_name == 'B'
         assert contact.last_name == 'J'
@@ -513,6 +513,64 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.admin == sales_person
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meeting.TYPE_SALES
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_multiple_sales_calls(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new meeting
+        Company doesn't exist so create
+        Contact doesn't exist so create
+        Create with admin
+
+        Book a new meeting ... again
+        """
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
+        )
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+        r = await self.client.post(self.url, json={'admin_id': sales_person.id, **CB_MEETING_DATA})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
+        assert company.website == 'https://junes.com'
+        assert company.country == 'GB'
+        assert company.estimated_income == '1000'
+        assert not company.support_person
+        assert not company.bdr_person
+        assert company.sales_call_count == 1
+        assert await company.sales_person == sales_person
+
+        contact = await Contact.get()
+        assert contact.first_name == 'Brain'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == sales_person
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 11, tzinfo=utc).timestamp()), admin_id=sales_person.id)
+
+        r = await self.client.post(self.url, json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert not company.tc2_cligency_id
+        assert company.name == 'Junes Ltd'
+        assert company.sales_call_count == 2
+
+        assert await Meeting.all().count() == 2
+        assert await Contact.all().count() == 1
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
@@ -593,6 +651,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
         company = await Company.get()
         assert company.name == 'Julies Ltd'
+        assert company.support_call_count == 1
 
         contact = await Contact.get()
         assert contact.first_name == 'Brain'
@@ -606,6 +665,58 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.admin == admin
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meeting.TYPE_SUPPORT
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
+    async def test_multiple_support_calls(self, mock_gcal_builder, mock_add_task):
+        """
+        Book a new SUPPORT meeting
+        Company exists
+        Contact doesn't exist so create
+        Create with client manager
+
+        Book a new SUPPORT meeting ... again
+        """
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        meeting_data = CB_MEETING_DATA.copy()
+        admin = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        meeting_data.update(company_id=company.id, admin_id=admin.id)
+        assert await Contact.all().count() == 0
+        r = await self.client.post('/callbooker/support/book/', json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'Julies Ltd'
+        assert company.support_call_count == 1
+
+        contact = await Contact.get()
+        assert contact.first_name == 'Brain'
+        assert contact.last_name == 'Junes'
+        assert contact.email == 'brain@junes.com'
+        assert contact.company_id == company.id
+
+        meeting = await Meeting.get()
+        assert meeting.status == Meeting.STATUS_PLANNED
+        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
+        assert await meeting.admin == admin
+        assert await meeting.contact == contact
+        assert meeting.meeting_type == Meeting.TYPE_SUPPORT
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(meeting_dt=int(datetime(2026, 7, 3, 11, tzinfo=utc).timestamp()), admin_id=admin.id)
+
+        r = await self.client.post('/callbooker/support/book/', json=meeting_data)
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        assert company.name == 'Julies Ltd'
+        assert company.support_call_count == 2
+
+        assert await Meeting.all().count() == 2
+        assert await Contact.all().count() == 1
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
@@ -623,7 +734,7 @@ class MeetingBookingTestCase(HermesTestCase):
         )
         company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
 
-        contact = await Contact.create(first_name='B', last_name='Junes', company_id=company.id)
+        await Contact.create(first_name='B', last_name='Junes', company_id=company.id)
 
         meeting_data.update(company_id=company.id, admin_id=admin.id)
         r = await self.client.post('/callbooker/support/book/', json=meeting_data)
@@ -631,6 +742,7 @@ class MeetingBookingTestCase(HermesTestCase):
 
         company = await Company.get()
         assert company.name == 'Julies Ltd'
+        assert company.support_call_count == 1
 
         contact = await Contact.get()
         assert contact.first_name == 'B'

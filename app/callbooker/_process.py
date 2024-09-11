@@ -22,6 +22,8 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     else:
         contact_data = await event.contact_dict()
         contact = await Contact.create(company_id=company.id, **contact_data)
+
+    company.support_call_count += 1 if isinstance(event, CBSupportCall) else 0
     return contact
 
 
@@ -93,9 +95,6 @@ async def get_or_create_contact_company(event: CBSalesCall) -> tuple[Company, Co
         await company.save()
     contact = contact or await get_or_create_contact(company, event)
     app_logger.info(f'Got company {company} and contact {contact} from {event}')
-
-    company.has_booked_call = True
-    await company.save()
     return company, contact
 
 
