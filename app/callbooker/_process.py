@@ -80,13 +80,19 @@ async def get_or_create_contact_company(event: CBSalesCall) -> tuple[Company, Co
         if contact := await Contact.filter(email=event.email).first():
             app_logger.info(f'Got contact {contact} from {event}')
             company = await contact.company
-        else:
-            company = await Company.filter(name__iexact=event.company_name).first()
+
+        elif contact := await Contact.filter(phone=event.phone).first():
+            app_logger.info(f'Got contact {contact} from {event}')
+            company = await contact.company
+
+        elif company := await Company.filter(name__iexact=event.company_name).first():
             app_logger.info(f'Got company {company} from {event}')
-            if not company:
-                company_data = await event.company_dict()
-                company = await Company.create(**company_data)
-                app_logger.info(f'Created company {company} from {event}')
+
+        if not company:
+            company_data = await event.company_dict()
+            company = await Company.create(**company_data)
+            app_logger.info(f'Created company {company} from {event}')
+
     if not company.sales_person_id:
         company.sales_person = event.admin
         app_logger.info(f'Set sales person {event.admin} on company {company} from {event}')
