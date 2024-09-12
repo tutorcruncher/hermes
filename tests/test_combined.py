@@ -127,6 +127,58 @@ class TestMultipleServices(HermesTestCase):
 
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_create_company_with_tc_bool_custom_field(self, mock_pd_request, mock_tc2_get):
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+        mock_tc2_get.side_effect = mock_tc2_request()
+
+        admin = await Admin.create(
+            tc2_admin_id=30,
+            first_name='Brain',
+            last_name='Johnson',
+            username='brian@tc.com',
+            password='foo',
+            pd_owner_id=10,
+        )
+
+        has_signed_up = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_has_signed_up_456',
+            name='Has Signed Up',
+            field_type=CustomField.TYPE_BOOL,
+        )
+        await build_custom_field_schema()
+
+        assert not await Company.exists()
+        pd_org_data = {
+            'v': 1,
+            'matches_filters': {'current': []},
+            'meta': {'action': 'updated', 'object': 'organization'},
+            'current': {
+                'owner_id': 10,
+                'id': 20,
+                'name': 'Test company',
+                'address_country': None,
+                '123_has_signed_up_456': 'false',
+            },
+            'previous': {},
+            'event': 'updated.organization',
+        }
+
+        r = await self.client.post(self.pipedrive_callback, json=pd_org_data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == admin.id
+        cf = await CustomFieldValue.get()
+        assert cf.value == 'false'
+
+        assert not company.has_signed_up
+
+        await has_signed_up.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_cb_company_exists_in_tc_and_pd_but_not_in_hermes(self, mock_pd_request, mock_tc2_get):
         mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
         mock_tc2_get.side_effect = mock_tc2_request()
