@@ -33,6 +33,7 @@ async def create_meeting_gcal_event(meeting: Meeting):
     contact = await meeting.contact
     company = await contact.company
     admin = await meeting.admin
+
     meeting_templ_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
@@ -40,12 +41,22 @@ async def create_meeting_gcal_event(meeting: Meeting):
         'tc2_cligency_url': '',
         'admin_name': admin.first_name,
     }
+
     if company.tc2_cligency_id:
         meeting_templ_vars.update(tc2_cligency_id=company.tc2_cligency_id, tc2_cligency_url=company.tc2_cligency_url)
+
     if meeting.meeting_type == Meeting.TYPE_SALES:
-        # TODO
-        # crm_url = get_pipedrive_url(contact)
-        meeting_templ_vars['crm_url'] = ''
+        meeting_templ_vars.update(
+            {
+                'crm_url': f'https://app.pipedrive.com/organization/{company.pd_org_id}' if company.pd_org_id else '',
+                'company_name': company.name or '',
+                'contact_email': contact.email or '',
+                'contact_phone': contact.phone or '',
+                'company_estimated_monthly_revenue': company.estimated_income or '',
+                'company_country': company.country or '',
+            }
+        )
+
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
     g_cal.create_cal_event(
