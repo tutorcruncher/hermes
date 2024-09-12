@@ -1,5 +1,5 @@
 import json
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type, Union
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
@@ -229,7 +229,7 @@ async def get_custom_fieldinfo(
     elif field.field_type == CustomField.TYPE_STR:
         field_kwargs.update(annotation=Optional[str], default=None)
     elif field.field_type == CustomField.TYPE_BOOL:
-        field_kwargs.update(annotation=Optional[bool], default=None)
+        field_kwargs.update(annotation=Optional[Union[bool, str]], default=None)
     elif field.field_type == CustomField.TYPE_FK_FIELD:
         field_kwargs.update(
             annotation=Optional[int],
