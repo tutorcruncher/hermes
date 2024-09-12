@@ -58,25 +58,25 @@ async def create_meeting_gcal_event(meeting: Meeting):
         if company.country:
             meeting_templ_vars['company_country'] = company.country
 
-        if 'crm_url' in meeting_templ_vars:
+        if meeting_templ_vars.get('crm_url'):
             meeting_template += (
                 f'<a href="{meeting_templ_vars["crm_url"]}" class="smaller" target="_blank">CRM link</a>\n'
             )
-        if 'tc2_cligency_url' in meeting_templ_vars:
+        if meeting_templ_vars.get('tc2_cligency_url'):
             meeting_template += (
                 f'<a href="{meeting_templ_vars["tc2_cligency_url"]}" class="smaller" target="_blank">TC link</a>\n'
             )
-        if 'company_name' in meeting_templ_vars:
+        if meeting_templ_vars.get('company_name'):
             meeting_template += f'Company Name: {meeting_templ_vars["company_name"]}\n'
-        if 'contact_email' in meeting_templ_vars:
+        if meeting_templ_vars.get('contact_email'):
             meeting_template += f'Email: {meeting_templ_vars["contact_email"]}\n'
-        if 'contact_phone' in meeting_templ_vars:
+        if meeting_templ_vars.get('contact_phone'):
             meeting_template += f'Phone: {meeting_templ_vars["contact_phone"]}\n'
-        if 'company_estimated_monthly_revenue' in meeting_templ_vars:
+        if meeting_templ_vars.get('company_estimated_monthly_revenue'):
             meeting_template += (
                 f'Estimated Monthly Revenue: {meeting_templ_vars["company_estimated_monthly_revenue"]}\n'
             )
-        if 'company_country' in meeting_templ_vars:
+        if meeting_templ_vars.get('company_country'):
             meeting_template += f'Country: {meeting_templ_vars["company_country"]}\n'
 
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
