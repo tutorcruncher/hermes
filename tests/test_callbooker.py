@@ -637,6 +637,8 @@ class MeetingBookingTestCase(HermesTestCase):
         Company exists
         Contact doesn't exist so create
         Create with client manager
+
+        book another meeting
         """
         mock_gcal_builder.side_effect = fake_gcal_builder()
         meeting_data = CB_MEETING_DATA.copy()
@@ -666,48 +668,7 @@ class MeetingBookingTestCase(HermesTestCase):
         assert await meeting.contact == contact
         assert meeting.meeting_type == Meeting.TYPE_SUPPORT
 
-    @mock.patch('fastapi.BackgroundTasks.add_task')
-    @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
-    async def test_multiple_support_calls(self, mock_gcal_builder, mock_add_task):
-        """
-        Book a new SUPPORT meeting
-        Company exists
-        Contact doesn't exist so create
-        Create with client manager
-
-        Book a new SUPPORT meeting ... again
-        """
-        mock_gcal_builder.side_effect = fake_gcal_builder()
-        meeting_data = CB_MEETING_DATA.copy()
-        admin = await Admin.create(
-            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
-        )
-        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
-        meeting_data.update(company_id=company.id, admin_id=admin.id)
-        assert await Contact.all().count() == 0
-        r = await self.client.post('/callbooker/support/book/', json=meeting_data)
-        assert r.status_code == 200, r.json()
-
-        company = await Company.get()
-        assert company.name == 'Julies Ltd'
-        assert company.support_call_count == 1
-
-        contact = await Contact.get()
-        assert contact.first_name == 'Brain'
-        assert contact.last_name == 'Junes'
-        assert contact.email == 'brain@junes.com'
-        assert contact.company_id == company.id
-
-        meeting = await Meeting.get()
-        assert meeting.status == Meeting.STATUS_PLANNED
-        assert meeting.start_time == datetime(2026, 7, 3, 9, tzinfo=utc)
-        assert await meeting.admin == admin
-        assert await meeting.contact == contact
-        assert meeting.meeting_type == Meeting.TYPE_SUPPORT
-
-        meeting_data = CB_MEETING_DATA.copy()
-        meeting_data.update(meeting_dt=int(datetime(2026, 8, 3, 11, tzinfo=utc).timestamp()), admin_id=admin.id)
-
+        meeting_data.update(meeting_dt=int(datetime(2026, 8, 3, 11, tzinfo=utc).timestamp()))
         r = await self.client.post('/callbooker/support/book/', json=meeting_data)
         assert r.status_code == 200, r.json()
 

@@ -22,8 +22,6 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     else:
         contact_data = await event.contact_dict()
         contact = await Contact.create(company_id=company.id, **contact_data)
-
-    company.support_call_count += 1 if isinstance(event, CBSupportCall) else 0
     return contact
 
 
