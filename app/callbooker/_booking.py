@@ -39,7 +39,7 @@ async def create_meeting_gcal_event(meeting: Meeting):
         'admin_name': admin.first_name,
     }
 
-    if company.tc2_cligency_id:
+    if hasattr(company, 'tc2_cligency_id'):
         meeting_templ_vars.update(tc2_cligency_id=company.tc2_cligency_id, tc2_cligency_url=company.tc2_cligency_url)
 
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
