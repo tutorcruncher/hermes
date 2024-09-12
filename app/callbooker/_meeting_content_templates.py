@@ -60,7 +60,5 @@ We look forward to hearing about your business!
 Best,
 The TutorCruncher Team
 
-<a href="{crm_url}" class="smaller" target="_blank">CRM link</a>
-<a href="{tc2_cligency_url}" class="smaller" target="_blank">TC link</a>
 """,
 }
