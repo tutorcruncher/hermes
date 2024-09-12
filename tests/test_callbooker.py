@@ -333,9 +333,11 @@ class MeetingBookingTestCase(HermesTestCase):
             first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
         )
         company = await Company.create(
-            name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person, phone='1234567'
+            name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person
         )
-        await Contact.create(first_name='B', last_name='Junes', email='b@junes.com', company_id=company.id)
+        await Contact.create(
+            first_name='B', last_name='Junes', email='b@junes.com', company_id=company.id, phone='1234567'
+        )
 
         assert await Company.all().count() == 1
         assert await Contact.all().count() == 1
