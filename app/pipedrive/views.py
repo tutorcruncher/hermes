@@ -28,7 +28,7 @@ async def prepare_event_data(event_data: dict) -> dict:
     different. If they are, it sets the current value back to the previous value.
     """
 
-    async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None) -> Union[dict, None]:
+    async def handle_custom_field(data: dict, field_name: str, handle_func: str) -> Union[dict, None]:
         cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
         for pd_field_id in cf_fields:
             for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
@@ -38,15 +38,16 @@ async def prepare_event_data(event_data: dict) -> dict:
                         if state == PDStatus.PREVIOUS:
                             data[PDStatus.CURRENT][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
 
-                    if callable(handle_func):
-                        data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['object'])
+                    if handle_func == 'handle_duplicate_hermes_ids':
+                        # if current value is a string, handle duplicate hermes_id
+                        if state == PDStatus.CURRENT:
+                            data[state][pd_field_id] = await handle_duplicate_hermes_ids(data[state][pd_field_id], data['meta']['object'])
 
-                        # if the hermes_id is a duplicate, we break the loop as there is no need to call the function again
-                        if handle_func == handle_duplicate_hermes_ids():
-                            break
+                            # overwrite the previous value with the current value to avoid duplicate hermes_id validation error later
+                            data[PDStatus.PREVIOUS][pd_field_id] = data[state][pd_field_id]
         return data
 
-    event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
+    event_data = await handle_custom_field(event_data, 'hermes_id', 'handle_duplicate_hermes_ids')
 
     event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
 
