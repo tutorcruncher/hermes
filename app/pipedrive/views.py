@@ -11,7 +11,7 @@ from app.pipedrive._process import (
     _process_pd_pipeline,
     _process_pd_stage,
 )
-from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent
+from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent, handle_duplicate_hermes_ids
 from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company
 
@@ -28,10 +28,11 @@ async def prepare_event_data(event_data: dict) -> dict:
     different. If they are, it sets the current value back to the previous value.
     """
 
-    async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None):
+    async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None) -> Union[dict, None]:
         cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
         for pd_field_id in cf_fields:
             for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
+                # check if the field exists in the data and if the value is a string
                 if data.get(state) and pd_field_id in data[state] and isinstance(data[state][pd_field_id], str):
                     if handle_func == 'revert changes':
                         if state == PDStatus.PREVIOUS:
@@ -39,10 +40,13 @@ async def prepare_event_data(event_data: dict) -> dict:
 
                     if callable(handle_func):
                         data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['object'])
+
+                        # if the hermes_id is a duplicate, we break the loop as there is no need to call the function again
+                        if handle_func == handle_duplicate_hermes_ids():
+                            break
         return data
 
-    ## TODO: Re-enable in #282
-    # event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
+    event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
 
     event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
 
