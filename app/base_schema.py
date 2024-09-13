@@ -175,13 +175,8 @@ class HermesBaseModel(BaseModel):
 
                 elif cf.field_type == CustomField.TYPE_BOOL:
                     val = getattr(obj, cf.hermes_field_name, None)
-                    if isinstance(val, str):
-                        val = val.lower() == 'true'
-                    elif isinstance(val, bool):
+                    if isinstance(val, bool):
                         val = 'true' if val else 'false'
-                    else:
-                        val = 'false'
-
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
             elif cf.tc2_machine_name:
