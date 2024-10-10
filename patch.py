@@ -15,7 +15,7 @@ from app.main import TORTOISE_ORM
 from app.tc2.tasks import update_client_from_company
 from tortoise.expressions import Q
 from tortoise import Tortoise
-from app.models import Company
+from app.models import Company, Meeting
 import logfire
 
 async def init():
@@ -89,6 +89,35 @@ async def update_pd_org_price_plans():
             continue
 
     print(f'Updated {companies_updated} companies')
+
+
+@command
+async def update_call_counts():
+    """
+    This patch updates the call counts for companies, by searching though all meetings
+    """
+    meetings = await Meeting.all()
+    print(f'Updating call counts from {len(meetings)} meetings')
+    for meeting in meetings:
+        deal = await meeting.deal
+        if not deal:
+            continue
+        company = await deal.company
+        if company:
+            if meeting.meeting_type == Meeting.TYPE_SALES:
+                company.sales_call_count += 1
+                print(f'Incremented company {company.id} with {company.sales_call_count} sales call count')
+            elif meeting.meeting_type == Meeting.TYPE_SUPPORT:
+                company.support_call_count += 1
+                print(f'Incremented company {company.id} with {company.support_call_count} support call count')
+            await company.save()
+
+            # send a task to update the Organisation in Pipedrive
+            print(f'Sending task to update company {company.id} in Pipedrive')
+            await get_and_create_or_update_organisation(company)
+
+
+
 
 
 # End of patch commands

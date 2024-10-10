@@ -31,10 +31,13 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
 
 async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
     """
-    Called after a support call is booked. Creates the activity if the contact have a pipedrive id
+    Called after a support call is booked. Creates/updates the Org & Person in pipedrive,
+    Creates the activity if the contact have a pipedrive id
     """
     with logfire.span('pd_post_process_support_call'):
-        if (await contact.company).pd_org_id:
+        company = await contact.company
+        if company and company.pd_org_id:
+            await get_and_create_or_update_organisation(company)
             await get_and_create_or_update_person(contact)
             await create_activity(meeting)
 

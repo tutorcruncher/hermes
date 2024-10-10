@@ -40,6 +40,8 @@ async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
     else:
         meeting.deal = deal
         await meeting.save()
+        company.sales_call_count += 1
+        await company.save()
         tasks.add_task(pd_post_process_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
         return {'status': 'ok'}
 
@@ -59,6 +61,8 @@ async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
     else:
         await meeting.save()
+        company.support_call_count += 1
+        await company.save()
         tasks.add_task(pd_post_process_support_call, contact=contact, meeting=meeting)
         return {'status': 'ok'}
 
