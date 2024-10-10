@@ -402,7 +402,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             name='Julies Ltd', website='https://junes.com', country='GB', pd_org_id=10, sales_person=admin
         )
         self.pipedrive.db['organizations'] = {
-            1: {
+            10: {
                 'id': 10,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
@@ -424,7 +424,7 @@ class PipedriveTasksTestCase(HermesTestCase):
         )
         await pd_post_process_support_call(contact, meeting)
         assert self.pipedrive.db['organizations'] == {
-            1: {
+            10: {
                 'id': 10,
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
@@ -449,6 +449,7 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert not await Deal.exists()
         assert self.pipedrive.db['activities'] == {
             1: {
+                'id': 1,
                 'due_date': '2023-01-01',
                 'due_time': '00:00',
                 'subject': 'TutorCruncher demo with Steve Jobs',
@@ -456,7 +457,6 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'deal_id': None,
                 'person_id': 1,
                 'org_id': 10,
-                'id': 1,
             },
         }
 
