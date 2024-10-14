@@ -28,25 +28,30 @@ async def create_meeting_gcal_event(meeting: Meeting):
     A job to create a meeting event in the admin/contact's Google Calendar.
     If the meeting is a sales meeting, then we check PipeDrive to see if they exist already. That way, we can include
     the link to their profile for the Admin.
-    If the meeting is a support meeting, then we include a link to their TC meta profile.
     """
     contact = await meeting.contact
     company = await contact.company
     admin = await meeting.admin
+
     meeting_templ_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
-        'tc2_cligency_id': '',
-        'tc2_cligency_url': '',
         'admin_name': admin.first_name,
     }
-    if company.tc2_cligency_id:
+
+    if hasattr(company, 'tc2_cligency_id'):
         meeting_templ_vars.update(tc2_cligency_id=company.tc2_cligency_id, tc2_cligency_url=company.tc2_cligency_url)
-    if meeting.meeting_type == Meeting.TYPE_SALES:
-        # TODO
-        # crm_url = get_pipedrive_url(contact)
-        meeting_templ_vars['crm_url'] = ''
+
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
+
+    if meeting.meeting_type == Meeting.TYPE_SALES:
+        meeting_templ_vars.update(
+            contact_email=contact.email,
+            contact_phone=contact.phone,
+            company_estimated_monthly_revenue=company.estimated_income,
+            company_country=company.country,
+            crm_url=f'https://app.pipedrive.com/organization/{company.pd_org_id}',
+        )
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
     g_cal.create_cal_event(
         description=meeting_template.format(**meeting_templ_vars),
