@@ -18,6 +18,7 @@ from tortoise import Tortoise
 from app.models import Company
 import logfire
 
+
 async def init():
     # Initialize Tortoise ORM
     await Tortoise.init(config=TORTOISE_ORM)
@@ -27,11 +28,14 @@ async def init():
 
 commands = []
 
+
 def command(func):
     commands.append(func)
     return func
 
+
 # Start of patch commands
+
 
 @command
 async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_info():
@@ -40,9 +44,7 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
     then updates the TC2 cligencies
     """
     # Get companies to update
-    companies = await Company.filter(
-        Q(sales_person_id=None) | Q(bdr_person_id=None)
-    )
+    companies = await Company.filter(Q(sales_person_id=None) | Q(bdr_person_id=None))
     print(f'Sending {len(companies)} companies with BDR or Sales person to TC2')
     # make request to get companies from Pipedrive
     for company in companies:
@@ -52,11 +54,10 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
             mock_event = {
                 'meta': {'action': 'updated', 'object': 'organization'},
                 'current': pd_data['data'],
-                'previous': None
+                'previous': None,
             }
             event_instance = PipedriveEvent(**mock_event)
             event_instance.current and await event_instance.current.a_validate()
-
 
             # Update Company from Organisation
             await _process_pd_organisation(current_pd_org=event_instance.current, old_pd_org=None)
@@ -71,6 +72,7 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
         except Exception as e:
             print(f'Error updating company from org {company.id}: {e}')
             continue
+
 
 @command
 async def update_pd_org_price_plans():
@@ -93,10 +95,12 @@ async def update_pd_org_price_plans():
 
 # End of patch commands
 
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 def patch(command):
     asyncio.run(main(command))
+
 
 async def main(command):
     await init()
@@ -108,6 +112,7 @@ async def main(command):
         await command_lookup[command]()
 
     print(f'Patch took {(datetime.now() - start).total_seconds():0.2f}s')
+
 
 if __name__ == '__main__':
     patch()

@@ -45,40 +45,13 @@ async def create_meeting_gcal_event(meeting: Meeting):
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
 
     if meeting.meeting_type == Meeting.TYPE_SALES:
-        if company.pd_org_id:
-            meeting_templ_vars['crm_url'] = f'https://app.pipedrive.com/organization/{company.pd_org_id}'
-        if company.name:
-            meeting_templ_vars['company_name'] = company.name
-        if contact.email:
-            meeting_templ_vars['contact_email'] = contact.email
-        if contact.phone:
-            meeting_templ_vars['contact_phone'] = contact.phone
-        if company.estimated_income:
-            meeting_templ_vars['company_estimated_monthly_revenue'] = company.estimated_income
-        if company.country:
-            meeting_templ_vars['company_country'] = company.country
-
-        if meeting_templ_vars.get('crm_url'):
-            meeting_template += (
-                f'<a href="{meeting_templ_vars["crm_url"]}" class="smaller" target="_blank">CRM link</a>\n'
-            )
-        if meeting_templ_vars.get('tc2_cligency_url'):
-            meeting_template += (
-                f'<a href="{meeting_templ_vars["tc2_cligency_url"]}" class="smaller" target="_blank">TC link</a>\n'
-            )
-        if meeting_templ_vars.get('company_name'):
-            meeting_template += f'Company Name: {meeting_templ_vars["company_name"]}\n'
-        if meeting_templ_vars.get('contact_email'):
-            meeting_template += f'Email: {meeting_templ_vars["contact_email"]}\n'
-        if meeting_templ_vars.get('contact_phone'):
-            meeting_template += f'Phone: {meeting_templ_vars["contact_phone"]}\n'
-        if meeting_templ_vars.get('company_estimated_monthly_revenue'):
-            meeting_template += (
-                f'Estimated Monthly Revenue: {meeting_templ_vars["company_estimated_monthly_revenue"]}\n'
-            )
-        if meeting_templ_vars.get('company_country'):
-            meeting_template += f'Country: {meeting_templ_vars["company_country"]}\n'
-
+        meeting_templ_vars.update(
+            contact_email=contact.email,
+            contact_phone=contact.phone,
+            company_estimated_monthly_revenue=company.estimated_income,
+            company_country=company.country,
+            crm_url=f'https://app.pipedrive.com/organization/{company.pd_org_id}',
+        )
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
     g_cal.create_cal_event(
         description=meeting_template.format(**meeting_templ_vars),

@@ -60,5 +60,16 @@ We look forward to hearing about your business!
 Best,
 The TutorCruncher Team
 
+---
+
+Details for TutorCruncher team:
+
+- Company Name: {company_name}
+- Email: {contact_email}
+- Phone: {contact_phone}
+- Estimated Monthly Revenue: {company_estimated_monthly_revenue}
+- Country: {company_country}
+- CRM URL: {crm_url}
+- TC URL: {tc2_cligency_url}
 """,
 }
