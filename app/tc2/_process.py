@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from pytz import utc
+from tortoise.transactions import in_transaction
 
 from app.models import Company, Contact, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole
@@ -140,28 +141,30 @@ async def update_from_client_event(
     await tc2_client.a_validate()
     company_created, company = await _create_or_update_company(tc2_client)
     if not company.narc:
-        tc2_agency = tc2_client.meta_agency
-        contacts_created, contacts_updated = [], []
-        for i, recipient in enumerate(tc2_client.paid_recipients):
-            if i == 0 and company_created and not recipient.email:
-                recipient.email = tc2_client.user.email
+        async with in_transaction():
+            company = await Company.select_for_update().get(id=company.id)
+            tc2_agency = tc2_client.meta_agency
+            contacts_created, contacts_updated = [], []
+            for i, recipient in enumerate(tc2_client.paid_recipients):
+                if i == 0 and company_created and not recipient.email:
+                    recipient.email = tc2_client.user.email
 
-            contact_created, contact = await _create_or_update_contact(recipient, company=company)
-            if contact_created:
-                contacts_created.append(contact)
-            else:
-                contacts_updated.append(contact)
+                contact_created, contact = await _create_or_update_contact(recipient, company=company)
+                if contact_created:
+                    contacts_created.append(contact)
+                else:
+                    contacts_updated.append(contact)
 
-        should_create_deal = (
-            create_deal
-            and tc2_agency
-            and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
-            and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
-            and tc2_agency.paid_invoice_count == 0
-            and tc2_client.sales_person
-        )
-        if should_create_deal:
-            deal = await _get_or_create_deal(company, contact)
+            should_create_deal = (
+                create_deal
+                and tc2_agency
+                and tc2_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
+                and tc2_agency.created > datetime.now().replace(tzinfo=utc) - timedelta(days=90)
+                and tc2_agency.paid_invoice_count == 0
+                and tc2_client.sales_person
+            )
+            if should_create_deal:
+                deal = await _get_or_create_deal(company, contact)
     else:
         contacts_created, contacts_updated, deal = [], [], None
     app_logger.info(

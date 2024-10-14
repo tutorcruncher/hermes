@@ -1,6 +1,7 @@
 from typing import Type
 
 import logfire
+from tortoise.transactions import in_transaction
 
 from app.base_schema import get_custom_fieldinfo
 from app.models import Company, Contact, CustomField, Deal, Meeting
@@ -34,9 +35,11 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
     Called after a support call is booked. Creates the activity if the contact have a pipedrive id
     """
     with logfire.span('pd_post_process_support_call'):
-        if (await contact.company).pd_org_id:
-            await get_and_create_or_update_person(contact)
-            await create_activity(meeting)
+        async with in_transaction():
+            contact = await Contact.select_for_update().get(id=contact.id)
+            if (await contact.company).pd_org_id:
+                await get_and_create_or_update_person(contact)
+                await create_activity(meeting)
 
 
 async def pd_post_process_client_event(company: Company, deal: Deal = None):
@@ -44,12 +47,14 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     Called after a client event from TC2. For example, a client paying an invoice.
     """
     with logfire.span('pd_post_process_client_event'):
-        await get_and_create_or_update_organisation(company)
-        for contact in await company.contacts:
-            await get_and_create_or_update_person(contact)
-        if deal:
-            await get_and_create_or_update_pd_deal(deal)
-            await update_or_create_inherited_deal_custom_field_values(company)
+        async with in_transaction():
+            company = await Company.select_for_update().get(id=company.id)
+            await get_and_create_or_update_organisation(company)
+            for contact in await company.contacts:
+                await get_and_create_or_update_person(contact)
+            if deal:
+                await get_and_create_or_update_pd_deal(deal)
+                await update_or_create_inherited_deal_custom_field_values(company)
 
 
 async def pd_post_purge_client_event(company: Company, deal: Deal = None):
