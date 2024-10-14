@@ -87,9 +87,9 @@ async def get_admin_available_slots(
                 (
                     b
                     for b in day_calendar_busy_slots
-                    if b['start'] <= slot_start <= b['end']
-                    or b['start'] <= slot_end <= b['end']
-                    or (slot_start <= b['start'] and slot_end >= b['end'])
+                    if b['start'] < slot_start < b['end']
+                    or b['start'] < slot_end < b['end']
+                    or (slot_start < b['start'] and slot_end > b['end'])
                 ),
                 None,
             )

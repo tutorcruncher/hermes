@@ -73,7 +73,8 @@ app.mount('/', admin_app)
 
 COMMIT = os.getenv('HEROKU_SLUG_COMMIT', '-')[:7]
 RELEASE_CREATED_AT = os.getenv('HEROKU_RELEASE_CREATED_AT', '-')
-logfire.info('starting app {commit=} {release_created_at=}', commit=COMMIT, release_created_at=RELEASE_CREATED_AT)
+if bool(_app_settings.logfire_token):
+    logfire.info('starting app {commit=} {release_created_at=}', commit=COMMIT, release_created_at=RELEASE_CREATED_AT)
 
 
 @app.on_event('startup')

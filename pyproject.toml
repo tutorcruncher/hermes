@@ -17,7 +17,7 @@
     addopts = '--tb=native'
     filterwarnings = [
     'ignore::DeprecationWarning:fastapi_admin.resources*',  # Remove when fastapi-admin is updated
-    'ignore::DeprecationWarning:tortoise.contrib.fastapi.*',  # Remove when tortoise is updated
+#    'ignore::DeprecationWarning:tortoise.contrib.fastapi.*',  # Remove when tortoise is updated
     'ignore::DeprecationWarning:fastapi.applications.*',  # Remove when tortoise is updated
     'ignore::DeprecationWarning:tortoise.contrib.test*',
 ]
