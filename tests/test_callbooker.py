@@ -776,12 +776,13 @@ class AdminAvailabilityTestCase(HermesTestCase):
         slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
         assert len(slots_7th) == 10  # There should be 10 slots in the full day
-        assert len(slots_8th) == 7  # There is a busy section on the 3rd so less slots
+        assert len(slots_8th) == 8  # There is a busy section on the 3rd so less slots
         assert len(slots_9th) == 10  # There should be 10 slots in the full day
 
         assert slots_8th == [
             ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
             ['2026-07-08T09:45:00+00:00', '2026-07-08T10:15:00+00:00'],
+            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
             ['2026-07-08T12:45:00+00:00', '2026-07-08T13:15:00+00:00'],
             ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
             ['2026-07-08T14:15:00+00:00', '2026-07-08T14:45:00+00:00'],
@@ -875,6 +876,45 @@ class AdminAvailabilityTestCase(HermesTestCase):
             self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
         )
         assert r.json() == {'slots': [], 'status': 'ok'}
+
+    async def test_slot_directly_after_busy_no_buffer(self, mock_gcal_builder):
+        """
+        Testing when the slot is directly after a busy period
+        """
+        self.config.meeting_buffer_mins = 0
+        await self.config.save()
+        admin = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+        )
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        start = datetime(2026, 7, 7, 2, tzinfo=utc)
+        end = datetime(2026, 7, 9, 23, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        )
+        slots = r.json()['slots']
+        slots_7th = [s for s in slots if s[0].startswith('2026-07-07')]
+        slots_8th = [s for s in slots if s[0].startswith('2026-07-08')]
+        slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
+
+        assert len(slots_7th) == 15  # There should be 10 slots in the full day
+        assert len(slots_8th) == 12  # There is a busy section on the 3rd so less slots
+        assert len(slots_9th) == 15  # There should be 10 slots in the full day
+
+        assert slots_8th == [
+            ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
+            ['2026-07-08T09:30:00+00:00', '2026-07-08T10:00:00+00:00'],
+            ['2026-07-08T10:00:00+00:00', '2026-07-08T10:30:00+00:00'],
+            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
+            ['2026-07-08T12:30:00+00:00', '2026-07-08T13:00:00+00:00'],
+            ['2026-07-08T13:00:00+00:00', '2026-07-08T13:30:00+00:00'],
+            ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
+            ['2026-07-08T14:00:00+00:00', '2026-07-08T14:30:00+00:00'],
+            ['2026-07-08T14:30:00+00:00', '2026-07-08T15:00:00+00:00'],
+            ['2026-07-08T15:00:00+00:00', '2026-07-08T15:30:00+00:00'],
+            ['2026-07-08T15:30:00+00:00', '2026-07-08T16:00:00+00:00'],
+            ['2026-07-08T16:00:00+00:00', '2026-07-08T16:30:00+00:00'],
+        ]
 
 
 class SupportLinkTestCase(HermesTestCase):

@@ -55,7 +55,7 @@ class Config(models.Model):
 
 
 class Stage(models.Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     pd_stage_id = fields.IntField(unique=True)
     name = fields.CharField(max_length=255)
     # It would be nice to add pipeline as an FK here, but we need dft_entry_stage on the pipeline, and one of
@@ -69,7 +69,7 @@ class Stage(models.Model):
 
 
 class Pipeline(models.Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     pd_pipeline_id = fields.IntField(unique=True)
     name = fields.CharField(max_length=255)
     dft_entry_stage = fields.ForeignKeyField('models.Stage', null=True)
@@ -81,7 +81,7 @@ class Pipeline(models.Model):
 
 
 class Admin(AbstractAdmin):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     tc2_admin_id = fields.IntField(unique=True, null=True)
     pd_owner_id = fields.IntField(null=True)
 
@@ -219,7 +219,7 @@ class Company(HermesModel):
     PP_STARTUP: str = 'startup'
     PP_ENTERPRISE: str = 'enterprise'
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     name = fields.CharField(max_length=255)
 
     tc2_agency_id = fields.IntField(unique=True, null=True)
@@ -275,7 +275,7 @@ class Contact(HermesModel):
     In Pipedrive this is an Person.
     """
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     tc2_sr_id = fields.IntField(unique=True, null=True)
     pd_person_id = fields.IntField(unique=True, null=True)
     created = fields.DatetimeField(auto_now_add=True)
@@ -306,7 +306,7 @@ class Deal(HermesModel):
     STATUS_LOST = 'lost'
     STATUS_DELETED = 'deleted'
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     pd_deal_id = fields.IntField(unique=True, null=True)
 
     name = fields.CharField(max_length=255, null=True)
@@ -335,7 +335,7 @@ class Meeting(HermesModel):
     TYPE_SALES = 'sales'
     TYPE_SUPPORT = 'support'
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
 
     created = fields.DatetimeField(auto_now_add=True)
 
@@ -427,7 +427,7 @@ class CustomField(models.Model):
         (TYPE_FK_FIELD, TYPE_FK_FIELD),
     )
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
 
     name = fields.CharField(max_length=255)
     machine_name = fields.CharField(max_length=255, null=True)
@@ -467,7 +467,7 @@ class CustomField(models.Model):
 
 
 class CustomFieldValue(models.Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
 
     custom_field = fields.ForeignKeyField('models.CustomField', related_name='values')
 

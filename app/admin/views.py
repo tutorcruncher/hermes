@@ -7,4 +7,4 @@ from starlette.requests import Request
 
 @admin_app.get('/')
 async def home(request: Request, resources=Depends(get_resources)):
-    return templates.TemplateResponse('dashboard.html', context={'request': request, 'resources': resources})
+    return templates.TemplateResponse(request, 'dashboard.html', context={'resources': resources})

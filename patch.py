@@ -3,7 +3,7 @@ import os
 
 from app.base_schema import build_custom_field_schema
 from app.pipedrive._process import _process_pd_organisation
-from app.pipedrive._schema import Organisation, PipedriveEvent
+from app.pipedrive._schema import PipedriveEvent
 from app.pipedrive.api import pipedrive_request, get_and_create_or_update_organisation
 
 os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
@@ -32,9 +32,6 @@ commands = []
 def command(func):
     commands.append(func)
     return func
-
-
-# Start of patch commands
 
 
 @command
@@ -91,9 +88,6 @@ async def update_pd_org_price_plans():
             continue
 
     print(f'Updated {companies_updated} companies')
-
-
-# End of patch commands
 
 
 @click.command()
