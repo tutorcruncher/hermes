@@ -42,13 +42,7 @@ TORTOISE_CONFIG = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _config = RegisterTortoise(
-        app,
-        config=TORTOISE_CONFIG,
-        modules={'models': ['app.models']},
-        generate_schemas=True,
-        add_exception_handlers=True,
-    )
+    _config = RegisterTortoise(app, config=TORTOISE_CONFIG, modules={'models': ['app.models']}, generate_schemas=True)
     async with _config:
         await _startup()
         yield
