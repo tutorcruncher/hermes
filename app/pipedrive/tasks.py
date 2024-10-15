@@ -71,8 +71,9 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
     Called after a support call is booked. Creates the activity if the contact have a pipedrive id
     """
     with logfire.span('pd_post_process_support_call'):
-        await _transy_get_and_create_or_update_person(contact)
-        await _transy_create_activity(meeting)
+        if (await contact.company).pd_org_id:
+            await _transy_get_and_create_or_update_person(contact)
+            await _transy_create_activity(meeting)
 
 
 async def pd_post_process_client_event(company: Company, deal: Deal = None):

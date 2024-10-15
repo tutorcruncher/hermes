@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from pytz import utc
-from tortoise.transactions import in_transaction
 
 from app.models import Company, Contact, CustomField, CustomFieldValue, Deal
 from app.tc2._schema import TCClient, TCInvoice, TCRecipient, TCSubject, _TCSimpleRole

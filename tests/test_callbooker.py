@@ -956,11 +956,7 @@ class SupportLinkTestCase(HermesTestCase):
             name='Junes Ltd', website='https://junes.com', country='GB', tc2_cligency_id=10, sales_person=admin
         )
         headers = {'Authorization': f'token {settings.tc2_api_key}'}
-        r = await self.client.get(
-            self.gen_url,
-            params={'tc2_admin_id': 1, 'tc2_cligency_id': 10},
-            headers=headers,
-        )
+        r = await self.client.get(self.gen_url, params={'tc2_admin_id': 1, 'tc2_cligency_id': 10}, headers=headers)
         assert r.status_code == 404
 
     async def test_validate_support_link(self):

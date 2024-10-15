@@ -51,12 +51,12 @@ async def lifespan(app: FastAPI):
     )
     async with _config:
         await _startup()
-    yield
+        yield
 
 
 async def _startup():
     from app.models import Admin
-    from app.utils import get_redis_client, get_config
+    from app.utils import get_config, get_redis_client
 
     await admin_app.configure(
         template_folders=[os.path.join(BASE_DIR, 'admin/templates/')],

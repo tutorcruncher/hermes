@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Header, HTTPException
 from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
+from tortoise.exceptions import DoesNotExist
 
 from app.callbooker._availability import get_admin_available_slots
 from app.callbooker._process import (
@@ -81,8 +82,11 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     if get_bearer(Authorization) != settings.tc2_api_key:
         raise HTTPException(status_code=403, detail='Unauthorized key')
 
-    admin = await Admin.get(tc2_admin_id=tc2_admin_id)
-    company = await get_or_create_company(tc2_cligency_id=tc2_cligency_id)
+    try:
+        admin = await Admin.get(tc2_admin_id=tc2_admin_id)
+        company = await get_or_create_company(tc2_cligency_id=tc2_cligency_id)
+    except DoesNotExist:
+        return JSONResponse({'status': 'error', 'message': 'Admin or Company not found'}, status_code=404)
 
     expiry = datetime.now() + timedelta(days=settings.support_ttl_days)
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': int(expiry.timestamp())}

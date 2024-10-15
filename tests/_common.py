@@ -1,4 +1,4 @@
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from tortoise.contrib.test import TestCase
 
 from app.main import app
