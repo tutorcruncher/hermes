@@ -98,12 +98,13 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
         else:
             # these custom fields values are not stored on the model.
             if cf.hermes_field_name:
-                val = getattr(company, cf.hermes_field_name, None)
                 # get the associated deal custom field
                 deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
+                if cf.field_type == CustomField.TYPE_FK_FIELD:
+                    val = getattr(company, f'{cf.hermes_field_name}_id', None)
+                else:
+                    val = getattr(company, cf.hermes_field_name, None)
                 if deal_cf and val:
-                    if cf.field_type == CustomField.TYPE_FK_FIELD:
-                        val = val.id
                     await CustomFieldValue.update_or_create(
                         **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': val}}
                     )

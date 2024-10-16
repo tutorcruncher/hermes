@@ -26,7 +26,7 @@ async def callback(
     Ignores events that don't have a meta_agency.
     """
     expected_sig = hmac.new(settings.tc2_api_key.encode(), (await request.body()), hashlib.sha256).hexdigest()
-    if not webhook_signature or not compare_digest(webhook_signature, expected_sig):
+    if not settings.dev_mode and (not webhook_signature or not compare_digest(webhook_signature, expected_sig)):
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
         company, deal = None, None

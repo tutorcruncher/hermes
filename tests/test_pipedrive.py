@@ -895,7 +895,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,
@@ -977,7 +977,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,
@@ -1271,7 +1271,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,
@@ -1361,7 +1361,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,
@@ -1451,7 +1451,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,
@@ -1532,7 +1532,7 @@ class PipedriveTasksTestCase(HermesTestCase):
             1: {
                 'title': 'A deal with Julies Ltd',
                 'org_id': 1,
-                'person_id': None,
+                'person_id': (await Contact.get()).pd_person_id,
                 'user_id': 99,
                 'pipeline_id': 1,
                 'stage_id': 1,

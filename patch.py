@@ -11,7 +11,7 @@ os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 from datetime import datetime
 import click
 
-from app.main import TORTOISE_ORM
+from app.main import TORTOISE_CONFIG
 from app.tc2.tasks import update_client_from_company
 from tortoise.expressions import Q
 from tortoise import Tortoise
@@ -21,7 +21,7 @@ import logfire
 
 async def init():
     # Initialize Tortoise ORM
-    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.init(config=TORTOISE_CONFIG)
     await build_custom_field_schema()
     await Tortoise.generate_schemas()
 

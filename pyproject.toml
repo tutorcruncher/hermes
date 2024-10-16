@@ -16,10 +16,7 @@
 [tool.pytest.ini_options]
     addopts = '--tb=native'
     filterwarnings = [
-    'ignore::DeprecationWarning:fastapi_admin.resources*',  # Remove when fastapi-admin is updated
-#    'ignore::DeprecationWarning:tortoise.contrib.fastapi.*',  # Remove when tortoise is updated
-    'ignore::DeprecationWarning:fastapi.applications.*',  # Remove when tortoise is updated
-    'ignore::DeprecationWarning:tortoise.contrib.test*',
+    'ignore::DeprecationWarning:fastapi_admin.resources*',  # Remove when fastapi-admin is updated to us Pydantic2
 ]
 
 [tool.coverage.run]
@@ -38,6 +35,6 @@
     ]
 
 [tool.aerich]
-tortoise_orm = 'app.main.TORTOISE_ORM'
+tortoise_orm = 'app.main.TORTOISE_CONFIG'
 location = './migrations'
 src_folder = './.'
