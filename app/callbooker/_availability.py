@@ -83,16 +83,15 @@ async def get_admin_available_slots(
             slot_end = slot_start + timedelta(minutes=config.meeting_dur_mins)
             # We check that the slot is not overlapping with any of the busy slots. Either the start or end of the slot
             # is within the busy slot, or the busy slot is within the slot.
-            is_overlapping = next(
-                (
-                    b
-                    for b in day_calendar_busy_slots
-                    if b['start'] < slot_start < b['end']
-                    or b['start'] < slot_end < b['end']
-                    or (slot_start < b['start'] and slot_end > b['end'])
-                ),
-                None,
-            )
+            is_overlapping = False
+            for busy_slot in day_calendar_busy_slots:
+                if (
+                    busy_slot['start'] <= slot_start < busy_slot['end']
+                    or busy_slot['start'] < slot_end <= busy_slot['end']
+                    or (slot_start <= busy_slot['start'] and slot_end >= busy_slot['end'])
+                ):
+                    is_overlapping = True
+                    break
             is_outside_range = slot_start < start or slot_end > end
             if not is_overlapping and not is_outside_range:
                 # Since we need to get the day starts and end of a bigger range, we need to exclude those slots here.

@@ -28,19 +28,14 @@ def _as_iso_8601(dt: datetime):
     return dt.isoformat().replace('+00:00', 'Z')
 
 
-def fake_gcal_builder(error=False):
+def fake_gcal_builder(error=False, meeting_dur_mins=90):
     class MockGCalResource:
         def execute(self):
+            start = datetime(2026, 7, 8, 11, tzinfo=utc)
+            end = start + timedelta(minutes=meeting_dur_mins)
             return {
                 'calendars': {
-                    'climan@example.com': {
-                        'busy': [
-                            {
-                                'start': _as_iso_8601(datetime(2026, 7, 8, 11, tzinfo=utc)),
-                                'end': _as_iso_8601(datetime(2026, 7, 8, 12, 30, tzinfo=utc)),
-                            }
-                        ]
-                    }
+                    'climan@example.com': {'busy': [{'start': _as_iso_8601(start), 'end': _as_iso_8601(end)}]}
                 }
             }
 
@@ -915,6 +910,24 @@ class AdminAvailabilityTestCase(HermesTestCase):
             ['2026-07-08T15:30:00+00:00', '2026-07-08T16:00:00+00:00'],
             ['2026-07-08T16:00:00+00:00', '2026-07-08T16:30:00+00:00'],
         ]
+
+    async def test_admin_slots_short_meeting_starts_11(self, mock_gcal_builder):
+        self.config.meeting_dur_mins = 30
+        self.config.meeting_buffer_mins = 0
+        await self.config.save()
+        admin = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+        )
+        mock_gcal_builder.side_effect = fake_gcal_builder(meeting_dur_mins=30)
+        start = datetime(2026, 7, 8, 2, tzinfo=utc)
+        end = datetime(2026, 7, 8, 23, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        )
+        slots = r.json()['slots']
+
+        slots_8th = [s for s in slots if s[0].startswith('2026-07-08')]
+        assert ['2026-07-08T11:00:00+00:00', '2026-07-08T11:30:00+00:00'] not in slots_8th
 
 
 class SupportLinkTestCase(HermesTestCase):
