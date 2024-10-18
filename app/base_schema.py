@@ -1,5 +1,5 @@
 import json
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type, Union
 
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
@@ -150,6 +150,7 @@ class HermesBaseModel(BaseModel):
         hermes_model.
 
         FK fields are handled differently because we need to get the ID of the related object.
+        bool fields are handled differently because they are stored as strings in Pipedrive.
         """
         from app.models import CustomField
 
@@ -172,6 +173,10 @@ class HermesBaseModel(BaseModel):
                     if val:
                         val = json.dumps(val)
 
+                elif cf.field_type == CustomField.TYPE_BOOL:
+                    val = getattr(obj, cf.hermes_field_name, None)
+                    if isinstance(val, bool):
+                        val = 'true' if val else 'false'
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
             elif cf.tc2_machine_name:
@@ -219,7 +224,7 @@ async def get_custom_fieldinfo(
     elif field.field_type == CustomField.TYPE_STR:
         field_kwargs.update(annotation=Optional[str], default=None)
     elif field.field_type == CustomField.TYPE_BOOL:
-        field_kwargs.update(annotation=Optional[bool], default=None)
+        field_kwargs.update(annotation=Optional[Union[bool, str]], default=None)
     elif field.field_type == CustomField.TYPE_FK_FIELD:
         field_kwargs.update(
             annotation=Optional[int],
