@@ -392,7 +392,12 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
                 await pipedrive_request(f'deals/{main_object.pd_deal_id}', method='PUT', data=hermes_deal_data)
                 app_logger.info(f'Updated deal {main_object.pd_deal_id} from deal {main_object.id} by deal.pd_deal_id')
 
-        return main_object.id
+
+
+        # we should actually break here, as if we continue, we will be updating with the incorrect data, and we have just updated, which should in turn trigger the webhook again
+
+        else:
+            raise ValueError(f'Unknown object type {object_type}')
 
 
 class PipedriveEvent(HermesBaseModel):
