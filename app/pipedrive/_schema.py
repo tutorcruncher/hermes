@@ -94,11 +94,13 @@ class Organisation(PipedriveBaseModel):
         return cls(**final_kwargs)
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:
-        cf_data_from_hermes = {
-            c.hermes_field_name: getattr(self, c.machine_name)
-            for c in custom_fields
-            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
-        }
+        cf_data_from_hermes = {}
+        for c in custom_fields:
+            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD:
+                value = getattr(self, c.machine_name)
+                if c.field_type == CustomField.TYPE_BOOL:
+                    value = value.strip().lower() == 'true'
+                cf_data_from_hermes[c.hermes_field_name] = value
 
         admins_from_hermes = {}
         if hasattr(self, 'support_person') and self.support_person:
