@@ -66,7 +66,7 @@ async def _startup():
 
 app = FastAPI(lifespan=lifespan)
 
-allowed_origins = ['https://tutorcruncher.com', 'http://localhost:3000', 'https://tutorcruncher.vercel.app']
+allowed_origins = ['https://tutorcruncher.com', 'https://new.tutorcruncher.com']
 if _app_settings.dev_mode:
     allowed_origins = ['*']
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=['*'], allow_headers=['*'])
