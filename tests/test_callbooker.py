@@ -771,13 +771,12 @@ class AdminAvailabilityTestCase(HermesTestCase):
         slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
         assert len(slots_7th) == 10  # There should be 10 slots in the full day
-        assert len(slots_8th) == 8  # There is a busy section on the 3rd so less slots
+        assert len(slots_8th) == 7  # There is a busy section on the 3rd so less slots
         assert len(slots_9th) == 10  # There should be 10 slots in the full day
 
         assert slots_8th == [
             ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
             ['2026-07-08T09:45:00+00:00', '2026-07-08T10:15:00+00:00'],
-            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
             ['2026-07-08T12:45:00+00:00', '2026-07-08T13:15:00+00:00'],
             ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
             ['2026-07-08T14:15:00+00:00', '2026-07-08T14:45:00+00:00'],
@@ -893,15 +892,13 @@ class AdminAvailabilityTestCase(HermesTestCase):
         slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
         assert len(slots_7th) == 15  # There should be 10 slots in the full day
-        assert len(slots_8th) == 12  # There is a busy section on the 3rd so less slots
+        assert len(slots_8th) == 10  # There is a busy section on the 3rd so less slots
         assert len(slots_9th) == 15  # There should be 10 slots in the full day
 
         assert slots_8th == [
             ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
             ['2026-07-08T09:30:00+00:00', '2026-07-08T10:00:00+00:00'],
             ['2026-07-08T10:00:00+00:00', '2026-07-08T10:30:00+00:00'],
-            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
-            ['2026-07-08T12:30:00+00:00', '2026-07-08T13:00:00+00:00'],
             ['2026-07-08T13:00:00+00:00', '2026-07-08T13:30:00+00:00'],
             ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
             ['2026-07-08T14:00:00+00:00', '2026-07-08T14:30:00+00:00'],
@@ -970,6 +967,7 @@ class AdminAvailabilityTestCase(HermesTestCase):
             ['2024-01-09T13:15:00+00:00', '2024-01-09T13:45:00+00:00'],
             ['2024-01-09T14:00:00+00:00', '2024-01-09T14:30:00+00:00'],
             ['2024-01-09T14:45:00+00:00', '2024-01-09T15:15:00+00:00'],
+            ['2024-01-09T17:00:00+00:00', '2024-01-09T17:30:00+00:00'],
         ]
 
 

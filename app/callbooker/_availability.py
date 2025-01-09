@@ -79,7 +79,7 @@ async def get_admin_available_slots(
     async for day_start, day_end in _get_day_start_ends(start, end, admin.timezone):
         slot_start = day_start
         day_calendar_busy_slots = [s for s in calendar_busy_slots if s['start'] < day_end and s['end'] > day_start]
-        while slot_start + timedelta(minutes=config.meeting_dur_mins + config.meeting_buffer_mins) <= day_end:
+        while slot_start + timedelta(minutes=config.meeting_dur_mins) <= day_end:
             slot_end = slot_start + timedelta(minutes=config.meeting_dur_mins)
             # We check that the slot is not overlapping with any of the busy slots. Either the start or end of the slot
             # is within the busy slot, or the busy slot is within the slot.

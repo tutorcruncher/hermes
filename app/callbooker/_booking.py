@@ -17,7 +17,11 @@ async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, 
     for time_slot in cal_data['calendars'][admin_email]['busy']:
         _slot_start = _iso_8601_to_datetime(time_slot['start'])
         _slot_end = _iso_8601_to_datetime(time_slot['end'])
-        if _slot_start <= meeting_start <= _slot_end or _slot_start <= meeting_end <= _slot_end:
+        if (
+            _slot_start <= meeting_start <= _slot_end
+            or _slot_start <= meeting_end <= _slot_end
+            or (_slot_start <= meeting_start and _slot_end >= meeting_end)
+        ):
             app_logger.info('Tried to book meeting with %s for slot %s - %s', admin_email, _slot_start, _slot_end)
             return False
     return True
