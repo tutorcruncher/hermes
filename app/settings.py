@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     dev_mode: bool = False
     log_level: str = 'INFO'
 
-    logfire_token: Optional[str] = 'bRRz1JvvNxtg6JBxMGz87d9nN0wgWL4RFVsJJT1wVBCV'
+    logfire_token: Optional[str] = ''
 
     # Postgres
     pg_dsn: PostgresDsn = Field('postgres://postgres@localhost:5432/hermes', validation_alias='DATABASE_URL')
