@@ -86,8 +86,8 @@ async def get_admin_available_slots(
             is_overlapping = False
             for busy_slot in day_calendar_busy_slots:
                 if (
-                    busy_slot['start'] <= slot_start < busy_slot['end']
-                    or busy_slot['start'] < slot_end <= busy_slot['end']
+                    busy_slot['start'] <= slot_start <= busy_slot['end']
+                    or busy_slot['start'] <= slot_end <= busy_slot['end']
                     or (slot_start <= busy_slot['start'] and slot_end >= busy_slot['end'])
                 ):
                     is_overlapping = True
