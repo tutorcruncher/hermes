@@ -28,10 +28,10 @@ def _as_iso_8601(dt: datetime):
     return dt.isoformat().replace('+00:00', 'Z')
 
 
-def fake_gcal_builder(error=False, meeting_dur_mins=90):
+def fake_gcal_builder(error=False, start_dt: datetime = None, meeting_dur_mins: int = 90):
     class MockGCalResource:
         def execute(self):
-            start = datetime(2026, 7, 8, 11, tzinfo=utc)
+            start = start_dt or datetime(2026, 7, 8, 11, tzinfo=utc)
             end = start + timedelta(minutes=meeting_dur_mins)
             return {
                 'calendars': {
@@ -771,13 +771,12 @@ class AdminAvailabilityTestCase(HermesTestCase):
         slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
         assert len(slots_7th) == 10  # There should be 10 slots in the full day
-        assert len(slots_8th) == 8  # There is a busy section on the 3rd so less slots
+        assert len(slots_8th) == 7  # There is a busy section on the 3rd so less slots
         assert len(slots_9th) == 10  # There should be 10 slots in the full day
 
         assert slots_8th == [
             ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
             ['2026-07-08T09:45:00+00:00', '2026-07-08T10:15:00+00:00'],
-            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
             ['2026-07-08T12:45:00+00:00', '2026-07-08T13:15:00+00:00'],
             ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
             ['2026-07-08T14:15:00+00:00', '2026-07-08T14:45:00+00:00'],
@@ -893,15 +892,13 @@ class AdminAvailabilityTestCase(HermesTestCase):
         slots_9th = [s for s in slots if s[0].startswith('2026-07-09')]
 
         assert len(slots_7th) == 15  # There should be 10 slots in the full day
-        assert len(slots_8th) == 12  # There is a busy section on the 3rd so less slots
+        assert len(slots_8th) == 10  # There is a busy section on the 3rd so less slots
         assert len(slots_9th) == 15  # There should be 10 slots in the full day
 
         assert slots_8th == [
             ['2026-07-08T09:00:00+00:00', '2026-07-08T09:30:00+00:00'],
             ['2026-07-08T09:30:00+00:00', '2026-07-08T10:00:00+00:00'],
             ['2026-07-08T10:00:00+00:00', '2026-07-08T10:30:00+00:00'],
-            ['2026-07-08T10:30:00+00:00', '2026-07-08T11:00:00+00:00'],
-            ['2026-07-08T12:30:00+00:00', '2026-07-08T13:00:00+00:00'],
             ['2026-07-08T13:00:00+00:00', '2026-07-08T13:30:00+00:00'],
             ['2026-07-08T13:30:00+00:00', '2026-07-08T14:00:00+00:00'],
             ['2026-07-08T14:00:00+00:00', '2026-07-08T14:30:00+00:00'],
@@ -928,6 +925,50 @@ class AdminAvailabilityTestCase(HermesTestCase):
 
         slots_8th = [s for s in slots if s[0].startswith('2026-07-08')]
         assert ['2026-07-08T11:00:00+00:00', '2026-07-08T11:30:00+00:00'] not in slots_8th
+
+    async def test_availability_admin_busy_end(self, mock_gcal_builder):
+        """
+        Tests the scenario where a meeting is booked not on the callbooker so the admin is busy at a random interval.
+        In this test, they have a meeting from 4pm -> 4:30pm which clashes with 2 meetings.
+
+        All slots free until the 4pm meeting where the 3:30pm -> 4pm is blocked by the meeting that starts at 4pm
+        and then the next slot at 4:15pm -> 4:45pm is also blocked by the 30min meeting that starts at 4pm and finally
+        the 5pm slot is blocked because although the 5pm -> 5:30pm is free, we check the meeting length + buffer is
+        less than the day end of 5:31pm which it isn't (that would be 5pm + 30min meeting + 15 min buffer).
+        """
+        self.config.meeting_dur_mins = 30
+        self.config.meeting_buffer_mins = 15
+        self.config.meeting_min_start = '08:00'
+        self.config.meeting_max_end = '17:31'
+        await self.config.save()
+
+        admin = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_sales_person=True
+        )
+
+        start_dt = datetime(2024, 1, 9, 16, tzinfo=utc)
+        mock_gcal_builder.side_effect = fake_gcal_builder(start_dt=start_dt, meeting_dur_mins=30)
+
+        start = datetime(2024, 1, 9, 2, tzinfo=utc)
+        end = datetime(2024, 1, 9, 23, tzinfo=utc)
+        r = await self.client.get(
+            self.url, params={'admin_id': admin.id, 'start_dt': start.timestamp(), 'end_dt': end.timestamp()}
+        )
+        slots = r.json()['slots']
+
+        assert slots == [
+            ['2024-01-09T08:00:00+00:00', '2024-01-09T08:30:00+00:00'],
+            ['2024-01-09T08:45:00+00:00', '2024-01-09T09:15:00+00:00'],
+            ['2024-01-09T09:30:00+00:00', '2024-01-09T10:00:00+00:00'],
+            ['2024-01-09T10:15:00+00:00', '2024-01-09T10:45:00+00:00'],
+            ['2024-01-09T11:00:00+00:00', '2024-01-09T11:30:00+00:00'],
+            ['2024-01-09T11:45:00+00:00', '2024-01-09T12:15:00+00:00'],
+            ['2024-01-09T12:30:00+00:00', '2024-01-09T13:00:00+00:00'],
+            ['2024-01-09T13:15:00+00:00', '2024-01-09T13:45:00+00:00'],
+            ['2024-01-09T14:00:00+00:00', '2024-01-09T14:30:00+00:00'],
+            ['2024-01-09T14:45:00+00:00', '2024-01-09T15:15:00+00:00'],
+            ['2024-01-09T17:00:00+00:00', '2024-01-09T17:30:00+00:00'],
+        ]
 
 
 class SupportLinkTestCase(HermesTestCase):
