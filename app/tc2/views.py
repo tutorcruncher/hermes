@@ -27,13 +27,13 @@ async def callback(
     """
     expected_sig = hmac.new(settings.tc2_api_key.encode(), (await request.body()), hashlib.sha256).hexdigest()
     if not settings.dev_mode and (not webhook_signature or not compare_digest(webhook_signature, expected_sig)):
-        app_logger.info(
+        app_logger.warning(
             'Unauthorized key, expected %s got %s. Using TC2 key ending with: %s',
             expected_sig,
             webhook_signature,
             settings.tc2_api_key[-4:],
         )
-        app_logger.info('Request body: %s', await request.body())
+        app_logger.warning('Request body: %s', await request.body())
         raise HTTPException(status_code=403, detail='Unauthorized key')
     for event in webhook.events:
         company, deal = None, None
