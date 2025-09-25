@@ -271,6 +271,175 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await deal.stage == self.stage
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_maps_pay_dates(self, mock_add_task):
+        """
+        Ensure pay1_date and pay3_date from meta_agency are mapped to Company.
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        pay1 = '2025-09-20T15:02:02.643799Z'
+        pay3 = '2025-09-22T15:02:02.640209Z'
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        modified_data['subject']['meta_agency']['pay1_date'] = pay1
+        modified_data['subject']['meta_agency']['pay3_date'] = pay3
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        # Validate core fields still set
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert await company.sales_person == admin
+
+        # Validate pay dates mapping
+        expected_pay1 = datetime.fromisoformat(pay1.replace('Z', '+00:00'))
+        expected_pay3 = datetime.fromisoformat(pay3.replace('Z', '+00:00'))
+        assert company.pay1_date == expected_pay1
+        assert company.pay3_date == expected_pay3
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_maps_gclid_fields_1(self, mock_add_task):
+        """
+        Test that GCLID and GCLID expiry date from extra_attrs are mapped to Company.
+        This requires CustomField entries to be set up first.
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        # Create CustomField entries for GCLID mapping
+        from app.models import CustomField
+
+        await CustomField.create(
+            machine_name='gclid',
+            linked_object_type='Company',
+            name='GCLID',
+            field_type='str',
+            hermes_field_name='gclid',
+            tc2_machine_name='gclid',
+            pd_field_id=None,
+        )
+        await CustomField.create(
+            machine_name='gclid_expiry_date',
+            linked_object_type='Company',
+            name='GCLID Expiry Date',
+            field_type='str',
+            hermes_field_name='gclid_expiry_date',
+            tc2_machine_name='gclid_expiry_date',
+            pd_field_id=None,
+        )
+
+        gclid_value = 'Cj0KCQjw2Z6xBhCJARIsAHT0FqM_1234567890'
+        gclid_expiry = '2025-12-20T15:02:02.643799Z'
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        # Add GCLID fields to extra_attrs
+        modified_data['subject']['extra_attrs'] = [
+            {
+                'machine_name': 'gclid',
+                'value': gclid_value,
+            },
+            {
+                'machine_name': 'gclid_expiry_date',
+                'value': gclid_expiry,
+            },
+        ]
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        # Validate core fields still set
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert await company.sales_person == admin
+
+        # Validate GCLID fields mapping
+        assert company.gclid == gclid_value
+        assert company.gclid_expiry_date == gclid_expiry
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_maps_gclid_fields_none(self, mock_add_task):
+        """
+        Test that GCLID fields are handled correctly when they are None/missing.
+        """
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        # Create CustomField entries for GCLID mapping
+        from app.models import CustomField
+
+        await CustomField.create(
+            machine_name='gclid',
+            linked_object_type='Company',
+            name='GCLID',
+            field_type='str',
+            hermes_field_name='gclid',
+            tc2_machine_name='gclid',
+            pd_field_id=None,
+        )
+        await CustomField.create(
+            machine_name='gclid_expiry_date',
+            linked_object_type='Company',
+            name='GCLID Expiry Date',
+            field_type='str',
+            hermes_field_name='gclid_expiry_date',
+            tc2_machine_name='gclid_expiry_date',
+            pd_field_id=None,
+        )
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        # No GCLID fields in extra_attrs (should result in None values)
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        # Validate core fields still set
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert await company.sales_person == admin
+
+        # Validate GCLID fields are None when not provided
+        assert company.gclid is None
+        assert company.gclid_expiry_date is None
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_cb_client_event_test_2(self, mock_add_task):
         """
         Create a new company

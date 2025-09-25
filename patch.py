@@ -90,6 +90,49 @@ async def update_pd_org_price_plans():
     print(f'Updated {companies_updated} companies')
 
 
+@command
+async def add_company_gclid_fields():
+    """
+    Upsert CustomField rows for Company GCLID tracking so TC2 extra_attrs map into Hermes/PD:
+    - gclid (str)
+    - gclid_expiry_date (str ISO datetime)
+
+    These are created without pd_field_id; set those in the admin later or extend this patch
+    to pull from env vars if preferred.
+    """
+    from app.models import CustomField
+
+    # Create/Update: Company.gclid (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='gclid',
+        linked_object_type='Company',
+        defaults={
+            'name': 'GCLID',
+            'field_type': 'str',
+            'hermes_field_name': 'gclid',
+            'tc2_machine_name': 'gclid',
+            # note: ask Tom, i believe will have to create a field in pipedrive and set its id here.
+            'pd_field_id': os.getenv('PD_GCLID_FIELD_ID'),
+        },
+    )
+
+    # Create/Update: Company.gclid_expiry_date (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='gclid_expiry_date',
+        linked_object_type='Company',
+        defaults={
+            'name': 'GCLID Expiry Date',
+            'field_type': 'str',
+            'hermes_field_name': 'gclid_expiry_date',
+            'tc2_machine_name': 'gclid_expiry_date',
+            # note: ask Tom, i believe we will have to create a field in pipedrive and set its id here.
+            'pd_field_id': os.getenv('PD_GCLID_EXPIRY_FIELD_ID'),
+        },
+    )
+
+    print('Upserted Company CustomFields: gclid, gclid_expiry_date')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 def patch(command):
