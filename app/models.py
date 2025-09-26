@@ -238,6 +238,8 @@ class Company(HermesModel):
     currency = fields.CharField(max_length=255, null=True)
     has_booked_call = fields.BooleanField(default=False)
     has_signed_up = fields.BooleanField(default=False)
+    email_confirmed_at = fields.DatetimeField(null=True)
+    card_saved_at = fields.DatetimeField(null=True)
     utm_campaign = fields.CharField(max_length=255, null=True)
     utm_source = fields.CharField(max_length=255, null=True)
     gclid = fields.CharField(max_length=255, null=True)

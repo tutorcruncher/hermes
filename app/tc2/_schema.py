@@ -92,7 +92,7 @@ class TCClientExtraAttr(HermesBaseModel):
         # we have to do this logic in process_value because we need to check the machine_name
         # the validate_value method is a field validator, so it doesn't have to variables like machine_name
         # Don't convert GCLID values to lowercase as they are case-sensitive
-        if self.machine_name not in ['gclid', 'gclid_expiry_date']:
+        if self.machine_name not in ['gclid']:
             self.value = self.value.lower().strip('-')
         return self
 

@@ -15,7 +15,7 @@ from app.main import TORTOISE_CONFIG
 from app.tc2.tasks import update_client_from_company
 from tortoise.expressions import Q
 from tortoise import Tortoise
-from app.models import Company
+from app.models import Company, CustomField
 import logfire
 
 
@@ -91,7 +91,7 @@ async def update_pd_org_price_plans():
 
 
 @command
-async def add_company_gclid_fields():
+async def add_company_gclid_and_pay_dates_fields():
     """
     Upsert CustomField rows for Company GCLID tracking so TC2 extra_attrs map into Hermes/PD:
     - gclid (str)
@@ -100,7 +100,6 @@ async def add_company_gclid_fields():
     These are created without pd_field_id; set those in the admin later or extend this patch
     to pull from env vars if preferred.
     """
-    from app.models import CustomField
 
     # Create/Update: Company.gclid (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
@@ -131,6 +130,75 @@ async def add_company_gclid_fields():
     )
 
     print('Upserted Company CustomFields: gclid, gclid_expiry_date')
+
+    await CustomField.update_or_create(
+        machine_name='pay1_date',
+        linked_object_type='Company',
+        defaults={
+            'name': 'Pay1 Date',
+            'field_type': 'str',
+            'hermes_field_name': 'pay1_date',
+            'tc2_machine_name': 'pay1_date',
+            'pd_field_id': os.getenv('PD_PAY1_DATE_FIELD_ID'),
+        },
+    )
+
+    # Create/Update: Company.pay3_date (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='pay3_date',
+        linked_object_type='Company',
+        defaults={
+            'name': 'Pay3 Date',
+            'field_type': 'str',
+            'hermes_field_name': 'pay3_date',
+            'tc2_machine_name': 'pay3_date',
+            # note: ask Tom, i believe we will have to create a field in pipedrive and set its id here.
+            'pd_field_id': os.getenv('PD_PAY3_DATE_FIELD_ID'),
+        },
+    )
+
+    # Create/Update: Company.email_confirmed_at (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='email_confirmed_at',
+        linked_object_type='Company',
+        defaults={
+            'name': 'Email Confirmed At',
+            'field_type': 'str',
+            'hermes_field_name': 'email_confirmed_at',
+            'tc2_machine_name': 'email_confirmed_at',
+            'pd_field_id': os.getenv('PD_EMAIL_CONFIRMED_AT_FIELD_ID'),
+        },
+    )
+
+    # Create/Update: Company.card_saved_at (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='card_saved_at',
+        linked_object_type='Company',
+        defaults={
+            'name': 'Card Saved At',
+            'field_type': 'str',
+            'hermes_field_name': 'card_saved_at',
+            'tc2_machine_name': 'card_saved_at',
+            'pd_field_id': os.getenv('PD_CARD_SAVED_AT_FIELD_ID'),
+        },
+    )
+
+    # Create/Update: Company.created (store on concrete column via hermes_field_name)
+    await CustomField.update_or_create(
+        machine_name='created',
+        linked_object_type='Company',
+        defaults={
+            'name': 'Company Created At',
+            'field_type': 'str',
+            'hermes_field_name': 'created',
+            'tc2_machine_name': 'created',
+            'pd_field_id': os.getenv('PD_COMPANY_CREATED_AT_FIELD_ID'),
+        },
+    )
+    print('Upserted Company CustomFields: gclid, gclid_expiry_date, pay1_date, pay3_date, email_confirmed_at, card_saved_at, created')
+
+
+
 
 
 @click.command()
