@@ -91,7 +91,7 @@ async def update_pd_org_price_plans():
 
 
 @command
-async def add_company_gclid_and_pay_dates_fields():
+async def add_company_gclid_event_tracking_fields():
     """
     Upsert CustomField rows for Company GCLID tracking so TC2 extra_attrs map into Hermes/PD:
     - gclid (str)
@@ -101,7 +101,6 @@ async def add_company_gclid_and_pay_dates_fields():
     to pull from env vars if preferred.
     """
 
-    # Create/Update: Company.gclid (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='gclid',
         linked_object_type='Company',
@@ -115,7 +114,6 @@ async def add_company_gclid_and_pay_dates_fields():
         },
     )
 
-    # Create/Update: Company.gclid_expiry_date (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='gclid_expiry_date',
         linked_object_type='Company',
@@ -143,7 +141,6 @@ async def add_company_gclid_and_pay_dates_fields():
         },
     )
 
-    # Create/Update: Company.pay3_date (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='pay3_date',
         linked_object_type='Company',
@@ -157,7 +154,6 @@ async def add_company_gclid_and_pay_dates_fields():
         },
     )
 
-    # Create/Update: Company.email_confirmed_at (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='email_confirmed_at',
         linked_object_type='Company',
@@ -170,7 +166,6 @@ async def add_company_gclid_and_pay_dates_fields():
         },
     )
 
-    # Create/Update: Company.card_saved_at (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='card_saved_at',
         linked_object_type='Company',
@@ -183,7 +178,6 @@ async def add_company_gclid_and_pay_dates_fields():
         },
     )
 
-    # Create/Update: Company.created (store on concrete column via hermes_field_name)
     await CustomField.update_or_create(
         machine_name='created',
         linked_object_type='Company',
