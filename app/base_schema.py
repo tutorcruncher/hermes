@@ -175,9 +175,6 @@ class HermesBaseModel(BaseModel):
 
                 else:
                     val = getattr(obj, cf.hermes_field_name, None)
-                    # Ensure datetimes serialize as strings for Pipedrive custom fields
-                    if isinstance(val, datetime):
-                        val = val.isoformat(sep=' ', timespec='seconds')
             elif cf.tc2_machine_name:
                 val = cf.values[0].value if cf.values else None
 

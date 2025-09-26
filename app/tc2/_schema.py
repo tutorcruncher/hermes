@@ -41,8 +41,12 @@ class _TCAgency(HermesBaseModel):
     price_plan: str
     narc: Optional[bool] = False
     signup_questionnaire: Optional[dict] = None
-    pay1_date: Optional[datetime] = None
-    pay3_date: Optional[datetime] = None
+    pay1_dt: Optional[datetime] = None
+    pay3_dt: Optional[datetime] = None
+    card_saved_dt: Optional[datetime] = None
+    email_confirmed_dt: Optional[datetime] = None
+    gclid: Optional[str] = None
+    gclid_expiry_dt: Optional[datetime] = None
 
     @field_validator('price_plan')
     @classmethod
@@ -176,8 +180,13 @@ class TCClient(HermesBaseModel):
             price_plan=self.meta_agency.price_plan,
             narc=self.meta_agency.narc,
             signup_questionnaire=self.meta_agency.signup_questionnaire,
-            pay1_date=self.meta_agency.pay1_date,
-            pay3_date=self.meta_agency.pay3_date,
+            pay1_dt=self.meta_agency.pay1_date,
+            pay3_dt=self.meta_agency.pay3_date,
+            card_saved_dt=self.meta_agency.card_saved_at,
+            email_confirmed_dt=self.meta_agency.email_confirmed_at,
+            gclid=self.meta_agency.gclid,
+            gclid_expiry_dt=self.meta_agency.gclid_expiry,
+            created=self.meta_agency.created,
             **cf_data_from_hermes,
         )
 

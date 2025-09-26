@@ -243,12 +243,13 @@ class Company(HermesModel):
     narc = fields.BooleanField(default=False)
 
     signup_questionnaire = fields.JSONField(null=True)
-    email_confirmed_at = fields.DatetimeField(null=True)
-    card_saved_at = fields.DatetimeField(null=True)
-    gclid = fields.CharField(max_length=255, null=True)
-    gclid_expiry_date = fields.CharField(max_length=255, null=True)
+
     pay1_date = fields.DatetimeField(null=True)
     pay3_date = fields.DatetimeField(null=True)
+    gclid = fields.CharField(max_length=255, null=True)
+    gclid_expiry_dt = fields.DatetimeField(null=True)
+    email_confirmed_at = fields.DatetimeField(null=True)
+    card_saved_at = fields.DatetimeField(null=True)
 
     sales_person = fields.ForeignKeyField('models.Admin', related_name='sales')
     support_person = fields.ForeignKeyField('models.Admin', related_name='companies', null=True)

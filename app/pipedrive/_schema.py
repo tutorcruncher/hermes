@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from enum import Enum
 from typing import Any, List, Literal, Optional, Union
 
@@ -75,6 +76,13 @@ class Organisation(PipedriveBaseModel):
     name: str
     address_country: Optional[str] = None
     owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+    created: Optional[datetime] = None
+    pay1_dt: Optional[datetime] = None
+    pay3_dt: Optional[datetime] = None
+    gclid: Optional[str] = None
+    gclid_expiry_dt: Optional[str] = None
+    email_confirmed_dt: Optional[str] = None
+    card_saved_dt: Optional[datetime] = None
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
@@ -88,6 +96,13 @@ class Organisation(PipedriveBaseModel):
             tc2_status=company.tc2_status,
             tc2_cligency_url=company.tc2_cligency_url,
             address_country=company.country,
+            pay1_dt=company.pay1_date,
+            pay3_dt=company.pay3_date,
+            gclid=company.gclid,
+            gclid_expiry_dt=company.gclid_expiry_dt,
+            email_confirmed_dt=company.email_confirmed_dt,
+            card_saved_dt=company.card_saved_at,
+            created=company.created
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))
         final_kwargs = _remove_nulls(**cls_kwargs)
