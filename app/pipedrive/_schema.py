@@ -102,7 +102,7 @@ class Organisation(PipedriveBaseModel):
             gclid_expiry_dt=company.gclid_expiry_dt,
             email_confirmed_dt=company.email_confirmed_dt,
             card_saved_dt=company.card_saved_at,
-            created=company.created
+            created=company.created,
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))
         final_kwargs = _remove_nulls(**cls_kwargs)

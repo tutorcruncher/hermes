@@ -2751,7 +2751,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_tc2_client_event_with_gclid_data(self, mock_request):
         """Test that GCLID data is sent to Pipedrive when processing client events."""
         from datetime import datetime, timezone
-        
+
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         # Create GCLID custom fields
@@ -2818,7 +2818,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
             tc2_admin_id=20,
             pd_owner_id=99,
         )
-        
+
         # Create company with GCLID data
         company = await Company.create(
             name='Test Agency',
@@ -2835,7 +2835,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
             pay1_date=datetime(2026, 3, 1, 9, 30, 0, tzinfo=timezone.utc),
             pay3_date=datetime(2026, 5, 1, 9, 30, 0, tzinfo=timezone.utc),
         )
-        
+
         contact = await Contact.create(
             first_name='Test', last_name='User', email='test@test.com', company_id=company.id
         )
@@ -2851,7 +2851,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         )
 
         await pd_post_process_client_event(company, deal)
-        
+
         # Assert GCLID, pay dates, and event tracking fields are sent to Pipedrive
         assert self.pipedrive.db['organizations'] == {
             1: {
