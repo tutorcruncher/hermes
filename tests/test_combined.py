@@ -1234,7 +1234,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         company = await Company.get()
 
         await update_client_from_company(company)
-        company = await Company.get()
 
         counter = 0
         cf_vals = await CustomFieldValue.all()
