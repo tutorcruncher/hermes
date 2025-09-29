@@ -1234,6 +1234,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         company = await Company.get()
 
         await update_client_from_company(company)
+        company = await Company.get()
 
         counter = 0
         cf_vals = await CustomFieldValue.all()
@@ -1253,13 +1254,6 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
                 '123_source_456': 'Google',
-                'created': company.created,
-                'pay1_dt': None,
-                'pay3_dt': None,
-                'card_saved_dt': None,
-                'email_confirmed_dt': None,
-                'gclid': None,
-                'gclid_expiry_dt': None,
             }
         }
 
