@@ -32,7 +32,7 @@ def _client_data():
             'card_saved_dt': None,
             'email_confirmed_dt': None,
             'gclid': None,
-            'gclid_expiry_date': None,
+            'gclid_expiry_dt': None,
             'narc': False,
             'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },

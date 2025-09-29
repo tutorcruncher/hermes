@@ -134,6 +134,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'id': 1,
                 '123_hermes_id_456': company.id,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -240,6 +247,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 '123_hermes_id_456': company.id,
                 '123_bdr_person_id_456': bdr_person.id,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -337,6 +351,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -408,7 +429,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
@@ -430,6 +458,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 10
@@ -520,7 +555,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
@@ -566,6 +608,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert self.pipedrive.db['persons'] == {
@@ -655,7 +704,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         assert (await Company.get()).pd_org_id == 1
         assert self.pipedrive.db['persons'] == {
@@ -695,7 +751,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id, pd_person_id=1
@@ -770,7 +833,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id, pd_person_id=1
@@ -876,6 +946,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -958,6 +1035,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1093,6 +1177,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '123_tc2_color_456': None,
                 '123_website_456': company.website,
                 '123_paid_invoice_count_456': company.paid_invoice_count,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1160,7 +1251,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         assert (await Company.get()).pd_org_id == 1
         assert self.pipedrive.db['persons'] == {
@@ -1226,6 +1324,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_cligency_id_456': 444444,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         contact = await Contact.create(
@@ -1252,6 +1357,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
                 '123_tc2_cligency_id_456': 444444,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1317,6 +1429,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         contact = await Contact.create(
@@ -1352,6 +1471,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1407,6 +1533,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         contact = await Contact.create(
@@ -1442,6 +1575,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1523,6 +1663,13 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             },
         }
         assert (await Company.get()).pd_org_id == 1
@@ -1568,7 +1715,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         contact = await Contact.create(
             first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
@@ -1614,7 +1768,14 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-            },
+                'created': company.created,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
+            }
         }
         assert self.pipedrive.db['persons'] == {
             1: {
