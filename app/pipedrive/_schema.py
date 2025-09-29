@@ -80,8 +80,8 @@ class Organisation(PipedriveBaseModel):
     pay1_dt: Optional[datetime] = None
     pay3_dt: Optional[datetime] = None
     gclid: Optional[str] = None
-    gclid_expiry_dt: Optional[str] = None
-    email_confirmed_dt: Optional[str] = None
+    gclid_expiry_dt: Optional[datetime] = None
+    email_confirmed_dt: Optional[datetime] = None
     card_saved_dt: Optional[datetime] = None
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
@@ -96,12 +96,12 @@ class Organisation(PipedriveBaseModel):
             tc2_status=company.tc2_status,
             tc2_cligency_url=company.tc2_cligency_url,
             address_country=company.country,
-            pay1_dt=company.pay1_date,
-            pay3_dt=company.pay3_date,
+            pay1_dt=company.pay1_dt,
+            pay3_dt=company.pay3_dt,
             gclid=company.gclid,
             gclid_expiry_dt=company.gclid_expiry_dt,
             email_confirmed_dt=company.email_confirmed_dt,
-            card_saved_dt=company.card_saved_at,
+            card_saved_dt=company.card_saved_dt,
             created=company.created,
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))

@@ -2754,60 +2754,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
-        # Create GCLID custom fields
-        await CustomField.create(
-            name='GCLID',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_gclid_456',
-            hermes_field_name='gclid',
-            linked_object_type='Company',
-        )
-        await CustomField.create(
-            name='GCLID Expiry Date',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_gclid_expiry_date_456',
-            hermes_field_name='gclid_expiry_date',
-            linked_object_type='Company',
-        )
-        # Create Pay date custom fields
-        await CustomField.create(
-            name='Pay1 Date',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_pay1_date_456',
-            hermes_field_name='pay1_date',
-            linked_object_type='Company',
-        )
-        await CustomField.create(
-            name='Pay3 Date',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_pay3_date_456',
-            hermes_field_name='pay3_date',
-            linked_object_type='Company',
-        )
-        # Create Email Confirmed At custom field
-        await CustomField.create(
-            name='Email Confirmed At',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_email_confirmed_at_456',
-            hermes_field_name='email_confirmed_at',
-            linked_object_type='Company',
-        )
-        # Create Card Saved At custom field
-        await CustomField.create(
-            name='Card Saved At',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_card_saved_at_456',
-            hermes_field_name='card_saved_at',
-            linked_object_type='Company',
-        )
-        # Create Company Created At custom field
-        await CustomField.create(
-            name='Company Created At',
-            field_type=CustomField.TYPE_STR,
-            pd_field_id='123_company_created_at_456',
-            hermes_field_name='created',
-            linked_object_type='Company',
-        )
         await build_custom_field_schema()
 
         admin = await Admin.create(
@@ -2819,21 +2765,22 @@ class PipedriveCallbackTestCase(HermesTestCase):
             pd_owner_id=99,
         )
 
+        dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
         # Create company with GCLID data
         company = await Company.create(
             name='Test Agency',
             website='https://test.com',
             country='GB',
             sales_person=admin,
-            status=Company.STATUS_TRIAL,
+            status=Company.STATUS_PAYING,
             has_signed_up=True,
-            created=datetime(2026, 2, 15, 10, 30, 0, tzinfo=timezone.utc),
-            email_confirmed_at=datetime(2026, 2, 15, 10, 30, 0, tzinfo=timezone.utc),
-            card_saved_at=datetime(2026, 2, 20, 14, 45, 0, tzinfo=timezone.utc),
+            created=dt,
+            pay1_dt=dt,
+            pay3_dt=dt,
+            email_confirmed_dt=dt,
+            card_saved_dt=dt,
             gclid='test-gclid-123',
-            gclid_expiry_date='2026-02-17 11:47:31.142000+00:00',
-            pay1_date=datetime(2026, 3, 1, 9, 30, 0, tzinfo=timezone.utc),
-            pay3_date=datetime(2026, 5, 1, 9, 30, 0, tzinfo=timezone.utc),
+            gclid_expiry_dt=dt,
         )
 
         contact = await Contact.create(
@@ -2855,18 +2802,18 @@ class PipedriveCallbackTestCase(HermesTestCase):
         # Assert GCLID, pay dates, and event tracking fields are sent to Pipedrive
         assert self.pipedrive.db['organizations'] == {
             1: {
-                'id': 1,
                 'name': 'Test Agency',
                 'address_country': 'GB',
                 'owner_id': 99,
+                'created': dt,
+                'pay1_dt': dt,
+                'pay3_dt': dt,
+                'gclid': 'test-gclid-123',
+                'gclid_expiry_dt': dt,
+                'email_confirmed_dt': dt,
+                'card_saved_dt': dt,
                 '123_hermes_id_456': 1,
-                '123_gclid_456': 'test-gclid-123',
-                '123_gclid_expiry_date_456': '2026-02-17 11:47:31.142000+00:00',
-                '123_pay1_date_456': '2026-03-01 09:30:00+00:00',
-                '123_pay3_date_456': '2026-05-01 09:30:00+00:00',
-                '123_email_confirmed_at_456': '2026-02-15 10:30:00+00:00',
-                '123_card_saved_at_456': '2026-02-20 14:45:00+00:00',
-                '123_company_created_at_456': '2026-02-15 10:30:00+00:00',
+                'id': 1,
             },
         }
         assert (await Company.get()).pd_org_id == 1
