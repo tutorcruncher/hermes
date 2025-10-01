@@ -243,7 +243,7 @@ class Company(HermesModel):
     narc = fields.BooleanField(default=False)
 
     signup_questionnaire = fields.JSONField(null=True)
-
+    pay0_dt = fields.DatetimeField(null=True)
     pay1_dt = fields.DatetimeField(null=True)
     pay3_dt = fields.DatetimeField(null=True)
     gclid = fields.CharField(max_length=255, null=True)

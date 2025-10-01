@@ -3,6 +3,7 @@ from tortoise import BaseDBAsyncClient
 
 async def upgrade(db: BaseDBAsyncClient) -> str:
     return """
+        ALTER TABLE "company" ADD "pay0_dt" TIMESTAMPTZ;
         ALTER TABLE "company" ADD "pay1_dt" TIMESTAMPTZ;
         ALTER TABLE "company" ADD "gclid" VARCHAR(255);
         ALTER TABLE "company" ADD "card_saved_dt" TIMESTAMPTZ;
@@ -13,6 +14,7 @@ async def upgrade(db: BaseDBAsyncClient) -> str:
 
 async def downgrade(db: BaseDBAsyncClient) -> str:
     return """
+        ALTER TABLE "company" DROP COLUMN "pay0_dt";
         ALTER TABLE "company" DROP COLUMN "pay1_dt";
         ALTER TABLE "company" DROP COLUMN "gclid";
         ALTER TABLE "company" DROP COLUMN "card_saved_dt";

@@ -41,6 +41,7 @@ class _TCAgency(HermesBaseModel):
     price_plan: str
     narc: Optional[bool] = False
     signup_questionnaire: Optional[dict] = None
+    pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None
     pay3_dt: Optional[datetime] = None
     card_saved_dt: Optional[datetime] = None
@@ -180,6 +181,7 @@ class TCClient(HermesBaseModel):
             price_plan=self.meta_agency.price_plan,
             narc=self.meta_agency.narc,
             signup_questionnaire=self.meta_agency.signup_questionnaire,
+            pay0_dt=self.meta_agency.pay0_dt,
             pay1_dt=self.meta_agency.pay1_dt,
             pay3_dt=self.meta_agency.pay3_dt,
             card_saved_dt=self.meta_agency.card_saved_dt,

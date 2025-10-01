@@ -27,6 +27,7 @@ def _client_data():
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
             'price_plan': '1-payg',
+            'pay0_dt': None,
             'pay1_dt': None,
             'pay3_dt': None,
             'card_saved_dt': None,
@@ -292,8 +293,9 @@ class TC2CallbackTestCase(HermesTestCase):
         modified_data['subject']['paid_recipients'] = []
         modified_data['subject']['meta_agency']['status'] = 'trial'
         modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        modified_data['subject']['meta_agency']['pay0_dt'] = dt_str
         modified_data['subject']['meta_agency']['pay1_dt'] = dt_str
-        modified_data['subject']['meta_agency']['pay3_dt'] = dt.isoformat()
+        modified_data['subject']['meta_agency']['pay3_dt'] = dt_str
         modified_data['subject']['meta_agency']['gclid'] = 'test-gclid'
         modified_data['subject']['meta_agency']['gclid_expiry_dt'] = dt_str
         modified_data['subject']['meta_agency']['card_saved_dt'] = dt_str
@@ -313,6 +315,7 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await company.sales_person == admin
 
         # Validate pay dates mapping
+        assert company.pay0_dt == dt
         assert company.pay1_dt == dt
         assert company.pay3_dt == dt
         assert company.card_saved_dt == dt

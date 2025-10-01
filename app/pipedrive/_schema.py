@@ -77,6 +77,7 @@ class Organisation(PipedriveBaseModel):
     address_country: Optional[str] = None
     owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
     created: Optional[datetime] = None
+    pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None
     pay3_dt: Optional[datetime] = None
     gclid: Optional[str] = None
@@ -96,6 +97,7 @@ class Organisation(PipedriveBaseModel):
             tc2_status=company.tc2_status,
             tc2_cligency_url=company.tc2_cligency_url,
             address_country=company.country,
+            pay0_dt=company.pay0_dt,
             pay1_dt=company.pay1_dt,
             pay3_dt=company.pay3_dt,
             gclid=company.gclid,
