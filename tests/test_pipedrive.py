@@ -2984,6 +2984,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await pd_post_process_client_event(company, deal)
 
+        dt = dt.replace(tzinfo=timezone.utc)
         # Assert GCLID, pay dates, and event tracking fields are sent to Pipedrive
         assert self.pipedrive.db['organizations'] == {
             1: {
@@ -2998,7 +2999,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
                 'gclid_expiry_dt': dt,
                 'email_confirmed_dt': dt,
                 'card_saved_dt': dt,
-                '123_hermes_id_456': 1,
+                '123_hermes_id_456': company.id,
                 'id': 1,
             },
         }
