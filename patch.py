@@ -15,7 +15,7 @@ from app.main import TORTOISE_CONFIG
 from app.tc2.tasks import update_client_from_company
 from tortoise.expressions import Q
 from tortoise import Tortoise
-from app.models import Company, CustomField
+from app.models import Company
 import logfire
 
 

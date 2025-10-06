@@ -3012,7 +3012,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
                 'email': ['test@test.com'],
                 'phone': None,
                 'org_id': 1,
-                '234_hermes_id_567': 1,
+                '234_hermes_id_567': contact.id,
             },
         }
         assert self.pipedrive.db['deals'] == {
@@ -3025,6 +3025,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
                 'pipeline_id': 1,
                 'stage_id': 1,
                 'status': 'open',
-                '345_hermes_id_678': 1,
+                '345_hermes_id_678': deal.id,
             }
         }
