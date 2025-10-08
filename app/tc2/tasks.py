@@ -38,7 +38,7 @@ async def update_client_from_company(company: Company):
             if ea.machine_name == 'termination_category':
                 extra_attrs['termination_category'] = sanitise_string(ea.value)
 
-        client_data = tc_client.model_dump()
+        client_data = tc_client.model_dump(mode='json')
         client_data['extra_attrs'] = extra_attrs
 
         if company.support_person:
