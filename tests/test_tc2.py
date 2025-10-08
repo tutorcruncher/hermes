@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from requests import HTTPError
@@ -27,6 +27,13 @@ def _client_data():
             'paid_invoice_count': 2,
             'country': 'United Kingdom (GB)',
             'price_plan': '1-payg',
+            'pay0_dt': None,
+            'pay1_dt': None,
+            'pay3_dt': None,
+            'card_saved_dt': None,
+            'email_confirmed_dt': None,
+            'gclid': None,
+            'gclid_expiry_dt': None,
             'narc': False,
             'created': int((datetime.now() - timedelta(days=1)).timestamp()),
         },
@@ -269,6 +276,52 @@ class TC2CallbackTestCase(HermesTestCase):
         assert await deal.pipeline == self.pipeline
         assert not deal.contact
         assert await deal.stage == self.stage
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_cb_client_event_maps_gclid_tracking_fields(self, mock_add_task):
+        assert await Company.all().count() == 0
+        assert await Contact.all().count() == 0
+
+        admin = await Admin.create(
+            tc2_admin_id=30, first_name='Brain', last_name='Johnson', username='brian@tc.com', password='foo'
+        )
+
+        dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        dt_str = dt.isoformat()
+
+        modified_data = client_full_event_data()
+        modified_data['subject']['paid_recipients'] = []
+        modified_data['subject']['meta_agency']['status'] = 'trial'
+        modified_data['subject']['meta_agency']['paid_invoice_count'] = 0
+        modified_data['subject']['meta_agency']['pay0_dt'] = dt_str
+        modified_data['subject']['meta_agency']['pay1_dt'] = dt_str
+        modified_data['subject']['meta_agency']['pay3_dt'] = dt_str
+        modified_data['subject']['meta_agency']['gclid'] = 'test-gclid'
+        modified_data['subject']['meta_agency']['gclid_expiry_dt'] = dt_str
+        modified_data['subject']['meta_agency']['card_saved_dt'] = dt_str
+        modified_data['subject']['meta_agency']['email_confirmed_dt'] = dt_str
+
+        events = [modified_data]
+        data = {'_request_time': 123, 'events': events}
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 200, r.json()
+
+        company = await Company.get()
+        # Validate core fields still set
+        assert company.name == 'MyTutors'
+        assert company.tc2_agency_id == 20
+        assert company.tc2_cligency_id == 10
+        assert company.tc2_status == 'trial'
+        assert await company.sales_person == admin
+
+        # Validate pay dates mapping
+        assert company.pay0_dt == dt
+        assert company.pay1_dt == dt
+        assert company.pay3_dt == dt
+        assert company.card_saved_dt == dt
+        assert company.email_confirmed_dt == dt
+        assert company.gclid == 'test-gclid'
+        assert company.gclid_expiry_dt == dt
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_cb_client_event_test_2(self, mock_add_task):

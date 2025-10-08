@@ -196,6 +196,14 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
                 '123_sales_person_456': admin.id,
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
 
@@ -249,6 +257,14 @@ class TestMultipleServices(HermesTestCase):
                 'address_country': None,
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
 
@@ -374,6 +390,14 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': None,
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
 
@@ -465,6 +489,14 @@ class TestMultipleServices(HermesTestCase):
                 '"how-many-students-are-currently-actively-using-your-service": 45, '
                 '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
                 '"Mostly after the lesson takes place"}',
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
 
@@ -639,6 +671,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '123_bdr_person_456': admin.id,
                 '123_source_456': 'google',
                 '123_estimated_monthly_income_456': '£20,000 - £50,000',
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
 
@@ -782,6 +822,14 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': sales_person.id,
                 '123_support_person_456': None,
+                'created': company.created,
+                'pay0_dt': None,
+                'pay1_dt': None,
+                'pay3_dt': None,
+                'card_saved_dt': None,
+                'email_confirmed_dt': None,
+                'gclid': None,
+                'gclid_expiry_dt': None,
             }
         }
         assert self.pipedrive.db['deals'] == {

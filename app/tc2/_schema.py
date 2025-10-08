@@ -41,6 +41,13 @@ class _TCAgency(HermesBaseModel):
     price_plan: str
     narc: Optional[bool] = False
     signup_questionnaire: Optional[dict] = None
+    pay0_dt: Optional[datetime] = None
+    pay1_dt: Optional[datetime] = None
+    pay3_dt: Optional[datetime] = None
+    card_saved_dt: Optional[datetime] = None
+    email_confirmed_dt: Optional[datetime] = None
+    gclid: Optional[str] = None
+    gclid_expiry_dt: Optional[datetime] = None
 
     @field_validator('price_plan')
     @classmethod
@@ -83,7 +90,16 @@ class TCClientExtraAttr(HermesBaseModel):
     @field_validator('value')
     @classmethod
     def validate_value(cls, v):
-        return v.lower().strip().strip('-')
+        return v.strip()
+
+    @model_validator(mode='after')
+    def process_value(self):
+        # we have to do this logic in process_value because we need to check the machine_name
+        # the validate_value method is a field validator, so it doesn't have to variables like machine_name
+        # Don't convert GCLID values to lowercase as they are case-sensitive
+        if self.machine_name != 'gclid':
+            self.value = self.value.lower().strip('-')
+        return self
 
 
 class TCClient(HermesBaseModel):
@@ -165,6 +181,14 @@ class TCClient(HermesBaseModel):
             price_plan=self.meta_agency.price_plan,
             narc=self.meta_agency.narc,
             signup_questionnaire=self.meta_agency.signup_questionnaire,
+            pay0_dt=self.meta_agency.pay0_dt,
+            pay1_dt=self.meta_agency.pay1_dt,
+            pay3_dt=self.meta_agency.pay3_dt,
+            card_saved_dt=self.meta_agency.card_saved_dt,
+            email_confirmed_dt=self.meta_agency.email_confirmed_dt,
+            gclid=self.meta_agency.gclid,
+            gclid_expiry_dt=self.meta_agency.gclid_expiry_dt,
+            created=self.meta_agency.created,
             **cf_data_from_hermes,
         )
 
