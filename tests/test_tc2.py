@@ -136,7 +136,11 @@ class TC2CallbackTestCase(HermesTestCase):
         self.url = '/tc2/callback/'
 
     def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+        return hmac.new(
+            settings.tc2_api_key.encode(),
+            json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
 
     async def test_callback_invalid_api_key(self):
         r = await self.client.post(

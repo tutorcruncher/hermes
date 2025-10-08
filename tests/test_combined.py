@@ -45,7 +45,11 @@ class TestMultipleServices(HermesTestCase):
         await build_custom_field_schema()
 
     def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+        return hmac.new(
+            settings.tc2_api_key.encode(),
+            json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
 
     @mock.patch('app.tc2.api.session.request')
     @mock.patch('app.pipedrive.api.session.request')
@@ -520,7 +524,11 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await build_custom_field_schema()
 
     def _tc2_sig(self, payload):
-        return hmac.new(settings.tc2_api_key.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
+        return hmac.new(
+            settings.tc2_api_key.encode(),
+            json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_cb_client_event_company_org_deal(self, mock_pd_request):
