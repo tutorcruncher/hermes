@@ -231,7 +231,7 @@ class Company(HermesModel):
     created = fields.DatetimeField(auto_now_add=True)
 
     price_plan = fields.CharField(max_length=255, default=PP_PAYG)
-    country = fields.CharField(max_length=255, description='Country code, e.g. GB', null=True)
+    country = fields.CharField(max_length=255, description='Country', null=True)
     website = fields.CharField(max_length=255, null=True)
     paid_invoice_count = fields.IntField(default=0)
     estimated_income = fields.CharField(max_length=255, null=True)
@@ -453,7 +453,7 @@ class CustomField(models.Model):
     pd_field_id = fields.CharField(max_length=255, null=True, description='The ID of the Custom Field in Pipedrive')
     linked_object_type = fields.CharField(
         max_length=255,
-        description='The name of the model this is linked to, ' '("Company", "Contact", "Deal", "Meeting")',
+        description='The name of the model this is linked to, ("Company", "Contact", "Deal", "Meeting")',
     )
 
     values: fields.ReverseRelation['CustomFieldValue']

@@ -54,10 +54,10 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
                 'previous': None,
             }
             event_instance = PipedriveEvent(**mock_event)
-            event_instance.current and await event_instance.current.a_validate()
+            event_instance.data and await event_instance.data.a_validate()
 
             # Update Company from Organisation
-            await _process_pd_organisation(current_pd_org=event_instance.current, old_pd_org=None)
+            await _process_pd_organisation(current_pd_org=event_instance.data, old_pd_org=None)
 
             try:
                 # Update company in TC2

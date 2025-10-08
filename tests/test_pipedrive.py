@@ -6,7 +6,6 @@ from urllib.parse import parse_qs
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline, Stage
-from app.pipedrive._schema import PDStatus
 from app.pipedrive.tasks import (
     pd_post_process_client_event,
     pd_post_process_sales_call,
@@ -1828,21 +1827,16 @@ class PipedriveTasksTestCase(HermesTestCase):
 
 def basic_pd_org_data():
     return {
-        'v': 1,
-        'matches_filters': {PDStatus.CURRENT: []},
-        'meta': {'action': 'updated', 'object': 'organization'},
-        PDStatus.CURRENT: {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
-        PDStatus.PREVIOUS: None,
-        'event': 'updated.organization',
+        'meta': {'action': 'change', 'entity': 'organization', 'version': '2.0'},
+        'data': {'owner_id': 10, 'id': 20, 'name': 'Test company', 'address_country': None},
+        'previous': None,
     }
 
 
 def basic_pd_person_data():
     return {
-        'v': 1,
-        'matches_filters': {PDStatus.CURRENT: []},
-        'meta': {'action': 'updated', 'object': 'person'},
-        PDStatus.CURRENT: {
+        'meta': {'action': 'change', 'entity': 'person', 'version': '2.0'},
+        'data': {
             'owner_id': 10,
             'id': 30,
             'name': 'Brian Blessed',
@@ -1850,17 +1844,14 @@ def basic_pd_person_data():
             'phone': [{'value': '0208112555', 'primary': 'true'}],
             'org_id': 20,
         },
-        PDStatus.PREVIOUS: {},
-        'event': 'updated.person',
+        'previous': {},
     }
 
 
 def basic_pd_deal_data():
     return {
-        'v': 1,
-        'matches_filters': {PDStatus.CURRENT: []},
-        'meta': {'action': 'updated', 'object': 'deal'},
-        PDStatus.CURRENT: {
+        'meta': {'action': 'change', 'entity': 'deal', 'version': '2.0'},
+        'data': {
             'id': 40,
             'person_id': 30,
             'stage_id': 50,
@@ -1871,30 +1862,23 @@ def basic_pd_deal_data():
             'pipeline_id': 60,
             'user_id': 10,
         },
-        PDStatus.PREVIOUS: None,
-        'event': 'updated.deal',
+        'previous': None,
     }
 
 
 def basic_pd_pipeline_data():
     return {
-        'v': 1,
-        'matches_filters': {PDStatus.CURRENT: []},
-        'meta': {'action': 'updated', 'object': 'pipeline'},
-        PDStatus.CURRENT: {'name': 'Pipeline 1', 'id': 60, 'active': True},
-        PDStatus.PREVIOUS: {},
-        'event': 'updated.pipeline',
+        'meta': {'action': 'change', 'entity': 'pipeline', 'version': '2.0'},
+        'data': {'name': 'Pipeline 1', 'id': 60, 'active': True},
+        'previous': {},
     }
 
 
 def basic_pd_stage_data():
     return {
-        'v': 1,
-        'matches_filters': {PDStatus.CURRENT: []},
-        'meta': {'action': 'updated', 'object': 'stage'},
-        PDStatus.CURRENT: {'name': 'Stage 1', 'pipeline_id': 60, 'id': 50},
-        PDStatus.PREVIOUS: {},
-        'event': 'updated.stage',
+        'meta': {'action': 'change', 'entity': 'stage', 'version': '2.0'},
+        'data': {'name': 'Stage 1', 'pipeline_id': 60, 'id': 50},
+        'previous': {},
     }
 
 
@@ -1926,11 +1910,51 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.sales_person_id == self.admin.id
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_actual_v2_webhook_format(self, mock_request):
+        """Test that the actual webhook v2 format with custom_fields structure works"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        source_field = await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='d30bf32a173cdfa780901d5eeb92a8f2d1ccd980',
+            name='Source',
+            field_type='str',
+        )
+        await build_custom_field_schema()
+
+        assert not await Company.exists()
+        # This is the actual webhook v2 format Pipedrive sends
+        webhook_data = {
+            'data': {
+                'id': 20,
+                'name': 'Test company',
+                'owner_id': 10,
+                'address_country': None,
+                'custom_fields': {
+                    'd30bf32a173cdfa780901d5eeb92a8f2d1ccd980': {'type': 'varchar', 'value': 'google'},
+                    '123_hermes_id_456': None,
+                },
+            },
+            'previous': None,
+            'meta': {'action': 'change', 'entity': 'organization', 'version': '2.0'},
+        }
+        r = await self.client.post(self.url, json=webhook_data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.sales_person_id == self.admin.id
+        # Verify custom field was properly extracted
+        cf_value = await CustomFieldValue.get(custom_field=source_field, company=company)
+        assert cf_value.value == 'google'
+
+        await source_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_with_hermes_id_company_missing(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['123_hermes_id_456'] = 75
+        data['data']['123_hermes_id_456'] = 75
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 422, r.json()
         assert r.json() == {
@@ -1972,7 +1996,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['123_website_456'] = 'https://junes.com'
+        data['data']['123_website_456'] = 'https://junes.com'
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -1997,7 +2021,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['123_source_456'] = 'Google'
+        data['data']['123_source_456'] = 'Google'
 
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
@@ -2026,7 +2050,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert not await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['123_paid_invoice_count_456'] = None
+        data['data']['123_paid_invoice_count_456'] = None
 
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
@@ -2082,9 +2106,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT] = data.pop(PDStatus.CURRENT)
-        data[PDStatus.CURRENT]['123_source_456'] = 'Google'
-        data[PDStatus.CURRENT]['123_hermes_id_456'] = company.id
+        data['data']['123_source_456'] = 'Google'
+        data['data']['123_hermes_id_456'] = company.id
 
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
@@ -2103,7 +2126,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_org_create_owner_doesnt_exist(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['owner_id'] = 999
+        data['data']['owner_id'] = 999
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 422, r.json()
         assert r.json() == {
@@ -2116,8 +2139,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
-        data[PDStatus.PREVIOUS]['hermes_id'] = company.id
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
@@ -2138,8 +2161,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         assert await Company.exists()
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
-        data[PDStatus.PREVIOUS]['hermes_id'] = company.id
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = company.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Company.exists()
@@ -2154,9 +2177,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(name='New test company')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2177,9 +2200,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_website_456': 'https://newjunes.com'})
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(**{'name': 'New test company', '123_website_456': 'https://newjunes.com'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2212,11 +2235,11 @@ class PipedriveCallbackTestCase(HermesTestCase):
             },
         )
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(
             hermes_id=company.id, **{'123_signup_questionnaire_456': '{"question1": "answer1", "question2": "answer2"}'}
         )
-        data[PDStatus.CURRENT].update(
+        data['data'].update(
             **{
                 'name': 'New test company',
                 '123_signup_questionnaire_456': '{"question1": "answer123", "question2": "answer2456"}',
@@ -2255,9 +2278,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     )
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.PREVIOUS].update(**{'123_hermes_id_456': f'{company.id},{company2.id}'})
-    #     data[PDStatus.CURRENT].update(**{'name': 'New test company'})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['previous'].update(**{'123_hermes_id_456': f'{company.id},{company2.id}'})
+    #     data['data'].update(**{'name': 'New test company'})
     #     r = await self.client.post(self.url, json=data)
     #     assert r.status_code == 200, r.json()
     #     company = await Company.get()
@@ -2282,9 +2305,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'123_source_456': 'Google'})
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(**{'123_source_456': 'Google'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
 
@@ -2310,9 +2333,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await CustomFieldValue.create(custom_field=source_field, company=company, value='Bing')
 
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'123_source_456': 'Google'})
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(**{'123_source_456': 'Google'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
 
@@ -2349,9 +2372,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await CustomFieldValue.create(custom_field=support_person_field, company=company, value=admin.id)
 
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(
             **{
                 'name': 'New test company',
                 '123_support_person_id_456': admin.id,
@@ -2395,9 +2418,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await CustomFieldValue.create(custom_field=support_person_field, company=company, value=admin.id)
 
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(
             **{
                 'name': 'New test company',
                 '123_support_person_id_456': 400,
@@ -2424,9 +2447,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await CustomFieldValue.create(custom_field=source_field, company=company, value='Bing')
 
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-        data[PDStatus.CURRENT].update(**{'name': 'New test company'})
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(hermes_id=company.id)
+        data['data'].update(**{'name': 'New test company'})
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2442,8 +2465,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         company = await Company.create(name='Old test company', sales_person=self.admin)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.CURRENT]['hermes_id'] = company.id
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data['data']['hermes_id'] = company.id
+        data['previous'] = copy.deepcopy(data['data'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2453,8 +2476,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
     async def test_org_update_doesnt_exist(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New test company')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2466,8 +2489,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Company.create(name='Old test company', sales_person=self.admin, pd_org_id=20)
         data = copy.deepcopy(basic_pd_org_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New test company')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New test company')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -2502,8 +2525,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         contact = await Contact.create(first_name='Brian', last_name='Blessed', company=company)
         assert await Contact.exists()
         data = copy.deepcopy(basic_pd_person_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
-        data[PDStatus.PREVIOUS]['hermes_id'] = contact.id
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = contact.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Contact.exists()
@@ -2514,9 +2537,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS]['hermes_id'] = contact.id
-        data[PDStatus.CURRENT].update(name='Jessica Jones')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous']['hermes_id'] = contact.id
+        data['data'].update(name='Jessica Jones')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()
@@ -2553,9 +2576,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     )
     #
     #     data = copy.deepcopy(basic_pd_person_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.PREVIOUS].update(**{'234_hermes_id_567': f'{contact.id},{contact_2.id}'})
-    #     data[PDStatus.CURRENT].update(name='Jessica Jones')
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['previous'].update(**{'234_hermes_id_567': f'{contact.id},{contact_2.id}'})
+    #     data['data'].update(name='Jessica Jones')
     #     r = await self.client.post(self.url, json=data)
     #     assert r.status_code == 200, r.json()
     #     contact = await Contact.get()
@@ -2571,8 +2594,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         contact = await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS]['hermes_id'] = contact.id
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous']['hermes_id'] = contact.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()
@@ -2584,7 +2607,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='John', last_name='Smith', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_person_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data['previous'] = copy.deepcopy(data['data'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()
@@ -2595,8 +2618,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
         await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         data = copy.deepcopy(basic_pd_person_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='Brimstone')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='Brimstone')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         contact = await Contact.get()
@@ -2625,7 +2648,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['user_id'] = 999
+        data['data']['user_id'] = 999
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 422, r.json()
         assert r.json() == {
@@ -2639,7 +2662,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['stage_id'] = 999
+        data['data']['stage_id'] = 999
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 422, r.json()
         assert r.json() == {
@@ -2653,7 +2676,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['pipeline_id'] = 999
+        data['data']['pipeline_id'] = 999
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 422, r.json()
         assert r.json() == {
@@ -2673,7 +2696,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['person_id'] = 999
+        data['data']['person_id'] = 999
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         deal = await Deal.get()
@@ -2700,8 +2723,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         )
         assert await Deal.exists()
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
-        data[PDStatus.PREVIOUS]['hermes_id'] = deal.id
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = deal.id
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Deal.exists()
@@ -2724,9 +2747,9 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await Deal.exists()
 
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS]['hermes_id'] = deal.id
-        data[PDStatus.CURRENT].update(title='New test deal')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous']['hermes_id'] = deal.id
+        data['data'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         deal = await Deal.get()
@@ -2749,8 +2772,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         )
         assert await Deal.exists()
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['hermes_id'] = deal.id
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data['data']['hermes_id'] = deal.id
+        data['previous'] = copy.deepcopy(data['data'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         deal = await Deal.get()
@@ -2763,8 +2786,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
         await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(title='New test deal')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(title='New test deal')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         deal = await Deal.get()
@@ -2788,7 +2811,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Pipeline.create(name='Pipeline 1', pd_pipeline_id=60)
         data = copy.deepcopy(basic_pd_pipeline_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
+        data['previous'] = data.pop('data')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Pipeline.exists()
@@ -2800,8 +2823,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Pipeline.create(name='Old Pipeline', pd_pipeline_id=60)
         data = copy.deepcopy(basic_pd_pipeline_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New Pipeline')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New Pipeline')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         pipeline = await Pipeline.get()
@@ -2814,7 +2837,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Pipeline.create(name='Old Pipeline', pd_pipeline_id=60)
         data = copy.deepcopy(basic_pd_pipeline_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data['previous'] = copy.deepcopy(data['data'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         pipeline = await Pipeline.get()
@@ -2826,8 +2849,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await Stage.all().delete()
 
         data = copy.deepcopy(basic_pd_pipeline_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New test pipeline')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New test pipeline')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         pipeline = await Pipeline.get()
@@ -2851,7 +2874,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Stage.create(name='Stage 1', pd_stage_id=50)
         data = copy.deepcopy(basic_pd_stage_data())
-        data[PDStatus.PREVIOUS] = data.pop(PDStatus.CURRENT)
+        data['previous'] = data.pop('data')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert not await Stage.exists()
@@ -2863,8 +2886,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Stage.create(name='Stage 1', pd_stage_id=50)
         data = copy.deepcopy(basic_pd_stage_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New Stage')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New Stage')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
@@ -2877,7 +2900,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
 
         await Stage.create(name='Old Stage', pd_stage_id=50)
         data = copy.deepcopy(basic_pd_stage_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+        data['previous'] = copy.deepcopy(data['data'])
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
@@ -2889,8 +2912,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await Stage.all().delete()
 
         data = copy.deepcopy(basic_pd_stage_data())
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.CURRENT].update(name='New test stage')
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New test stage')
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
@@ -2902,8 +2925,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     await Company.create(id=2, name='Old test company', sales_person=self.admin)
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['data'].update({'123_hermes_id_456': '1, 2'})
     #     r = await self.client.post(self.url, json=data)
     #     assert r.status_code == 200
     #
@@ -2913,8 +2936,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
     # async def test_single_duplicate_hermes_ids(self):
     #     await Company.create(id=1, name='Old test company', sales_person=self.admin)
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.CURRENT].update({'123_hermes_id_456': '1'})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['data'].update({'123_hermes_id_456': '1'})
     #     r = await self.client.post(self.url, json=data)
     #     assert r.status_code == 200
     #
@@ -2924,8 +2947,8 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     await Company.create(id=1, name='Old test company', sales_person=self.admin)
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.CURRENT].update({'123_hermes_id_456': 1})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['data'].update({'123_hermes_id_456': 1})
     #     r = await self.client.post(self.url, json=data)
     #     assert r.status_code == 200
     #

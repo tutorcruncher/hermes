@@ -14,7 +14,7 @@ from app.pipedrive._utils import app_logger
 
 class PDStatus(str, Enum):
     PREVIOUS = 'previous'
-    CURRENT = 'current'
+    DATA = 'data'
 
 
 class PDObjectNames(str, Enum):
@@ -313,7 +313,7 @@ class PDStage(PipedriveBaseModel):
 
 class WebhookMeta(HermesBaseModel):
     action: str
-    object: str
+    entity: str
 
 
 async def update_and_delete_objects(
@@ -413,23 +413,22 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
 
 class PipedriveEvent(HermesBaseModel):
-    # We validate the current and previous dicts below depending on the object type
     meta: WebhookMeta
-    current: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
+    data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, alias='data')
     previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
 
     @model_validator(mode='before')
     @classmethod
     def validate_object_type(cls, values):
-        obj_type = values['meta']['object']
-        for f in [PDStatus.CURRENT, PDStatus.PREVIOUS]:
+        obj_type = values['meta']['entity']
+        for f in [PDStatus.DATA, PDStatus.PREVIOUS]:
             if v := values.get(f):
                 v['obj_type'] = obj_type
             else:
                 values.pop(f, None)
         return values
 
-    @field_validator(PDStatus.CURRENT, PDStatus.PREVIOUS, mode='before')
+    @field_validator(PDStatus.DATA, PDStatus.PREVIOUS, mode='before')
     @classmethod
     def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
         """

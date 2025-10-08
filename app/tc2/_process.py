@@ -36,12 +36,14 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     return created, company
 
 
-async def _create_or_update_contact(tc2_sr: TCRecipient, company: Company) -> tuple[bool, Contact]:
+async def _create_or_update_contact(
+    tc2_client: TCClient, tc2_sr: TCRecipient, company: Company
+) -> tuple[bool, Contact]:
     """
     Creates or updates a Contact in our database from a TutorCruncher SR (linked to a Cligency).
     """
     contact_data = tc2_sr.contact_dict()
-    contact_data['company_id'] = company.id
+    contact_data.update(company_id=company.id, phone=tc2_client.user.phone)
     contact_id = contact_data.pop('tc2_sr_id')
     contact, created = await Contact.get_or_create(tc2_sr_id=contact_id, defaults=contact_data)
     if not created:
@@ -147,7 +149,7 @@ async def update_from_client_event(
             if i == 0 and company_created and not recipient.email:
                 recipient.email = tc2_client.user.email
 
-            contact_created, contact = await _create_or_update_contact(recipient, company=company)
+            contact_created, contact = await _create_or_update_contact(tc2_client, recipient, company=company)
             if contact_created:
                 contacts_created.append(contact)
             else:

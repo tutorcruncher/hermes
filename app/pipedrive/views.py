@@ -20,25 +20,44 @@ pipedrive_router = APIRouter()
 
 async def prepare_event_data(event_data: dict) -> dict:
     """
-    This function, `prepare_event_data`, processes the event data by handling custom fields 'hermes_id' and
-    'signup_questionnaire'.
-    For 'hermes_id', it retrieves all the pd_field_ids and checks if the previous value is a
-    string. If it is, it calls the function `handle_duplicate_hermes_ids` to handle any duplicate hermes_id.
-    For 'signup_questionnaire', it retrieves all the pd_field_ids and checks if the current and previous values are
-    different. If they are, it sets the current value back to the previous value.
+    Processes webhooks v2 event data by flattening custom fields and handling special field logic.
+
+    Custom fields in v2 come as objects with 'type' and 'value'/'id' keys.
+    We flatten these into the main data object for easier processing.
     """
+    # Handle webhooks v2 custom fields format: flatten custom_fields object into main object
+    for state in [PDStatus.DATA, PDStatus.PREVIOUS]:
+        if event_data.get(state) and isinstance(event_data[state], dict):
+            custom_fields = event_data[state].pop('custom_fields', None)
+            if custom_fields:
+                # In v2, custom fields are objects with 'type' and 'value' or 'id' keys
+                # We need to extract just the value and flatten into the main object
+                flattened_fields = {}
+                for field_id, field_data in custom_fields.items():
+                    if field_data is None:
+                        flattened_fields[field_id] = None
+                    elif isinstance(field_data, dict):
+                        # Extract 'value' or 'id' depending on the field type
+                        if 'value' in field_data:
+                            flattened_fields[field_id] = field_data['value']
+                        elif 'id' in field_data:
+                            flattened_fields[field_id] = field_data['id']
+                    else:
+                        # Fallback for unexpected formats
+                        flattened_fields[field_id] = field_data
+                event_data[state].update(flattened_fields)
 
     async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None):
         cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
         for pd_field_id in cf_fields:
-            for state in [PDStatus.PREVIOUS, PDStatus.CURRENT]:
+            for state in [PDStatus.PREVIOUS, PDStatus.DATA]:
                 if data.get(state) and pd_field_id in data[state] and isinstance(data[state][pd_field_id], str):
                     if handle_func == 'revert changes':
                         if state == PDStatus.PREVIOUS:
-                            data[PDStatus.CURRENT][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
+                            data[PDStatus.DATA][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
 
                     if callable(handle_func):
-                        data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['object'])
+                        data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['entity'])
         return data
 
     ## TODO: Re-enable in #282
@@ -54,7 +73,7 @@ async def prepare_event_data(event_data: dict) -> dict:
         for pd_field_id in deal_custom_fields:
             # revert any changes to inherited custom fields on a deal
             if event_data[PDStatus.PREVIOUS].get(pd_field_id):
-                event_data[PDStatus.CURRENT][pd_field_id] = event_data[PDStatus.PREVIOUS][pd_field_id]
+                event_data[PDStatus.DATA][pd_field_id] = event_data[PDStatus.PREVIOUS][pd_field_id]
 
     return event_data
 
@@ -67,23 +86,23 @@ async def callback(event: dict, tasks: BackgroundTasks):
     """
     event_data = await prepare_event_data(event)
     event_instance = PipedriveEvent(**event_data)
-    event_instance.current and await event_instance.current.a_validate()
+    event_instance.data and await event_instance.data.a_validate()
     event_instance.previous and await event_instance.previous.a_validate()
-    app_logger.info(f'Callback: event_instance received for {event_instance.meta.object}: {event_instance}')
-    if event_instance.meta.object == 'deal':
-        deal = await _process_pd_deal(event_instance.current, event_instance.previous)
+    app_logger.info(f'Callback: event_instance received for {event_instance.meta.entity}: {event_instance}')
+    if event_instance.meta.entity == 'deal':
+        deal = await _process_pd_deal(event_instance.data, event_instance.previous)
         company = await deal.company
         if company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
-    elif event_instance.meta.object == PDObjectNames.PIPELINE:
-        await _process_pd_pipeline(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == PDObjectNames.STAGE:
-        await _process_pd_stage(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == PDObjectNames.PERSON:
-        await _process_pd_person(event_instance.current, event_instance.previous)
-    elif event_instance.meta.object == PDObjectNames.ORGANISATION:
-        company = await _process_pd_organisation(event_instance.current, event_instance.previous)
+    elif event_instance.meta.entity == PDObjectNames.PIPELINE:
+        await _process_pd_pipeline(event_instance.data, event_instance.previous)
+    elif event_instance.meta.entity == PDObjectNames.STAGE:
+        await _process_pd_stage(event_instance.data, event_instance.previous)
+    elif event_instance.meta.entity == PDObjectNames.PERSON:
+        await _process_pd_person(event_instance.data, event_instance.previous)
+    elif event_instance.meta.entity == PDObjectNames.ORGANISATION:
+        company = await _process_pd_organisation(event_instance.data, event_instance.previous)
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
