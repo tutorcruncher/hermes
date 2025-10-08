@@ -92,7 +92,7 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': int(expiry.timestamp())}
     sig = await sign_args(*kwargs.values())
 
-    return {'link': f"{admin.call_booker_url}?{urlencode({'s': sig, **kwargs})}"}
+    return {'link': f'{admin.call_booker_url}?{urlencode({"s": sig, **kwargs})}'}
 
 
 @cb_router.get('/support-link/validate/')

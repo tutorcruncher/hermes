@@ -9,7 +9,6 @@ from pytz import utc
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
-from app.pipedrive._schema import PDStatus
 from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sales_call
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
@@ -101,10 +100,8 @@ class TestMultipleServices(HermesTestCase):
 
         assert not await Company.exists()
         pd_org_data = {
-            'v': 1,
-            'matches_filters': {'current': []},
-            'meta': {'action': 'updated', 'object': 'organization'},
-            'current': {
+            'meta': {'action': 'change', 'entity': 'organization', 'version': '2.0'},
+            'data': {
                 'owner_id': 10,
                 'id': 20,
                 'name': 'Test company',
@@ -112,7 +109,6 @@ class TestMultipleServices(HermesTestCase):
                 '123_source_456': None,
             },
             'previous': {},
-            'event': 'updated.organization',
         }
 
         r = await self.client.post(self.pipedrive_callback, json=pd_org_data)
@@ -230,9 +226,9 @@ class TestMultipleServices(HermesTestCase):
         assert not await Company.exists()
 
         data = copy.deepcopy(basic_pd_org_data())
-        data['previous'] = copy.deepcopy(data['current'])
+        data['previous'] = copy.deepcopy(data['data'])
         data['previous'].update(id=1)
-        data['current'].update(id=1, name='New test company')
+        data['data'].update(id=1, name='New test company')
 
         r = await self.client.post(self.pipedrive_callback, json=data)
         assert r.status_code == 200, r.json()
@@ -875,9 +871,9 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     }
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-    #     data[PDStatus.CURRENT].update(**{'name': 'New test company', '123_source_456': 'Google'})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['previous'].update(hermes_id=company.id)
+    #     data['data'].update(**{'name': 'New test company', '123_source_456': 'Google'})
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200, r.json()
     #     company = await Company.get()
@@ -1020,9 +1016,9 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     }
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.PREVIOUS].update(hermes_id=company.id)
-    #     data[PDStatus.CURRENT].update(**{'123_source_456': 'Google', 'hermes_id': company.id})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['previous'].update(hermes_id=company.id)
+    #     data['data'].update(**{'123_source_456': 'Google', 'hermes_id': company.id})
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200, r.json()
     #     company = await Company.get()
@@ -1178,15 +1174,15 @@ class TestDealCustomFieldInheritance(HermesTestCase):
         await CustomFieldValue.create(custom_field=deal_source_field, deal=deal, value='Google')
         await CustomFieldValue.create(custom_field=deal_source_field, deal=deal2, value='Google')
         data = copy.deepcopy(basic_pd_deal_data())
-        data[PDStatus.CURRENT]['pipeline_id'] = self.pipeline.pd_pipeline_id
-        data[PDStatus.CURRENT]['stage_id'] = self.stage.pd_stage_id
-        data[PDStatus.CURRENT]['user_id'] = admin.pd_owner_id
-        data[PDStatus.CURRENT]['org_id'] = 1
-        data[PDStatus.CURRENT]['person_id'] = 1
-        data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-        data[PDStatus.PREVIOUS].update(**{'234_source_567': 'Google', 'hermes_id': deal.id})
-        data[PDStatus.PREVIOUS].update(hermes_id=deal.id)
-        data[PDStatus.CURRENT].update(**{'234_source_567': 'Yahoo', 'hermes_id': deal.id})
+        data['data']['pipeline_id'] = self.pipeline.pd_pipeline_id
+        data['data']['stage_id'] = self.stage.pd_stage_id
+        data['data']['user_id'] = admin.pd_owner_id
+        data['data']['org_id'] = 1
+        data['data']['person_id'] = 1
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous'].update(**{'234_source_567': 'Google', 'hermes_id': deal.id})
+        data['previous'].update(hermes_id=deal.id)
+        data['data'].update(**{'234_source_567': 'Yahoo', 'hermes_id': deal.id})
         r = await self.client.post(self.pipedrive_callback, json=data)
         assert r.status_code == 200, r.json()
         company = await Company.get()
@@ -1307,8 +1303,8 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     }
     #
     #     data = copy.deepcopy(basic_pd_org_data())
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.CURRENT].update({'123_hermes_id_456': '1, 2'})
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['data'].update({'123_hermes_id_456': '1, 2'})
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200
     #
@@ -1432,7 +1428,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     assert await Deal.exists()
     #
     #     data = copy.deepcopy(basic_pd_deal_data())
-    #     data[PDStatus.CURRENT].update(
+    #     data['data'].update(
     #         **{
     #             '345_hermes_id_678': f'{deal.id},{deal2.id}',
     #             'title': 'Old test deal',
@@ -1444,7 +1440,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #             'user_id': 1,
     #         }
     #     )
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+    #     data['previous'] = copy.deepcopy(data['data'])
     #
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200, r.json()
@@ -1561,7 +1557,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     assert await Deal.exists()
     #
     #     data = copy.deepcopy(basic_pd_deal_data())
-    #     data[PDStatus.CURRENT].update(
+    #     data['data'].update(
     #         **{
     #             '345_hermes_id_678': f'{deal.id},{deal2.id}',
     #             'title': 'Old test deal',
@@ -1573,8 +1569,8 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #             'user_id': 1,
     #         }
     #     )
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
-    #     data[PDStatus.CURRENT].update(title='New test deal')
+    #     data['previous'] = copy.deepcopy(data['data'])
+    #     data['data'].update(title='New test deal')
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200, r.json()
     #     deal = await Deal.get()
@@ -1683,7 +1679,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #     )
     #
     #     data = copy.deepcopy(basic_pd_person_data())
-    #     data[PDStatus.CURRENT].update(
+    #     data['data'].update(
     #         **{
     #             '234_hermes_id_567': f'{contact.id},{contact2.id}',
     #             'name': 'Brian Blessed',
@@ -1692,7 +1688,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
     #             'owner_id': 1,
     #         }
     #     )
-    #     data[PDStatus.PREVIOUS] = copy.deepcopy(data[PDStatus.CURRENT])
+    #     data['previous'] = copy.deepcopy(data['data'])
     #
     #     r = await self.client.post(self.pipedrive_callback, json=data)
     #     assert r.status_code == 200, r.json()
