@@ -13,7 +13,7 @@ from app.pipedrive._utils import app_logger
 
 class PDStatus(str, Enum):
     PREVIOUS = 'previous'
-    DATA = 'data'  # Webhooks v2 uses 'data' instead of 'current'
+    DATA = 'data'
 
 
 class PDObjectNames(str, Enum):
@@ -396,8 +396,6 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
 
 class PipedriveEvent(HermesBaseModel):
-    # We validate the data and previous dicts below depending on the object type
-    # In webhooks v2, 'current' is now called 'data'
     meta: WebhookMeta
     data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, alias='data')
     previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
@@ -413,7 +411,7 @@ class PipedriveEvent(HermesBaseModel):
                 values.pop(f, None)
         return values
 
-    @field_validator('data', 'previous', mode='before')
+    @field_validator(PDStatus.DATA, PDStatus.PREVIOUS, mode='before')
     @classmethod
     def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
         """
