@@ -128,13 +128,13 @@ class Organisation(PipedriveBaseModel):
                 self.bdr_person = await Admin.get(id=self.bdr_person)
             admins_from_hermes['bdr_person_id'] = self.bdr_person.id
 
-        return {
-            'pd_org_id': self.id,
-            'name': self.name,
-            'sales_person_id': self.admin.id,  # noqa: F821 - Added in a_validate
-            **_remove_nulls(**cf_data_from_hermes),
-            **_remove_nulls(**admins_from_hermes),
-        }
+        return _remove_nulls(
+            pd_org_id=self.id,
+            name=self.name,
+            sales_person_id=self.admin.id if self.admin else None,  # noqa: F821 - Added in a_validate
+            **cf_data_from_hermes,
+            **admins_from_hermes,
+        )
 
 
 # Used to get only alphanumeric characters & whitespace for client entering phone numbers
@@ -214,10 +214,10 @@ class Person(PipedriveBaseModel):
 
 class Activity(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    due_date: str
-    due_time: str
-    subject: str
-    user_id: int
+    due_date: Optional[str] = None
+    due_time: Optional[str] = None
+    subject: Optional[str] = None
+    user_id: Optional[int] = None
     deal_id: Optional[int] = None
     person_id: Optional[int] = None
     org_id: Optional[int] = None
@@ -246,14 +246,13 @@ class Activity(PipedriveBaseModel):
 
 class PDDeal(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    title: str
-    org_id: int
+    title: Optional[str] = None
     person_id: Optional[int] = ForeignKeyField(None, model=Contact, fk_field_name='pd_person_id', null_if_invalid=True)
-    org_id: int = ForeignKeyField(model=Company, fk_field_name='pd_org_id')
-    user_id: int = ForeignKeyField(model=Admin, fk_field_name='pd_owner_id')
-    pipeline_id: int = ForeignKeyField(model=Pipeline, fk_field_name='pd_pipeline_id')
-    stage_id: int = ForeignKeyField(model=Stage, fk_field_name='pd_stage_id')
-    status: str
+    org_id: Optional[int] = ForeignKeyField(None, model=Company, fk_field_name='pd_org_id')
+    user_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+    pipeline_id: Optional[int] = ForeignKeyField(None, model=Pipeline, fk_field_name='pd_pipeline_id')
+    stage_id: Optional[int] = ForeignKeyField(None, model=Stage, fk_field_name='pd_stage_id')
+    status: Optional[str] = None
 
     _get_obj_id = field_validator('user_id', 'person_id', 'org_id', mode='before')(_get_obj_id)
     obj_type: Literal['deal'] = Field('deal', exclude=True)
@@ -279,22 +278,22 @@ class PDDeal(PipedriveBaseModel):
         return cls(**final_kwargs)
 
     async def deal_dict(self) -> dict:
-        return {
-            'pd_deal_id': self.id,
-            'name': self.title,
-            'status': self.status,
-            'admin_id': self.admin.id,  # noqa: F821 - Added in a_validate
-            'company_id': self.company.id,  # noqa: F821 - Added in a_validate
-            'contact_id': self.contact and self.contact.id,  # noqa: F821 - Added in a_validate
-            'pipeline_id': self.pipeline.id,  # noqa: F821 - Added in a_validate
-            'stage_id': self.stage.id,  # noqa: F821 - Added in a_validate
-        }
+        return _remove_nulls(
+            pd_deal_id=self.id,
+            name=self.title,
+            status=self.status,
+            admin_id=self.admin.id if self.admin else None,  # noqa: F821 - Added in a_validate
+            company_id=self.company.id if self.company else None,  # noqa: F821 - Added in a_validate
+            contact_id=self.contact and self.contact.id,  # noqa: F821 - Added in a_validate
+            pipeline_id=self.pipeline.id if self.pipeline else None,  # noqa: F821 - Added in a_validate
+            stage_id=self.stage.id if self.stage else None,  # noqa: F821 - Added in a_validate
+        )
 
 
 class PDPipeline(PipedriveBaseModel):
-    id: int
-    name: str
-    active: bool
+    id: Optional[int] = None
+    name: Optional[str] = None
+    active: Optional[bool] = None
     obj_type: Literal['pipeline'] = Field('pipeline', exclude=True)
 
     async def pipeline_dict(self):
@@ -302,9 +301,9 @@ class PDPipeline(PipedriveBaseModel):
 
 
 class PDStage(PipedriveBaseModel):
-    id: int
-    name: str
-    pipeline_id: int
+    id: Optional[int] = None
+    name: Optional[str] = None
+    pipeline_id: Optional[int] = None
     obj_type: Literal['stage'] = Field('stage', exclude=True)
 
     async def stage_dict(self):

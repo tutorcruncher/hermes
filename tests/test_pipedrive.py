@@ -2793,6 +2793,118 @@ class PipedriveCallbackTestCase(HermesTestCase):
         deal = await Deal.get()
         assert deal.name == 'New test deal'
 
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_deal_update_partial_only_stage_changed(self, mock_add_task):
+        """Test v2 webhook with only changed field (stage_id) in data and previous"""
+        stage1 = await Stage.create(pd_stage_id=50, name='Stage 1')
+        stage2 = await Stage.create(pd_stage_id=51, name='Stage 2')
+        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage1)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
+        deal = await Deal.create(
+            name='Test deal',
+            pd_deal_id=40,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage1,
+            admin=self.admin,
+            status='open',
+        )
+
+        await build_custom_field_schema()
+
+        # V2 webhook only sends changed fields
+        data = {
+            'data': {
+                'id': 40,
+                'stage_id': 51,
+                'hermes_id': deal.id,
+            },
+            'previous': {
+                'stage_id': 50,
+                'hermes_id': deal.id,
+            },
+            'meta': {'action': 'change', 'entity': 'deal', 'version': '2.0'},
+        }
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert await deal.stage == stage2
+        assert deal.name == 'Test deal'  # Unchanged
+        assert await deal.company == company  # Unchanged
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_deal_update_partial_multiple_fields(self, mock_add_task):
+        """Test v2 webhook with multiple changed fields but not all fields"""
+        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
+        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
+        deal = await Deal.create(
+            name='Old deal name',
+            pd_deal_id=40,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage,
+            admin=self.admin,
+            status='open',
+        )
+
+        await build_custom_field_schema()
+
+        # V2 webhook sends only changed fields
+        data = {
+            'data': {
+                'id': 40,
+                'title': 'New deal name',
+                'status': 'won',
+                'hermes_id': deal.id,
+            },
+            'previous': {
+                'title': 'Old deal name',
+                'status': 'open',
+                'hermes_id': deal.id,
+            },
+            'meta': {'action': 'change', 'entity': 'deal', 'version': '2.0'},
+        }
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert deal.name == 'New deal name'
+        assert deal.status == 'won'
+        assert await deal.stage == stage  # Unchanged
+        assert await deal.pipeline == pipeline  # Unchanged
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_org_update_partial_only_name_changed(self, mock_add_task):
+        """Test v2 webhook for org with only name field changed"""
+        company = await Company.create(name='Old Company Name', pd_org_id=20, sales_person=self.admin)
+        await build_custom_field_schema()
+
+        # V2 webhook only sends changed field
+        data = {
+            'data': {
+                'id': 20,
+                'name': 'New Company Name',
+                'hermes_id': company.id,
+            },
+            'previous': {
+                'name': 'Old Company Name',
+                'hermes_id': company.id,
+            },
+            'meta': {'action': 'change', 'entity': 'organization', 'version': '2.0'},
+        }
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'New Company Name'
+        assert await company.sales_person == self.admin  # Unchanged
+
     async def test_pipeline_create(self):
         # They are created in the test setup
         await Pipeline.all().delete()
