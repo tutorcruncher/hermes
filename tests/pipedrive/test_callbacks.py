@@ -788,6 +788,32 @@ class PipedriveCallbackTestCase(HermesTestCase):
         contact = await Contact.get()
         assert contact.name == 'Jessica Jones'
 
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_with_null_date_fields(self, mock_request):
+        """Test that updating persons with None/null date fields doesn't cause parsing errors"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(
+            first_name='John',
+            last_name='Doe',
+            pd_person_id=30,
+            company=company,
+        )
+
+        data = copy.deepcopy(basic_pd_person_data())
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous']['234_hermes_id_567'] = contact.id
+        data['data']['234_hermes_id_567'] = contact.id
+        data['data'].update(name='Jane Doe')
+
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.first_name == 'Jane'
+        assert contact.last_name == 'Doe'
+
     ## TODO: Re-enable in #282
     # @mock.patch('app.pipedrive.api.session.request')
     # async def test_person_update_merged(self, mock_request):
@@ -1168,6 +1194,36 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert await deal.pipeline == pipeline  # Unchanged
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_deal_update_with_null_date_fields(self, mock_add_task):
+        """Test that updating deals with None/null date fields doesn't cause parsing errors"""
+        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
+        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', pd_person_id=30, company=company)
+        deal = await Deal.create(
+            name='Test deal',
+            pd_deal_id=40,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage,
+            admin=self.admin,
+        )
+
+        data = copy.deepcopy(basic_pd_deal_data())
+        data['previous'] = copy.deepcopy(data['data'])
+        data['previous']['hermes_id'] = deal.id
+        data['data']['hermes_id'] = deal.id
+        data['data']['close_time'] = None
+        data['data']['title'] = 'Updated deal'
+
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError
+        assert r.status_code == 200, r.json()
+        deal = await Deal.get()
+        assert deal.name == 'Updated deal'
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_org_update_partial_only_name_changed(self, mock_add_task):
         """Test v2 webhook for org with only name field changed"""
         company = await Company.create(name='Old Company Name', pd_org_id=20, sales_person=self.admin)
@@ -1256,6 +1312,22 @@ class PipedriveCallbackTestCase(HermesTestCase):
         pipeline = await Pipeline.get()
         assert pipeline.name == 'New test pipeline'
 
+    async def test_pipeline_update_with_null_fields(self):
+        """Test that updating pipelines with None/null fields doesn't cause parsing errors"""
+        await Pipeline.all().delete()
+        await Stage.all().delete()
+
+        await Pipeline.create(name='Old Pipeline', pd_pipeline_id=60)
+        data = copy.deepcopy(basic_pd_pipeline_data())
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New Pipeline', active=None)
+
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError
+        assert r.status_code == 200, r.json()
+        pipeline = await Pipeline.get()
+        assert pipeline.name == 'New Pipeline'
+
     async def test_stage_create(self):
         # They are created in the test setup
         await Pipeline.all().delete()
@@ -1318,6 +1390,22 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         stage = await Stage.get()
         assert stage.name == 'New test stage'
+
+    async def test_stage_update_with_null_fields(self):
+        """Test that updating stages with None/null fields doesn't cause parsing errors"""
+        await Pipeline.all().delete()
+        await Stage.all().delete()
+
+        await Stage.create(name='Old Stage', pd_stage_id=50)
+        data = copy.deepcopy(basic_pd_stage_data())
+        data['previous'] = copy.deepcopy(data['data'])
+        data['data'].update(name='New Stage', pipeline_id=None)
+
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError
+        assert r.status_code == 200, r.json()
+        stage = await Stage.get()
+        assert stage.name == 'New Stage'
 
     ## TODO: Re-enable in #282
     # async def test_duplicate_hermes_ids(self):

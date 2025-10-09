@@ -88,6 +88,8 @@ async def _process_pd_organisation(
                 old_org_data = old_pd_org and await old_pd_org.company_dict(company_custom_fields)
                 new_org_data = await current_pd_org.company_dict(company_custom_fields)
                 if old_org_data != new_org_data:
+                    # Filter out None values to prevent datetime parsing errors
+                    new_org_data = {k: v for k, v in new_org_data.items() if v is not None}
                     await company.update_from_dict(new_org_data)
                     await company.save()
                     app_logger.info('Callback: updating Company %s from Organisation %s', company.id, current_pd_org.id)
@@ -172,6 +174,8 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
                 old_data = old_pd_person and await old_pd_person.contact_dict()
                 new_data = await current_pd_person.contact_dict()
                 if new_data['company_id'] and old_data != new_data:
+                    # Filter out None values to prevent datetime parsing errors
+                    new_data = {k: v for k, v in new_data.items() if v is not None}
                     await contact.update_from_dict(new_data)
                     await contact.save()
                     app_logger.info('Callback: updating Contact %s from Person %s', contact.id, current_pd_person.id)
@@ -211,6 +215,8 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
                 new_data = await current_pd_deal.deal_dict()
 
                 if old_data != new_data:
+                    # Filter out None values to prevent datetime parsing errors
+                    new_data = {k: v for k, v in new_data.items() if v is not None}
                     await deal.update_from_dict(new_data)
                     await deal.save()
                     app_logger.info('Callback: updating Deal %s from PDDeal %s', deal.id, current_pd_deal.id)
@@ -241,6 +247,8 @@ async def _process_pd_pipeline(
                 old_data = old_pd_pipeline and await old_pd_pipeline.pipeline_dict()
                 new_data = await current_pd_pipeline.pipeline_dict()
                 if old_data != new_data:
+                    # Filter out None values to prevent datetime parsing errors
+                    new_data = {k: v for k, v in new_data.items() if v is not None}
                     await pipeline.update_from_dict(new_data)
                     await pipeline.save()
                     app_logger.info(
@@ -272,6 +280,8 @@ async def _process_pd_stage(current_pd_stage: Optional[PDStage], old_pd_stage: O
                 old_data = old_pd_stage and await old_pd_stage.stage_dict()
                 new_data = await current_pd_stage.stage_dict()
                 if old_data != new_data:
+                    # Filter out None values to prevent datetime parsing errors
+                    new_data = {k: v for k, v in new_data.items() if v is not None}
                     await stage.update_from_dict(new_data)
                     await stage.save()
                     app_logger.info('Callback: updating Stage %s from PDStage %s', stage.id, current_pd_stage.id)
