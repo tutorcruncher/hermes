@@ -1,3 +1,4 @@
+import datetime
 import json
 from typing import TYPE_CHECKING, Any, Optional, Type
 
@@ -220,6 +221,8 @@ async def get_custom_fieldinfo(
         field_kwargs.update(annotation=Optional[str], default=None)
     elif field.field_type == CustomField.TYPE_BOOL:
         field_kwargs.update(annotation=Optional[bool], default=None)
+    elif field.field_type == CustomField.TYPE_DATE:
+        field_kwargs.update(annotation=Optional[datetime.date], default=None)
     elif field.field_type == CustomField.TYPE_FK_FIELD:
         field_kwargs.update(
             annotation=Optional[int],
@@ -239,8 +242,7 @@ async def build_custom_field_schema():
     Adds extra fields to the schema for the Pydantic models based on CustomFields in the DB
     """
     from app.pipedrive.tasks import pd_rebuild_schema_with_custom_fields
-    from app.tc2.tasks import tc2_rebuild_schema_with_custom_fields
 
-    py_models = list(await pd_rebuild_schema_with_custom_fields()) + list(await tc2_rebuild_schema_with_custom_fields())
+    py_models = list(await pd_rebuild_schema_with_custom_fields())
     for model in py_models:
         model.model_rebuild(force=True)

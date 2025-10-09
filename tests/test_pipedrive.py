@@ -1,6 +1,6 @@
 import copy
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest import mock
 from urllib.parse import parse_qs
 
@@ -133,7 +133,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 'id': 1,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -247,7 +247,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 '123_hermes_id_456': company.id,
                 '123_bdr_person_id_456': bdr_person.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -352,7 +352,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'id': 1,
                 '123_website_456': 'https://junes.com',
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -431,7 +431,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -461,7 +461,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -559,7 +559,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -613,7 +613,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -710,7 +710,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -758,7 +758,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -841,7 +841,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -955,7 +955,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1045,7 +1045,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1188,7 +1188,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '123_tc2_color_456': None,
                 '123_website_456': company.website,
                 '123_paid_invoice_count_456': company.paid_invoice_count,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1212,6 +1212,294 @@ class PipedriveTasksTestCase(HermesTestCase):
         }
         assert (await Contact.get()).pd_person_id == 1
         assert self.pipedrive.db['deals'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_date_custom_field_create_company(self, mock_request):
+        """Test creating a company with a date custom field value"""
+        from datetime import date
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        date_field = await CustomField.create(
+            name='Contract Start Date',
+            field_type=CustomField.TYPE_DATE,
+            pd_field_id='123_contract_start_date_456',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+        )
+
+        # Create a custom field value
+        contract_date = date(2024, 1, 15)
+        await CustomFieldValue.create(
+            custom_field=date_field,
+            company=company,
+            value=str(contract_date),
+        )
+
+        await pd_post_process_client_event(company)
+
+        # Verify the date is stored in the database
+        cf_value = await CustomFieldValue.get(custom_field=date_field, company=company)
+        assert cf_value.value == '2024-01-15'
+
+        # Verify the date is sent to Pipedrive
+        org_data = self.pipedrive.db['organizations'][1]
+        assert org_data['123_contract_start_date_456'] == '2024-01-15'
+        assert org_data['name'] == 'Test Company'
+        assert org_data['address_country'] == 'GB'
+        assert org_data['owner_id'] == 99
+        assert org_data['123_hermes_id_456'] == company.id
+        # With mode='json', datetime is serialized to ISO format string
+        assert org_data['created'] == company.created.isoformat().replace('+00:00', 'Z')
+
+        await date_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_date_custom_field_update_from_pipedrive(self, mock_request):
+        """Test updating a company with a date custom field from Pipedrive webhook"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        date_field = await CustomField.create(
+            name='Contract Start Date',
+            field_type=CustomField.TYPE_DATE,
+            pd_field_id='123_contract_start_date_456',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+        )
+
+        # Simulate receiving a webhook from Pipedrive with a date value
+        pd_org_data = {
+            'meta': {'action': 'updated', 'entity': 'organization', 'version': '2.0'},
+            'data': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+                '123_contract_start_date_456': '2024-03-20',
+            },
+            'previous': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+            },
+        }
+
+        r = await self.client.post('/pipedrive/callback/', json=pd_org_data)
+        assert r.status_code == 200, r.json()
+
+        # Verify the date is stored in the database
+        cf_value = await CustomFieldValue.get(custom_field=date_field, company=company)
+        assert cf_value.value == '2024-03-20'
+
+        await date_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_date_custom_field_update_value(self, mock_request):
+        """Test updating an existing date custom field value"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        date_field = await CustomField.create(
+            name='Contract Start Date',
+            field_type=CustomField.TYPE_DATE,
+            pd_field_id='123_contract_start_date_456',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(first_name='Steve', last_name='Jobs', username='climan@example.com', pd_owner_id=99)
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin)
+
+        initial_date = date(2024, 1, 15)
+        await CustomFieldValue.create(custom_field=date_field, company=company, value=initial_date)
+
+        pd_org_data = {
+            'meta': {'action': 'updated', 'entity': 'organization', 'version': '2.0'},
+            'data': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+                '123_contract_start_date_456': '2024-06-30',
+            },
+            'previous': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+                '123_contract_start_date_456': '2024-01-15',
+            },
+        }
+
+        r = await self.client.post('/pipedrive/callback/', json=pd_org_data)
+        assert r.status_code == 200, r.json()
+
+        # Verify the date was updated
+        cf_value = await CustomFieldValue.get(custom_field=date_field, company=company)
+        assert cf_value.value == '2024-06-30'
+
+        # Verify only one custom field value exists (updated, not created new)
+        cf_values = await CustomFieldValue.filter(custom_field=date_field, company=company)
+        assert len(cf_values) == 1
+
+        await date_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_date_custom_field_with_none_value(self, mock_request):
+        """Test that None/null date values are handled properly"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        date_field = await CustomField.create(
+            name='Contract Start Date',
+            field_type=CustomField.TYPE_DATE,
+            pd_field_id='123_contract_start_date_456',
+            linked_object_type='Company',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+        )
+
+        # Simulate receiving a webhook with None date value
+        pd_org_data = {
+            'meta': {'action': 'updated', 'entity': 'organization', 'version': '2.0'},
+            'data': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+                '123_contract_start_date_456': None,
+            },
+            'previous': {
+                'owner_id': 99,
+                'id': 20,
+                'name': 'Test Company',
+                'address_country': 'GB',
+                '123_hermes_id_456': company.id,
+            },
+        }
+
+        r = await self.client.post('/pipedrive/callback/', json=pd_org_data)
+        assert r.status_code == 200, r.json()
+
+        # Verify no custom field value was created for None
+        cf_values = await CustomFieldValue.filter(custom_field=date_field, company=company)
+        assert len(cf_values) == 0
+
+        await date_field.delete()
+        await build_custom_field_schema()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_date_custom_field_on_deal(self, mock_request):
+        """Test date custom field on Deal objects"""
+        from datetime import date
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        date_field = await CustomField.create(
+            name='Expected Close Date',
+            field_type=CustomField.TYPE_DATE,
+            pd_field_id='345_expected_close_date_678',
+            linked_object_type='Deal',
+        )
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+        )
+        contact = await Contact.create(
+            first_name='John',
+            last_name='Doe',
+            email='john@test.com',
+            company=company,
+        )
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            admin=admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+        )
+
+        # Create a date custom field value for the deal
+        close_date = date(2024, 12, 31)
+        await CustomFieldValue.create(
+            custom_field=date_field,
+            deal=deal,
+            value=str(close_date),
+        )
+
+        from app.pipedrive.tasks import pd_post_process_sales_call
+
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            admin=admin,
+            start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            end_time=datetime(2024, 1, 1, 1, tzinfo=timezone.utc),
+            meeting_type=Meeting.TYPE_SALES,
+        )
+
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+
+        # Verify the date is sent to Pipedrive for the deal
+        assert '345_expected_close_date_678' in self.pipedrive.db['deals'][1]
+        assert self.pipedrive.db['deals'][1]['345_expected_close_date_678'] == '2024-12-31'
+
+        await date_field.delete()
+        await build_custom_field_schema()
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event_with_deal(self, mock_request):
@@ -1263,7 +1551,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1337,7 +1625,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_tc2_cligency_id_456': 444444,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1371,7 +1659,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
                 '123_tc2_cligency_id_456': 444444,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1444,7 +1732,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1487,7 +1775,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1550,7 +1838,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'name': 'Julies Ltd',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1593,7 +1881,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1682,7 +1970,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
                 '123_tc2_status_456': company.tc2_status,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1735,7 +2023,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -1789,7 +2077,7 @@ class PipedriveTasksTestCase(HermesTestCase):
                 'address_country': 'GB',
                 'owner_id': 99,
                 '123_hermes_id_456': company.id,
-                'created': company.created,
+                'created': company.created.isoformat().replace('+00:00', 'Z'),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -3120,20 +3408,21 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await pd_post_process_client_event(company, deal)
 
         dt = dt.replace(tzinfo=timezone.utc)
+        dt_str = dt.isoformat().replace('+00:00', 'Z')
         # Assert GCLID, pay dates, and event tracking fields are sent to Pipedrive
         assert self.pipedrive.db['organizations'] == {
             1: {
                 'name': 'Test Agency',
                 'address_country': 'GB',
                 'owner_id': 99,
-                'created': dt,
-                'pay0_dt': dt,
-                'pay1_dt': dt,
-                'pay3_dt': dt,
+                'created': dt_str,
+                'pay0_dt': dt_str,
+                'pay1_dt': dt_str,
+                'pay3_dt': dt_str,
                 'gclid': 'test-gclid-123',
-                'gclid_expiry_dt': dt,
-                'email_confirmed_dt': dt,
-                'card_saved_dt': dt,
+                'gclid_expiry_dt': dt_str,
+                'email_confirmed_dt': dt_str,
+                'card_saved_dt': dt_str,
                 '123_hermes_id_456': company.id,
                 'id': 1,
             },

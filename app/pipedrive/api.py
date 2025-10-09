@@ -126,14 +126,14 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     @return: Organisation object
     """
     hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.model_dump(by_alias=True)
+    hermes_org_data = hermes_org.model_dump(mode='json', by_alias=True)
     if company.pd_org_id:
         # get by pipedrive Org ID
         pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
         app_logger.info(
             f'Found org {pipedrive_org.id} from company {company.id} by company.pd_org_id {company.pd_org_id}'
         )
-        if hermes_org_data != pipedrive_org.model_dump(by_alias=True):
+        if hermes_org_data != pipedrive_org.model_dump(mode='json', by_alias=True):
             # update
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
             app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
@@ -172,10 +172,10 @@ async def get_and_create_or_update_person(contact: Contact) -> Person:
     Get and create or update a Person within Pipedrive.
     """
     hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.model_dump(by_alias=True)
+    hermes_person_data = hermes_person.model_dump(mode='json', by_alias=True)
     if contact.pd_person_id:
         pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.model_dump(by_alias=True):
+        if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
             await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
             app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
     else:
@@ -208,12 +208,12 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     Get and create or update a Deal within Pipedrive.
     """
     pd_deal = await PDDeal.from_deal(deal)
-    pd_deal_data = pd_deal.model_dump(by_alias=True)
+    pd_deal_data = pd_deal.model_dump(mode='json', by_alias=True)
     if deal.pd_deal_id:
         # get by pipedrive Deal ID
         with logfire.span('getting deal {deal}', deal=deal.id):
             pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
-        if pd_deal_data != pipedrive_deal.model_dump(by_alias=True):
+        if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
             with logfire.span('updating deal {deal}', deal=deal.id):
                 try:
                     await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
