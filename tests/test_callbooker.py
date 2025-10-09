@@ -517,6 +517,26 @@ class MeetingBookingTestCase(HermesTestCase):
         assert r.status_code == 400
         assert r.json() == {'message': 'You already have a meeting booked around this time.', 'status': 'error'}
 
+    async def test_contact_without_email(self):
+        """Test that a contact without an email address cannot book a meeting"""
+        sales_person = await Admin.create(
+            first_name='Steve', last_name='Jobs', username='climan@example.com', is_support_person=True
+        )
+        company = await Company.create(
+            name='Junes Ltd', website='https://junes.com', country='GB', sales_person=sales_person
+        )
+        # Create a contact with only a phone number, no email
+        await Contact.create(first_name='Brain', last_name='Junes', phone='3475154177', company_id=company.id)
+
+        meeting_data = CB_MEETING_DATA.copy()
+        # Remove email and use phone instead
+        meeting_data.pop('email')
+        meeting_data.update(phone='3475154177', company_id=company.id, admin_id=sales_person.id)
+
+        r = await self.client.post(self.url, json=meeting_data)
+        assert r.status_code == 400
+        assert r.json() == {'message': 'Contact must have an email address to book a meeting.', 'status': 'error'}
+
     @mock.patch('fastapi.BackgroundTasks.add_task')
     @mock.patch('app.callbooker._google.AdminGoogleCalendar._create_resource')
     async def test_error_creating_gcal_event(self, mock_gcal_builder, mock_add_task):

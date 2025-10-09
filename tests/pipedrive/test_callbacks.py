@@ -116,6 +116,59 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.sales_person_id == self.admin.id
 
     @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_create_with_null_date_fields(self, mock_request):
+        """Test that organizations with None/null date fields don't cause parsing errors"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        # Create date custom fields that map to hermes fields
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_pay0_dt_456',
+            hermes_field_name='pay0_dt',
+            name='Pay0 Date',
+            field_type='date',
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_pay1_dt_456',
+            hermes_field_name='pay1_dt',
+            name='Pay1 Date',
+            field_type='date',
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_gclid_expiry_dt_456',
+            hermes_field_name='gclid_expiry_dt',
+            name='GCLID Expiry Date',
+            field_type='date',
+        )
+        await build_custom_field_schema()
+
+        # Simulate webhook data with null date fields (like the error case)
+        data = {
+            'meta': {'action': 'create', 'entity': 'organization'},
+            'data': {
+                'id': 17430,
+                'name': 'personal',
+                'owner_id': 10,  # Use the test admin's pd_owner_id
+                'address_country': None,
+                '123_pay0_dt_456': None,
+                '123_pay1_dt_456': None,
+                '123_gclid_expiry_dt_456': None,
+            },
+            'previous': None,
+        }
+
+        assert not await Company.exists()
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError about "expected string or bytes-like object"
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'personal'
+        assert company.pay0_dt is None
+        assert company.pay1_dt is None
+        assert company.gclid_expiry_dt is None
+
+    @mock.patch('app.pipedrive.api.session.request')
     async def test_org_create_with_custom_hermes_field(self, mock_request):
         website_field = await CustomField.create(
             linked_object_type='Company',
@@ -317,6 +370,63 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         company = await Company.get()
         assert company.name == 'New test company'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_with_null_date_fields(self, mock_request):
+        """Test that updating organizations with None/null date fields doesn't cause parsing errors"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        # Create date custom fields that map to hermes fields
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_pay0_dt_456',
+            hermes_field_name='pay0_dt',
+            name='Pay0 Date',
+            field_type='date',
+        )
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='123_email_confirmed_dt_456',
+            hermes_field_name='email_confirmed_dt',
+            name='Email Confirmed Date',
+            field_type='date',
+        )
+        await build_custom_field_schema()
+
+        company = await Company.create(
+            name='Test company',
+            pd_org_id=17430,
+            sales_person=self.admin,
+        )
+
+        # Simulate webhook data for an update with null date fields
+        data = {
+            'meta': {'action': 'update', 'entity': 'organization'},
+            'data': {
+                'id': 17430,
+                'name': 'Test company',
+                'owner_id': 10,
+                'address_country': None,
+                '123_pay0_dt_456': None,
+                '123_email_confirmed_dt_456': None,
+                '123_hermes_id_456': company.id,
+            },
+            'previous': {
+                'id': 17430,
+                'name': 'Test company',
+                'owner_id': 10,
+                '123_pay0_dt_456': None,
+                '123_email_confirmed_dt_456': None,
+                '123_hermes_id_456': company.id,
+            },
+        }
+
+        r = await self.client.post(self.url, json=data)
+        # This should succeed without a ParseError about "expected string or bytes-like object"
+        assert r.status_code == 200, r.json()
+        company = await Company.get()
+        assert company.name == 'Test company'
+        assert company.pay0_dt is None
+        assert company.email_confirmed_dt is None
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update_with_custom_hermes_field(self, mock_request):
@@ -757,6 +867,51 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert r.status_code == 200, r.json()
         contact = await Contact.get()
         assert contact.name == 'Brimstone'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_with_previous_without_name(self, mock_request):
+        """Test that we handle previous data that doesn't include a name field."""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Matthew', last_name='Carty', pd_person_id=41953, company=company)
+
+        # This simulates the actual webhook data from the error where previous only has obj_type and phones
+        data = {
+            'data': {
+                'add_time': '2025-10-06T22:30:25Z',
+                'emails': [{'label': 'work', 'primary': True, 'value': 'matthewjcarty@gmail.com'}],
+                'first_name': 'Matthew',
+                'id': 41953,
+                'label': None,
+                'label_ids': [],
+                'last_name': 'Carty',
+                'name': 'Matthew Carty',
+                'org_id': 17410,
+                'owner_id': 10,
+                '234_hermes_id_567': contact.id,
+            },
+            'meta': {
+                'action': 'change',
+                'company_id': '11324733',
+                'correlation_id': 'dac2a3d8-0220-4b6d-93ce-4cd080422032',
+                'entity': 'person',
+                'entity_id': '41953',
+                'id': '3ad8a556-bcf0-46c3-93aa-8b1e9d829253',
+                'is_bulk_edit': False,
+                'timestamp': '2025-10-09T16:17:23.241Z',
+                'type': 'general',
+                'user_id': '15395742',
+            },
+            'previous': {
+                'obj_type': 'person',
+                'phones': [],
+            },
+        }
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        contact = await Contact.get()
+        assert contact.first_name == 'Matthew'
+        assert contact.last_name == 'Carty'
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_deal_create(self, mock_add_task):

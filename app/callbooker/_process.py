@@ -31,9 +31,14 @@ async def book_meeting(company: Company, contact: Contact, event: CBSalesCall | 
     A) There isn't already a meeting booked for this contact within 2 hours
     B) The admin exists
     C) The admin is free at this time
+    D) The contact has an email address
 
     If all of these are true, create the meeting and return it.
     """
+    # Check that the contact has an email address
+    if not contact.email:
+        raise MeetingBookingError('Contact must have an email address to book a meeting.')
+
     # Then we check that the meeting object doesn't already exist for this customer
     meeting_exists = await Meeting.filter(
         contact_id=contact.id,

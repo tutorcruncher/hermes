@@ -38,7 +38,7 @@ class CBSalesCall(HermesBaseModel):
     company_id: Optional[int] = ForeignKeyField(None, model=Company)
     name: str
     website: Optional[str] = None
-    email: str
+    email: Optional[str] = None
     country: str
     phone: Optional[str] = None
     company_name: str
@@ -49,7 +49,7 @@ class CBSalesCall(HermesBaseModel):
 
     _convert_to_utc = field_validator('meeting_dt')(_convert_to_utc)
     _strip = field_validator('name', 'company_name', 'website', 'country')(_strip)
-    _to_lower = field_validator('email')(_to_lower)
+    _to_lower = field_validator('email', mode='before')(lambda v: v.lower() if v else v)
     _to_title = field_validator('name')(_to_title)
 
     @field_validator('price_plan')
@@ -105,7 +105,7 @@ class CBSupportCall(HermesBaseModel):
     company_id: int = ForeignKeyField(model=Company)
     admin_id: int = ForeignKeyField(model=Admin)
     meeting_dt: datetime
-    email: str
+    email: Optional[str] = None
     name: str
 
     _convert_to_utc = field_validator('meeting_dt')(_convert_to_utc)

@@ -119,9 +119,11 @@ class Organisation(PipedriveBaseModel):
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:
         cf_data_from_hermes = {
-            c.hermes_field_name: getattr(self, c.machine_name)
+            c.hermes_field_name: value
             for c in custom_fields
-            if c.hermes_field_name and c.field_type != CustomField.TYPE_FK_FIELD
+            if c.hermes_field_name
+            and c.field_type != CustomField.TYPE_FK_FIELD
+            and (value := getattr(self, c.machine_name)) is not None
         }
 
         admins_from_hermes = {}
@@ -204,11 +206,13 @@ class Person(PipedriveBaseModel):
         return v
 
     async def contact_dict(self) -> dict:
-        name_parts = self.name.split(' ', 1)
         first_name = None
-        if len(name_parts) > 1:
-            first_name = name_parts[0]
-        last_name = name_parts[-1]
+        last_name = None
+        if self.name:
+            name_parts = self.name.split(' ', 1)
+            if len(name_parts) > 1:
+                first_name = name_parts[0]
+            last_name = name_parts[-1]
         return {
             'pd_person_id': self.id,
             'first_name': first_name,
