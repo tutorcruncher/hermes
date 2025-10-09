@@ -13,13 +13,13 @@ from app.pipedrive.tasks import pd_post_process_client_event, pd_post_process_sa
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
-from tests.test_callbooker import CB_MEETING_DATA, fake_gcal_builder
-from tests.test_pipedrive import (
+from tests.pipedrive.helpers import (
     FakePipedrive,
     basic_pd_deal_data,
     basic_pd_org_data,
     fake_pd_request,
 )
+from tests.test_callbooker import CB_MEETING_DATA, fake_gcal_builder
 from tests.test_tc2 import FakeTC2, client_full_event_data, fake_tc2_request, mock_tc2_request
 
 
@@ -196,7 +196,7 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_tc2_cligency_url_456': f'{settings.tc2_base_url}/clients/10/',
                 '123_sales_person_456': admin.id,
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -257,7 +257,7 @@ class TestMultipleServices(HermesTestCase):
                 'address_country': None,
                 'owner_id': 10,
                 '123_hermes_id_456': company.id,
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -390,7 +390,7 @@ class TestMultipleServices(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': admin.id,
                 '123_bdr_person_456': None,
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -489,7 +489,7 @@ class TestMultipleServices(HermesTestCase):
                 '"how-many-students-are-currently-actively-using-your-service": 45, '
                 '"do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place": '
                 '"Mostly after the lesson takes place"}',
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -675,7 +675,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '123_bdr_person_456': admin.id,
                 '123_source_456': 'google',
                 '123_estimated_monthly_income_456': '£20,000 - £50,000',
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,
@@ -826,7 +826,7 @@ class TestDealCustomFieldInheritance(HermesTestCase):
                 '123_hermes_id_456': company.id,
                 '123_sales_person_456': sales_person.id,
                 '123_support_person_456': None,
-                'created': company.created.isoformat().replace('+00:00', 'Z'),
+                'created': company.created.date().isoformat(),
                 'pay0_dt': None,
                 'pay1_dt': None,
                 'pay3_dt': None,

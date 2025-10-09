@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 import logfire
 from tortoise.query_utils import Prefetch
 
@@ -29,6 +31,9 @@ async def update_client_from_company(company: Company):
                 val = getattr(company, cf.hermes_field_name, None)
             else:
                 val = cf.values[0].value if cf.values else None
+            # Convert datetime/date objects to ISO format strings for JSON serialization
+            if isinstance(val, (datetime, date)):
+                val = val.isoformat()
             extra_attrs[cf.tc2_machine_name] = val
 
         for ea in tc_client.extra_attrs:

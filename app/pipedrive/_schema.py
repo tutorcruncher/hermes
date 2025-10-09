@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, List, Literal, Optional, Union
 
@@ -26,8 +26,15 @@ class PDObjectNames(str, Enum):
     ACTIVITY = 'activity'
 
 
-def _remove_nulls(**kwargs):
-    return {k: v for k, v in kwargs.items() if v is not None}
+def _clean_for_pd(**kwargs) -> dict:
+    data = {}
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        elif isinstance(v, datetime):
+            v = v.date()
+        data[k] = v
+    return data
 
 
 def _slugify(name: str) -> str:
@@ -73,17 +80,17 @@ class PipedriveBaseModel(HermesBaseModel):
 
 class Organisation(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    name: str
+    name: Optional[str] = None
     address_country: Optional[str] = None
     owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
-    created: Optional[datetime] = None
-    pay0_dt: Optional[datetime] = None
-    pay1_dt: Optional[datetime] = None
-    pay3_dt: Optional[datetime] = None
+    created: Optional[date] = None
+    pay0_dt: Optional[date] = None
+    pay1_dt: Optional[date] = None
+    pay3_dt: Optional[date] = None
     gclid: Optional[str] = None
-    gclid_expiry_dt: Optional[datetime] = None
-    email_confirmed_dt: Optional[datetime] = None
-    card_saved_dt: Optional[datetime] = None
+    gclid_expiry_dt: Optional[date] = None
+    email_confirmed_dt: Optional[date] = None
+    card_saved_dt: Optional[date] = None
 
     _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
 
@@ -107,7 +114,7 @@ class Organisation(PipedriveBaseModel):
             created=company.created,
         )
         cls_kwargs.update(await cls.get_custom_field_vals(company))
-        final_kwargs = _remove_nulls(**cls_kwargs)
+        final_kwargs = _clean_for_pd(**cls_kwargs)
         return cls(**final_kwargs)
 
     async def company_dict(self, custom_fields: list[CustomField]) -> dict:
@@ -128,7 +135,7 @@ class Organisation(PipedriveBaseModel):
                 self.bdr_person = await Admin.get(id=self.bdr_person)
             admins_from_hermes['bdr_person_id'] = self.bdr_person.id
 
-        return _remove_nulls(
+        return _clean_for_pd(
             pd_org_id=self.id,
             name=self.name,
             sales_person_id=self.admin.id if self.admin else None,  # noqa: F821 - Added in a_validate
@@ -143,7 +150,7 @@ PHONE_RE = re.compile(r'[^A-Za-z0-9\s]')
 
 class Person(PipedriveBaseModel):
     id: Optional[int] = Field(None, exclude=True)
-    name: str
+    name: Optional[str] = None
     email: Optional[str] = ''
     phone: Optional[str] = ''
     owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
@@ -223,6 +230,19 @@ class Activity(PipedriveBaseModel):
     org_id: Optional[int] = None
     obj_type: Literal['activity'] = Field('activity', exclude=True)
 
+    @field_validator('due_time', 'due_date', mode='before')
+    @classmethod
+    def extract_value_from_dict(cls, v):
+        """
+        Extract value from Pipedrive's time/date dict format when receiving webhooks.
+        Pipedrive can send time/date as: {'timezone_id': None, 'value': '17:30:00'}
+        or as a plain string: '17:30:00'
+        For v1 API, we send simple strings, but webhooks may still use dict format.
+        """
+        if isinstance(v, dict) and 'value' in v:
+            return v['value']
+        return v
+
     @classmethod
     async def from_meeting(cls, meeting: Meeting):
         contact = await meeting.contact
@@ -230,7 +250,7 @@ class Activity(PipedriveBaseModel):
         admin = await meeting.admin
         meeting.admin = admin
         return cls(
-            **_remove_nulls(
+            **_clean_for_pd(
                 **{
                     'due_date': meeting.start_time.strftime('%Y-%m-%d'),
                     'due_time': meeting.start_time.strftime('%H:%M'),
@@ -274,11 +294,11 @@ class PDDeal(PipedriveBaseModel):
             status=deal.status,
         )
         cls_kwargs.update(await cls.get_custom_field_vals(deal))
-        final_kwargs = _remove_nulls(**cls_kwargs)
+        final_kwargs = _clean_for_pd(**cls_kwargs)
         return cls(**final_kwargs)
 
     async def deal_dict(self) -> dict:
-        return _remove_nulls(
+        return _clean_for_pd(
             pd_deal_id=self.id,
             name=self.title,
             status=self.status,
