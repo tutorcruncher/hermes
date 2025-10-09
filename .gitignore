@@ -15,6 +15,8 @@ __pycache__
 
 # Database dump
 *.dump
+*.dmp
+*.db
+*.rdb
 
 /.logfire/
-hermes.db
