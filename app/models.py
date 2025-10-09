@@ -427,11 +427,13 @@ class CustomField(models.Model):
     TYPE_STR = 'str'
     TYPE_BOOL = 'bool'
     TYPE_FK_FIELD = 'fk_field'
+    TYPE_DATE = 'date'
     TYPE_CHOICES = (
         (TYPE_INT, TYPE_INT),
         (TYPE_STR, TYPE_STR),
         (TYPE_BOOL, TYPE_BOOL),
         (TYPE_FK_FIELD, TYPE_FK_FIELD),
+        (TYPE_DATE, TYPE_DATE),
     )
 
     id = fields.IntField(primary_key=True)
@@ -439,7 +441,9 @@ class CustomField(models.Model):
     name = fields.CharField(max_length=255)
     machine_name = fields.CharField(max_length=255, null=True)
     field_type = fields.CharField(
-        max_length=255, choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD), description='The type of field.'
+        max_length=255,
+        choices=(TYPE_INT, TYPE_STR, TYPE_BOOL, TYPE_FK_FIELD, TYPE_DATE),
+        description='The type of field.',
     )
 
     hermes_field_name = fields.CharField(
