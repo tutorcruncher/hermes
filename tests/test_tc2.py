@@ -1050,3 +1050,30 @@ class TC2TasksTestCase(HermesTestCase):
         await pipedrive_id_field.delete()
         await domain_field.delete()
         await build_custom_field_schema()
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_update_cligency_user_email_none(self, mock_request):
+        """
+        Test that update_client_from_company works when TC2 returns user.email as None
+        This reproduces the ValidationError from Sentry issue #6943563743
+        """
+        fake_tc2 = FakeTC2()
+        fake_tc2.db['clients'][10]['user']['email'] = None
+        fake_tc2.db['clients'][10]['paid_recipients'] = []
+
+        mock_request.side_effect = fake_tc2_request(fake_tc2)
+        admin = await Admin.create(
+            pd_owner_id=10, username='testing@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        company = await Company.create(
+            name='Test company', pd_org_id=20, tc2_cligency_id=10, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+
+        await update_client_from_company(company)
+
+        assert fake_tc2.db['clients'][10]['user']['email'] is None
+        assert fake_tc2.db['clients'][10]['paid_recipients'] == []
+        assert fake_tc2.db['clients'][10]['extra_attrs'] == {
+            'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
+            'who_are_you_trying_to_reach': 'support',
+        }
