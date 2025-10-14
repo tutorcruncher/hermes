@@ -1,12 +1,14 @@
 from typing import Type
 
 import logfire
+from tortoise.exceptions import DoesNotExist
 from tortoise.transactions import in_transaction
 
 from app.base_schema import get_custom_fieldinfo
 from app.models import Company, Contact, CustomField, Deal, Meeting
 from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person, PipedriveBaseModel
+from app.pipedrive._utils import app_logger
 from app.pipedrive.api import (
     create_activity,
     delete_deal,
@@ -59,11 +61,14 @@ async def pd_post_process_sales_call(company: Company, contact: Contact, meeting
     Called after a sales call is booked. Creates/updates the Org & Person in pipedrive then creates the activity.
     """
     with logfire.span('pd_post_process_sales_call'):
-        await _transy_get_and_create_or_update_organisation(company)
-        await _transy_get_and_create_or_update_person(contact)
-        pd_deal = await _transy_get_and_create_or_update_deal(deal)
-        await update_or_create_inherited_deal_custom_field_values(company)
-        await _transy_create_activity(meeting, pd_deal)
+        try:
+            await _transy_get_and_create_or_update_organisation(company)
+            await _transy_get_and_create_or_update_person(contact)
+            pd_deal = await _transy_get_and_create_or_update_deal(deal)
+            await update_or_create_inherited_deal_custom_field_values(company)
+            await _transy_create_activity(meeting, pd_deal)
+        except DoesNotExist as e:
+            app_logger.info(f'Object no longer exists, skipping Pipedrive updates: {e}')
 
 
 async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
@@ -71,9 +76,12 @@ async def pd_post_process_support_call(contact: Contact, meeting: Meeting):
     Called after a support call is booked. Creates the activity if the contact have a pipedrive id
     """
     with logfire.span('pd_post_process_support_call'):
-        if (await contact.company).pd_org_id:
-            await _transy_get_and_create_or_update_person(contact)
-            await _transy_create_activity(meeting)
+        try:
+            if (await contact.company).pd_org_id:
+                await _transy_get_and_create_or_update_person(contact)
+                await _transy_create_activity(meeting)
+        except DoesNotExist as e:
+            app_logger.info(f'Object no longer exists, skipping Pipedrive updates: {e}')
 
 
 async def pd_post_process_client_event(company: Company, deal: Deal = None):
@@ -81,12 +89,15 @@ async def pd_post_process_client_event(company: Company, deal: Deal = None):
     Called after a client event from TC2. For example, a client paying an invoice.
     """
     with logfire.span('pd_post_process_client_event'):
-        await _transy_get_and_create_or_update_organisation(company)
-        for contact in await company.contacts:
-            await _transy_get_and_create_or_update_person(contact)
-        if deal:
-            await _transy_get_and_create_or_update_deal(deal)
-            await update_or_create_inherited_deal_custom_field_values(company)
+        try:
+            await _transy_get_and_create_or_update_organisation(company)
+            for contact in await company.contacts:
+                await _transy_get_and_create_or_update_person(contact)
+            if deal:
+                await _transy_get_and_create_or_update_deal(deal)
+                await update_or_create_inherited_deal_custom_field_values(company)
+        except DoesNotExist as e:
+            app_logger.info(f'Object no longer exists, skipping Pipedrive updates: {e}')
 
 
 async def pd_post_purge_client_event(company: Company, deal: Deal = None):
