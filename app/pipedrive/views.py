@@ -106,4 +106,8 @@ async def callback(event: dict, tasks: BackgroundTasks):
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
+    elif event_instance.meta.entity == PDObjectNames.ACTIVITY:
+        # Activities are calendar events that we create in Pipedrive from Hermes meetings
+        # We don't need to sync changes back to Hermes, so we just log and ignore them
+        app_logger.info(f'Activity event received (id: {event_instance.data.id}), ignoring')
     return {'status': 'ok'}
