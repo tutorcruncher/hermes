@@ -6,6 +6,7 @@ from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, D
 from tests._common import HermesTestCase
 from tests.pipedrive.helpers import (
     FakePipedrive,
+    basic_pd_activity_data,
     basic_pd_deal_data,
     basic_pd_org_data,
     basic_pd_person_data,
@@ -1441,3 +1442,12 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     assert r.status_code == 200
     #
     #     assert await Company.exists(id=1)
+
+    async def test_activity_webhook(self):
+        """Test that activity webhooks are received and handled without errors"""
+        # Activities are calendar events that we create in Pipedrive but don't need to sync back
+        # This test verifies that receiving an activity webhook doesn't cause validation errors
+        data = basic_pd_activity_data()
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert r.json() == {'status': 'ok'}
