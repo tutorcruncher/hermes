@@ -32,7 +32,9 @@ def _clean_for_pd(**kwargs) -> dict:
         if v is None:
             continue
         elif isinstance(v, datetime):
-            v = v.date()
+            v = v.date().isoformat()
+        elif isinstance(v, date):
+            v = v.isoformat()
         data[k] = v
     return data
 

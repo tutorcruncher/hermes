@@ -393,11 +393,7 @@ class PipedriveCallbackTestCase(HermesTestCase):
         )
         await build_custom_field_schema()
 
-        company = await Company.create(
-            name='Test company',
-            pd_org_id=17430,
-            sales_person=self.admin,
-        )
+        company = await Company.create(name='Test company', pd_org_id=17430, sales_person=self.admin)
 
         # Simulate webhook data for an update with null date fields
         data = {
@@ -1496,6 +1492,39 @@ class PipedriveCallbackTestCase(HermesTestCase):
     #     assert r.status_code == 200
     #
     #     assert await Company.exists(id=1)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_with_date_custom_field(self, mock_request):
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        await CustomField.create(
+            linked_object_type='Company',
+            pd_field_id='regression_test_date_field',
+            hermes_field_name='card_saved_dt',
+            name='Regression Test Date',
+            machine_name='regression_test_date',
+            field_type=CustomField.TYPE_DATE,
+        )
+        await build_custom_field_schema()
+
+        company = await Company.create(name='Test Company', pd_org_id=9999, sales_person=self.admin, card_saved_dt=None)
+        webhook_data = {
+            'meta': {'action': 'change', 'entity': 'organization', 'entity_id': '9999'},
+            'data': {
+                'id': 9999,
+                'name': 'Test Company',
+                'owner_id': self.admin.pd_owner_id,
+                '123_hermes_id_456': company.id,
+                'regression_test_date_field': '2021-06-04',
+            },
+            'previous': {'name': 'Test Company', 'regression_test_date_field': None},
+        }
+
+        r = await self.client.post(self.url, json=webhook_data)
+        assert r.status_code == 200, r.json()
+
+        await company.refresh_from_db()
+        assert company.card_saved_dt.date().isoformat() == '2021-06-04'
 
     async def test_activity_webhook(self):
         """Test that activity webhooks are received and handled without errors"""
