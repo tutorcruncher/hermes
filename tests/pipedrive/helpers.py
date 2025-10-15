@@ -114,31 +114,3 @@ def basic_pd_stage_data():
         'data': {'name': 'Stage 1', 'pipeline_id': 60, 'id': 50},
         'previous': {},
     }
-
-
-def basic_pd_activity_data():
-    return {
-        'meta': {'action': 'change', 'entity': 'activity', 'version': '2.0'},
-        'data': {
-            'id': 34151,
-            'active_flag': True,
-            'add_time': '2025-10-14T20:05:20Z',
-            'busy_flag': False,
-            'deal_id': None,
-            'done': False,
-            'due_date': '2025-11-24',
-            'due_time': {'timezone_id': None, 'value': ''},
-            'duration': {'timezone_id': None, 'value': ''},
-            'type': 'call',
-            'lead_id': None,
-            'location': None,
-            'org_id': 16215,
-            'owner_id': 23367807,
-            'person_id': None,
-            'public_description': '',
-            'subject': 'Follow up call',
-            'update_time': '2025-10-14T20:05:29Z',
-            'update_user_id': None,
-        },
-        'previous': {'type': 'task', 'update_time': '2025-10-14T20:05:20Z'},
-    }
