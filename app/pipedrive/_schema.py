@@ -439,8 +439,8 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
 class PipedriveEvent(HermesBaseModel):
     meta: WebhookMeta
-    data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = Field(None, alias='data')
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
+    data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = None
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = None
 
     @model_validator(mode='before')
     @classmethod

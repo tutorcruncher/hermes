@@ -47,6 +47,10 @@ async def prepare_event_data(event_data: dict) -> dict:
                         flattened_fields[field_id] = field_data
                 event_data[state].update(flattened_fields)
 
+    # Skip custom field processing for deletion events (where data is None)
+    if not event_data.get(PDStatus.DATA):
+        return event_data
+
     async def handle_custom_field(data: dict, field_name: str, handle_func: Union[Callable, str] = None):
         cf_fields = await CustomField.filter(machine_name=field_name).values_list('pd_field_id', flat=True)
         for pd_field_id in cf_fields:
@@ -90,9 +94,21 @@ async def callback(event: dict, tasks: BackgroundTasks):
     event_instance.previous and await event_instance.previous.a_validate()
     app_logger.info(f'Callback: event_instance received for {event_instance.meta.entity}: {event_instance}')
     if event_instance.meta.entity == 'deal':
+        # For deletions, get the company before deleting the deal so we can notify TC2
+        company = None
+        if not event_instance.data and event_instance.previous:
+            # This is a deletion - get the deal's company before it's deleted
+            deal_to_delete = getattr(event_instance.previous, 'deal', None)
+            if deal_to_delete:
+                company = await deal_to_delete.company
+
         deal = await _process_pd_deal(event_instance.data, event_instance.previous)
-        company = await deal.company
-        if company.tc2_agency_id:
+
+        # For updates/creates, get the company from the deal after processing
+        if deal:
+            company = await deal.company
+
+        if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
     elif event_instance.meta.entity == PDObjectNames.PIPELINE:
@@ -106,4 +122,8 @@ async def callback(event: dict, tasks: BackgroundTasks):
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
+    elif event_instance.meta.entity == PDObjectNames.ACTIVITY:
+        # Activities are calendar events that we create in Pipedrive from Hermes meetings
+        # We don't need to sync changes back to Hermes, so we just log and ignore them
+        app_logger.info(f'Activity event received (id: {event_instance.data.id}), ignoring')
     return {'status': 'ok'}
