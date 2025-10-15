@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 
 import logfire
 import requests
+from httpx import HTTPError
 
 from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
@@ -129,28 +130,37 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
     hermes_org_data = hermes_org.model_dump(mode='json', by_alias=True)
     if company.pd_org_id:
         # get by pipedrive Org ID
-        pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
-        app_logger.info(
-            f'Found org {pipedrive_org.id} from company {company.id} by company.pd_org_id {company.pd_org_id}'
-        )
-        if hermes_org_data != pipedrive_org.model_dump(mode='json', by_alias=True):
-            # update
-            await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-            app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
-    elif org := await _search_for_organisation(company):
-        # get by cligency url or contact email/phone
-        company.pd_org_id = org.id
-        await company.save()
-        await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+        try:
+            pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
+        except HTTPError as e:
+            if '404' in str(e):
+                # Organization was deleted in Pipedrive, clear the pd_org_id and search/create new
+                app_logger.info(f'Organisation {company.pd_org_id} not found in Pipedrive for company {company.id}')
+                company.pd_org_id = None
+                await company.save()
+            else:
+                raise
+        else:
+            app_logger.info(
+                f'Found org {pipedrive_org.id} from company {company.id} by company.pd_org_id {company.pd_org_id}'
+            )
+            if hermes_org_data != pipedrive_org.model_dump(mode='json', by_alias=True):
+                await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+                app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
 
-    else:
-        # if company is not linked to pipedrive and there is no match, create a new org
-        created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
-        pipedrive_org = Organisation(**created_org)
-        company.pd_org_id = pipedrive_org.id
-        await company.save()
-        app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-        return pipedrive_org
+    if not company.pd_org_id:
+        if org := await _search_for_organisation(company):
+            company.pd_org_id = org.id
+            await company.save()
+            await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+        else:
+            # if company is not linked to pipedrive and there is no match, create a new org
+            created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
+            pipedrive_org = Organisation(**created_org)
+            company.pd_org_id = pipedrive_org.id
+            await company.save()
+            app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
+            return pipedrive_org
 
 
 async def delete_organisation(company: Company):
@@ -174,17 +184,27 @@ async def get_and_create_or_update_person(contact: Contact) -> Person:
     hermes_person = await Person.from_contact(contact)
     hermes_person_data = hermes_person.model_dump(mode='json', by_alias=True)
     if contact.pd_person_id:
-        pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
-            await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
-            app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
-    else:
+        try:
+            pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
+        except HTTPError as e:
+            if '404' in str(e):
+                # Person was deleted in Pipedrive
+                app_logger.info(f'Person {contact.pd_person_id} not found in Pipedrive for contact {contact.id}')
+                contact.pd_person_id = None
+                await contact.save()
+            else:
+                raise
+        else:
+            if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
+                await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
+                app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
+    if not contact.pd_person_id:
         created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
         pipedrive_person = Person(**created_person)
         contact.pd_person_id = pipedrive_person.id
         await contact.save()
         app_logger.info('Created person %s from contact %s', contact.pd_person_id, contact.id)
-    return pipedrive_person
+        return pipedrive_person
 
 
 async def delete_persons(contacts: list[Contact]):
@@ -210,26 +230,28 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
     pd_deal = await PDDeal.from_deal(deal)
     pd_deal_data = pd_deal.model_dump(mode='json', by_alias=True)
     if deal.pd_deal_id:
-        # get by pipedrive Deal ID
-        with logfire.span('getting deal {deal}', deal=deal.id):
+        try:
             pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
-        if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
-            with logfire.span('updating deal {deal}', deal=deal.id):
-                try:
-                    await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
-                    app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
-                # catch 404 Client Error: Not Found
-                except Exception as e:
-                    app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
-    else:
-        # create a new deal
-        with logfire.span('creating deal {deal}', deal=deal.id):
-            created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
-            pipedrive_deal = PDDeal(**created_deal)
-            deal.pd_deal_id = pipedrive_deal.id
-            await deal.save()
-            app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
-    return pipedrive_deal
+        except HTTPError as e:
+            if '404' in str(e):
+                # Deal was deleted in Pipedrive
+                app_logger.info(f'Deal {deal.pd_deal_id} not found in Pipedrive for deal {deal.id}, will create new')
+                deal.pd_deal_id = None
+                await deal.save()
+            else:
+                app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
+        else:
+            if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
+                await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+                app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+
+    if not deal.pd_deal_id:
+        created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
+        pipedrive_deal = PDDeal(**created_deal)
+        deal.pd_deal_id = pipedrive_deal.id
+        await deal.save()
+        app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
+        return pipedrive_deal
 
 
 async def delete_deal(deal: Deal):

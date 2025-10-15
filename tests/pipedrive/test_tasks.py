@@ -1,8 +1,11 @@
 from datetime import date, datetime, timedelta, timezone
 from unittest import mock
+from unittest.mock import PropertyMock
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
+from app.pipedrive._schema import Organisation
 from app.pipedrive.tasks import (
     pd_post_process_client_event,
     pd_post_process_sales_call,
@@ -40,8 +43,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         This would fail if the Organisation schema had datetime fields instead of date fields,
         because Pydantic 2.9+ is strict about datetime-to-date conversions.
         """
-        from app.pipedrive._schema import Organisation
-
         admin = await Admin.create(
             first_name='John',
             last_name='Doe',
@@ -96,6 +97,129 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert not isinstance(org.email_confirmed_dt, datetime)
         assert isinstance(org.pay0_dt, date)
         assert not isinstance(org.pay0_dt, datetime)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_deleted_in_pipedrive(self, mock_request):
+        """
+        Test that when a company has a pd_org_id but the org was deleted in Pipedrive,
+        the code handles the 404 gracefully and creates a new org.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        # Create company with pd_org_id that doesn't exist in fake Pipedrive
+        company = await Company.create(name='Deleted Org Company', country='GB', sales_person=admin, pd_org_id=16994)
+
+        # This should handle the 404 gracefully and create a new org
+        await pd_post_process_client_event(company)
+
+        # Verify that the company now has a new pd_org_id (not 16994)
+        await company.refresh_from_db()
+        assert company.pd_org_id != 16994
+        assert company.pd_org_id is not None
+
+        # Verify that a new org was created in pipedrive
+        assert len(self.pipedrive.db['organizations']) == 1
+        created_org = list(self.pipedrive.db['organizations'].values())[0]
+        assert created_org['name'] == 'Deleted Org Company'
+        assert created_org['address_country'] == 'GB'
+        assert created_org['owner_id'] == 99
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_deleted_in_pipedrive(self, mock_request):
+        """
+        Test that when a contact has a pd_person_id but the person was deleted in Pipedrive,
+        the code handles the 404 gracefully and creates a new person.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        # Create contact with pd_person_id that doesn't exist in fake Pipedrive
+        contact = await Contact.create(
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            company=company,
+            pd_person_id=9999,
+        )
+
+        # This should handle the 404 gracefully and create a new person
+        await pd_post_process_client_event(company)
+
+        # Verify that the contact now has a new pd_person_id (not 9999)
+        await contact.refresh_from_db()
+        assert contact.pd_person_id != 9999
+        assert contact.pd_person_id is not None
+
+        # Verify that a new person was created in pipedrive
+        assert len(self.pipedrive.db['persons']) == 1
+        created_person = list(self.pipedrive.db['persons'].values())[0]
+        assert created_person['name'] == 'John Doe'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_deal_deleted_in_pipedrive(self, mock_request):
+        """
+        Test that when a deal has a pd_deal_id but the deal was deleted in Pipedrive,
+        the code handles the 404 gracefully and creates a new deal.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe'}
+
+        # Create deal with pd_deal_id that doesn't exist in fake Pipedrive
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=8888,
+        )
+
+        # This should handle the 404 gracefully and create a new deal
+        await pd_post_process_client_event(company, deal)
+
+        # Verify that the deal now has a new pd_deal_id (not 8888)
+        await deal.refresh_from_db()
+        assert deal.pd_deal_id != 8888
+        assert deal.pd_deal_id is not None
+
+        # Verify that a new deal was created in pipedrive
+        assert len(self.pipedrive.db['deals']) == 1
+        created_deal = list(self.pipedrive.db['deals'].values())[0]
+        assert created_deal['title'] == 'Test Deal'
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_sales_call_booked(self, mock_request):
@@ -1225,8 +1349,6 @@ class PipedriveTasksTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_date_custom_field_create_company(self, mock_request):
         """Test creating a company with a date custom field value"""
-        from datetime import date
-
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         date_field = await CustomField.create(
@@ -1444,8 +1566,6 @@ class PipedriveTasksTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_date_custom_field_on_deal(self, mock_request):
         """Test date custom field on Deal objects"""
-        from datetime import date
-
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         date_field = await CustomField.create(
@@ -1489,8 +1609,6 @@ class PipedriveTasksTestCase(HermesTestCase):
             deal=deal,
             value=str(close_date),
         )
-
-        from app.pipedrive.tasks import pd_post_process_sales_call
 
         meeting = await Meeting.create(
             company=company,
@@ -2124,8 +2242,6 @@ class PipedriveTasksTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_tc2_client_event_with_gclid_data(self, mock_request):
         """Test that GCLID data is sent to Pipedrive when processing client events."""
-        from datetime import datetime, timezone
-
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         await build_custom_field_schema()
@@ -2481,10 +2597,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         3. The code tries to create CustomFieldValues for the deleted deal
         4. This should be caught and logged, not raise an IntegrityError
         """
-        from unittest.mock import PropertyMock
-
-        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
-
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         admin = await Admin.create(
@@ -2554,10 +2666,6 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         This tests the branch where value is None and we try to delete a CustomFieldValue.
         """
-        from unittest.mock import PropertyMock
-
-        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
-
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
         admin = await Admin.create(

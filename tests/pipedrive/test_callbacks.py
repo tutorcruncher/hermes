@@ -358,6 +358,31 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await source_field.delete()
         await build_custom_field_schema()
 
+    @mock.patch('app.pipedrive._process.update_client_from_company')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_delete_with_tc2_reference(self, mock_pd_request, mock_update_client):
+        """Test that when an org is deleted in Pipedrive, the TC2 reference is cleared"""
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(
+            name='Test company', pd_org_id=20, sales_person=self.admin, tc2_cligency_id=12345
+        )
+
+        assert await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = company.id
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert not await Company.exists()
+
+        # Verify that update_client_from_company was called to clear the TC2 reference
+        mock_update_client.assert_called_once()
+        call_args = mock_update_client.call_args
+        called_company = call_args[0][0]
+        assert called_company.id == company.id
+        assert called_company.tc2_cligency_id == 12345
+
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)

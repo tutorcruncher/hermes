@@ -3,6 +3,8 @@
 import re
 from urllib.parse import parse_qs
 
+from httpx import HTTPError
+
 
 class FakePipedrive:
     def __init__(self):
@@ -18,7 +20,8 @@ class MockResponse:
         return self.json_data
 
     def raise_for_status(self):
-        return
+        if self.status_code >= 400:
+            raise HTTPError(f'{self.status_code} {self.json_data["error"]}')
 
 
 def fake_pd_request(fake_pipedrive: FakePipedrive):
@@ -30,6 +33,9 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
         obj_id = obj_id and int(obj_id.group(1))
         if method == 'GET':
             if obj_id:
+                # Return 404 if object doesn't exist in the fake database
+                if obj_id not in fake_pipedrive.db[obj_type]:
+                    return MockResponse(404, {'error': 'Not Found'})
                 return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
             else:
                 # if object type includes /search then it's a search request
@@ -49,10 +55,14 @@ def fake_pd_request(fake_pipedrive: FakePipedrive):
             fake_pipedrive.db[obj_type][obj_id] = data
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         elif method == 'PUT':
+            if obj_id not in fake_pipedrive.db[obj_type]:
+                return MockResponse(404, {'error': 'Not Found'})
             fake_pipedrive.db[obj_type][obj_id].update(**data)
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         else:
             assert method == 'DELETE'
+            if obj_id not in fake_pipedrive.db[obj_type]:
+                return MockResponse(404, {'error': 'Not Found'})
             del fake_pipedrive.db[obj_type][obj_id]
             return MockResponse(200, {'data': {'id': obj_id}})
 

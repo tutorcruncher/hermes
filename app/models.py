@@ -265,7 +265,9 @@ class Company(HermesModel):
 
     @property
     def pd_org_url(self):
-        return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
+        if self.pd_org_id:
+            return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
+        return None
 
     @property
     def tc2_cligency_url(self) -> str:
