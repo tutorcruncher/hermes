@@ -77,9 +77,9 @@ class TCRecipient(_TCSimpleRole):
 
 
 class TCUser(HermesBaseModel):
-    email: str
-    phone: Optional[str] = None
-    first_name: Optional[str] = None
+    email: str | None = None
+    phone: str | None = None
+    first_name: str | None = None
     last_name: str
 
 
@@ -142,7 +142,9 @@ class TCClient(HermesBaseModel):
         If the user doesn't have an email, we can use the email of the first paid recipient.
         """
         if 'user' in data and not data['user'].get('email'):
-            data['user']['email'] = data['paid_recipients'][0]['email']
+            paid_recip_with_email = next((r for r in data['paid_recipients'] if r.get('email')), None)
+            if paid_recip_with_email:
+                data['user']['email'] = paid_recip_with_email['email']
         return data
 
     @field_validator('extra_attrs')
