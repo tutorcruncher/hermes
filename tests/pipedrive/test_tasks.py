@@ -13,7 +13,7 @@ from app.pipedrive.tasks import (
     pd_post_purge_client_event,
 )
 from tests._common import HermesTestCase
-from tests.pipedrive.helpers import FakePipedrive, fake_pd_request
+from tests.pipedrive.helpers import FakePipedrive, MockResponse, fake_pd_request
 
 
 class PipedriveTasksTestCase(HermesTestCase):
@@ -129,6 +129,50 @@ class PipedriveTasksTestCase(HermesTestCase):
         assert len(self.pipedrive.db['organizations']) == 1
         created_org = list(self.pipedrive.db['organizations'].values())[0]
         assert created_org['name'] == 'Deleted Org Company'
+        assert created_org['address_country'] == 'GB'
+        assert created_org['owner_id'] == 99
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_gone_in_pipedrive(self, mock_request):
+        """
+        Test that when a company has a pd_org_id but the org returns 410 Gone in Pipedrive
+        (permanently deleted), the code handles it gracefully and creates a new org.
+        """
+
+        def mock_pd_with_410(*, url, method, **kwargs):
+            # Return 410 Gone for the specific org
+            if method == 'GET' and 'organizations/16994' in url:
+                response = MockResponse(410, {'error': 'Gone'})
+                response.url = url
+                return response
+            # Otherwise use normal fake_pd_request
+            return fake_pd_request(self.pipedrive)(url=url, method=method, **kwargs)
+
+        mock_request.side_effect = mock_pd_with_410
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        # Create company with pd_org_id that returns 410 in Pipedrive
+        company = await Company.create(name='Gone Org Company', country='GB', sales_person=admin, pd_org_id=16994)
+
+        # This should handle the 410 gracefully and create a new org
+        await pd_post_process_client_event(company)
+
+        # Verify that the company now has a new pd_org_id (not 16994)
+        await company.refresh_from_db()
+        assert company.pd_org_id != 16994
+        assert company.pd_org_id is not None
+
+        # Verify that a new org was created in pipedrive
+        assert len(self.pipedrive.db['organizations']) == 1
+        created_org = list(self.pipedrive.db['organizations'].values())[0]
+        assert created_org['name'] == 'Gone Org Company'
         assert created_org['address_country'] == 'GB'
         assert created_org['owner_id'] == 99
 

@@ -133,8 +133,8 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
         try:
             pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
         except HTTPError as e:
-            if '404' in str(e):
-                # Organization was deleted in Pipedrive, clear the pd_org_id and search/create new
+            if '404' in str(e) or '410' in str(e):
+                # Organization was deleted in Pipedrive (404 Not Found or 410 Gone)
                 app_logger.info(f'Organisation {company.pd_org_id} not found in Pipedrive for company {company.id}')
                 company.pd_org_id = None
                 await company.save()
@@ -187,8 +187,8 @@ async def get_and_create_or_update_person(contact: Contact) -> Person:
         try:
             pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
         except HTTPError as e:
-            if '404' in str(e):
-                # Person was deleted in Pipedrive
+            if '404' in str(e) or '410' in str(e):
+                # Person was deleted in Pipedrive (404 Not Found or 410 Gone)
                 app_logger.info(f'Person {contact.pd_person_id} not found in Pipedrive for contact {contact.id}')
                 contact.pd_person_id = None
                 await contact.save()
@@ -233,8 +233,8 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
         try:
             pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
         except HTTPError as e:
-            if '404' in str(e):
-                # Deal was deleted in Pipedrive
+            if '404' in str(e) or '410' in str(e):
+                # Deal was deleted in Pipedrive (404 Not Found or 410 Gone)
                 app_logger.info(f'Deal {deal.pd_deal_id} not found in Pipedrive for deal {deal.id}, will create new')
                 deal.pd_deal_id = None
                 await deal.save()
