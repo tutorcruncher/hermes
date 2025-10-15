@@ -1,7 +1,7 @@
 from typing import Optional
 
 import logfire
-from tortoise.exceptions import DoesNotExist
+from tortoise.exceptions import DoesNotExist, IntegrityError
 
 from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pipeline, Stage
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
@@ -51,10 +51,15 @@ async def update_or_create_inherited_deal_custom_field_values(company):
                 else:
                     with logfire.span('create or update deal with id {deal}', deal=deal.id):
                         # update or create the custom field value
-                        await CustomFieldValue.update_or_create(
-                            **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
-                        )
-                        await get_and_create_or_update_pd_deal(deal)
+                        try:
+                            await CustomFieldValue.update_or_create(
+                                **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
+                            )
+                            await get_and_create_or_update_pd_deal(deal)
+                        except IntegrityError:
+                            app_logger.info(
+                                f'Deal {deal.id} no longer exists in database, skipping custom field value creation'
+                            )
 
 
 async def _process_pd_organisation(
