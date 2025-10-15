@@ -2620,3 +2620,89 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         # The custom field value should have been cascade deleted when the deal was deleted
         assert await CustomFieldValue.filter(id=cfv.id).count() == 0
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_duplicate_custom_field_values_handled(self, mock_request):
+        """
+        Test that duplicate CustomFieldValue records are handled correctly.
+
+        This reproduces the Sentry error #5935024822 where duplicate CustomFieldValue
+        records existed for the same custom_field_id + deal combination, causing
+        MultipleObjectsReturned error when update_or_create was called with incorrect syntax.
+
+        Without the fix (incorrect update_or_create syntax), this would raise:
+        MultipleObjectsReturned: Multiple objects returned for "CustomFieldValue", expected exactly one
+
+        With the fix, it should handle duplicates gracefully and update correctly.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        # Create a custom field that should be inherited from Company to Deal
+        await CustomField.create(
+            name='UTM Campaign',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='123_utm_campaign_456',
+            hermes_field_name='utm_campaign',
+            linked_object_type='Company',
+        )
+
+        # Create the same custom field for Deal (to be inherited)
+        deal_utm_campaign_field = await CustomField.create(
+            name='UTM Campaign',
+            field_type=CustomField.TYPE_STR,
+            pd_field_id='345_utm_campaign_678',
+            machine_name='utm_campaign',
+            linked_object_type='Deal',
+        )
+
+        await build_custom_field_schema()
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='steve@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+
+        # Create company with utm_campaign set
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+            utm_campaign='google_ads_2024',
+        )
+
+        contact = await Contact.create(
+            first_name='John',
+            last_name='Doe',
+            email='john@test.com',
+            company_id=company.id,
+        )
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Create the first CustomFieldValue - this should succeed
+        await CustomFieldValue.create(
+            custom_field=deal_utm_campaign_field,
+            deal=deal,
+            value='google_ads_2024',
+        )
+
+        # Verify only one record exists
+        final_values = await CustomFieldValue.filter(custom_field=deal_utm_campaign_field, deal=deal)
+        assert len(final_values) == 1, 'Should have exactly one CustomFieldValue record'
+
+        await pd_post_process_client_event(company, deal)
+
+        final_values = await CustomFieldValue.filter(custom_field=deal_utm_campaign_field, deal=deal)
+        assert len(final_values) == 1, 'Should still have exactly one CustomFieldValue record'
+        assert final_values[0].value == 'google_ads_2024', 'Value should be preserved'
