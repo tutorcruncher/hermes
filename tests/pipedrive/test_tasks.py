@@ -2219,3 +2219,252 @@ class PipedriveTasksTestCase(HermesTestCase):
                 '345_hermes_id_678': deal.id,
             }
         }
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_sales_call_company_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_sales_call handles DoesNotExist gracefully when the company
+        is deleted before the background task runs (simulating the Sentry error scenario).
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Delete the company to simulate it being deleted before the background task runs
+        await company.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+
+        # Nothing should be created in Pipedrive since the company was deleted
+        assert self.pipedrive.db['organizations'] == {}
+        assert self.pipedrive.db['persons'] == {}
+        assert self.pipedrive.db['deals'] == {}
+        assert self.pipedrive.db['activities'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_sales_call_deal_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_sales_call handles DoesNotExist gracefully when the deal
+        is deleted before the background task runs (the actual Sentry error case).
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SALES,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Delete the deal to simulate it being deleted before the background task runs
+        await deal.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_sales_call(company, contact, meeting, deal)
+
+        # Company and contact should be created, but deal and activity should not
+        assert len(self.pipedrive.db['organizations']) == 1
+        assert len(self.pipedrive.db['persons']) == 1
+        assert self.pipedrive.db['deals'] == {}
+        assert self.pipedrive.db['activities'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_client_event_company_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_client_event handles DoesNotExist gracefully when the company
+        is deleted before the background task runs.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        await Contact.create(first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id)
+
+        # Delete the company to simulate it being deleted before the background task runs
+        await company.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_client_event(company)
+
+        # Nothing should be created in Pipedrive
+        assert self.pipedrive.db['organizations'] == {}
+        assert self.pipedrive.db['persons'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_client_event_deal_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_client_event handles DoesNotExist gracefully when the deal
+        is deleted before the background task runs (the actual Sentry error scenario).
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        deal = await Deal.create(
+            name='A deal with Julies Ltd',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Delete the deal to simulate it being deleted before the background task runs
+        await deal.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_client_event(company, deal)
+
+        # Company and contact should be created, but deal should not
+        assert len(self.pipedrive.db['organizations']) == 1
+        assert len(self.pipedrive.db['persons']) == 1
+        assert self.pipedrive.db['deals'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_support_call_contact_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_support_call handles DoesNotExist gracefully when the contact
+        is deleted before the background task runs.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_support_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin, pd_org_id=1)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SUPPORT,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+
+        # Delete the contact to simulate it being deleted before the background task runs
+        await contact.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_support_call(contact, meeting)
+
+        # Nothing should be created in Pipedrive
+        assert self.pipedrive.db['persons'] == {}
+        assert self.pipedrive.db['activities'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_support_call_meeting_deleted_before_task_runs(self, mock_request):
+        """
+        Test that pd_post_process_support_call handles DoesNotExist gracefully when the meeting
+        is deleted before the background task runs.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_support_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Julies Ltd', country='GB', sales_person=admin, pd_org_id=1)
+        contact = await Contact.create(
+            first_name='Brian', last_name='Junes', email='brain@junes.com', company_id=company.id
+        )
+        start = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        meeting = await Meeting.create(
+            company=company,
+            contact=contact,
+            meeting_type=Meeting.TYPE_SUPPORT,
+            start_time=start,
+            end_time=start + timedelta(hours=1),
+            admin=admin,
+        )
+
+        # Delete the meeting to simulate it being deleted before the background task runs
+        await meeting.delete()
+
+        # This should not raise an exception, but log and return gracefully
+        await pd_post_process_support_call(contact, meeting)
+
+        # Person should be created but activity should not
+        assert len(self.pipedrive.db['persons']) == 1
+        assert self.pipedrive.db['activities'] == {}
