@@ -6,7 +6,6 @@ from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, D
 from tests._common import HermesTestCase
 from tests.pipedrive.helpers import (
     FakePipedrive,
-    basic_pd_activity_data,
     basic_pd_deal_data,
     basic_pd_org_data,
     basic_pd_person_data,
@@ -1527,10 +1526,25 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert company.card_saved_dt.date().isoformat() == '2021-06-04'
 
     async def test_activity_webhook(self):
-        """Test that activity webhooks are received and handled without errors"""
+        """Test that activity webhooks are ignored early without validation"""
         # Activities are calendar events that we create in Pipedrive but don't need to sync back
-        # This test verifies that receiving an activity webhook doesn't cause validation errors
-        data = basic_pd_activity_data()
+        data = {'meta': {'entity': 'activity'}, 'data': {'id': 123}}
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert r.json() == {'status': 'ok'}
+
+    async def test_note_webhook(self):
+        """Test that note webhooks are ignored early without validation"""
+        # Notes are comments that users add to records in Pipedrive but we don't need to sync them back
+        data = {'meta': {'entity': 'note'}, 'data': {'id': 456}}
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert r.json() == {'status': 'ok'}
+
+    async def test_unknown_entity_webhook(self):
+        """Test that unknown entity types are gracefully ignored"""
+        # If Pipedrive adds new entity types, we should ignore them by default
+        data = {'meta': {'entity': 'unknown_type'}, 'data': {'id': 789}}
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert r.json() == {'status': 'ok'}

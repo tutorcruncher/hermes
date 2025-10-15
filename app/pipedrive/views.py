@@ -88,6 +88,19 @@ async def callback(event: dict, tasks: BackgroundTasks):
     Processes a Pipedrive event. If a Deal is updated then we run a background task to update the cligency in Pipedrive
     TODO: This has 0 security, we should add some.
     """
+    # Only process entities we explicitly handle
+    entity = event.get('meta', {}).get('entity')
+    processed_entities = (
+        PDObjectNames.DEAL,
+        PDObjectNames.PIPELINE,
+        PDObjectNames.STAGE,
+        PDObjectNames.PERSON,
+        PDObjectNames.ORGANISATION,
+    )
+    if entity not in processed_entities:
+        app_logger.info(f'{entity.capitalize() if entity else "Unknown"} event received, ignoring')
+        return {'status': 'ok'}
+
     event_data = await prepare_event_data(event)
     event_instance = PipedriveEvent(**event_data)
     event_instance.data and await event_instance.data.a_validate()
@@ -122,8 +135,4 @@ async def callback(event: dict, tasks: BackgroundTasks):
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
-    elif event_instance.meta.entity == PDObjectNames.ACTIVITY:
-        # Activities are calendar events that we create in Pipedrive from Hermes meetings
-        # We don't need to sync changes back to Hermes, so we just log and ignore them
-        app_logger.info(f'Activity event received (id: {event_instance.data.id}), ignoring')
     return {'status': 'ok'}

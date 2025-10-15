@@ -18,12 +18,15 @@ class PDStatus(str, Enum):
 
 
 class PDObjectNames(str, Enum):
+    # Entities we process (all others are ignored in callback)
     ORGANISATION = 'organization'
     PERSON = 'person'
     DEAL = 'deal'
     PIPELINE = 'pipeline'
     STAGE = 'stage'
-    ACTIVITY = 'activity'
+    # Entities we don't process but need enum values for
+    ACTIVITY = 'activity'  # Used for creating calendar events, not processed from webhooks
+    NOTE = 'note'  # Not processed
 
 
 def _clean_for_pd(**kwargs) -> dict:
@@ -226,6 +229,11 @@ class Person(PipedriveBaseModel):
 
 
 class Activity(PipedriveBaseModel):
+    """
+    Activity model for creating calendar events in Pipedrive.
+    Note: Activity webhooks are ignored in callback() and not processed through PipedriveEvent.
+    """
+
     id: Optional[int] = Field(None, exclude=True)
     due_date: Optional[str] = None
     due_time: Optional[str] = None
@@ -439,8 +447,8 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
 
 class PipedriveEvent(HermesBaseModel):
     meta: WebhookMeta
-    data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = None
-    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline | Activity] = None
+    data: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
+    previous: Optional[PDDeal | PDStage | Person | Organisation | PDPipeline] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -455,7 +463,7 @@ class PipedriveEvent(HermesBaseModel):
 
     @field_validator(PDStatus.DATA, PDStatus.PREVIOUS, mode='before')
     @classmethod
-    def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage | Activity:
+    def validate_obj(cls, v) -> Organisation | Person | PDDeal | PDPipeline | PDStage:
         """
         It would be nice to use Pydantic's discrimators here, but FastAPI won't change the model validation after we
         rebuild the model when adding custom fields.
@@ -470,7 +478,5 @@ class PipedriveEvent(HermesBaseModel):
             return PDPipeline(**v)
         elif v['obj_type'] == PDObjectNames.STAGE:
             return PDStage(**v)
-        elif v['obj_type'] == PDObjectNames.ACTIVITY:
-            return Activity(**v)
         else:
             raise ValueError(f'Unknown object type {v["obj_type"]}')
