@@ -2468,3 +2468,155 @@ class PipedriveTasksTestCase(HermesTestCase):
         # Person should be created but activity should not
         assert len(self.pipedrive.db['persons']) == 1
         assert self.pipedrive.db['activities'] == {}
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_client_event_deal_deleted_before_custom_field_values_created(self, mock_request):
+        """
+        Test that update_or_create_inherited_deal_custom_field_values handles IntegrityError
+        gracefully when a deal is deleted before custom field values are created for it.
+
+        This reproduces the race condition where:
+        1. Deals are fetched from the company
+        2. A deal gets deleted from the database by another process (e.g., webhook)
+        3. The code tries to create CustomFieldValues for the deleted deal
+        4. This should be caught and logged, not raise an IntegrityError
+        """
+        from unittest.mock import PropertyMock
+
+        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            country='GB',
+            sales_person=admin,
+            tc2_status=Company.STATUS_PENDING_EMAIL_CONF,
+        )
+        deal = await Deal.create(
+            name='Test Deal', company=company, admin=admin, pipeline=self.pipeline, stage=self.stage
+        )
+
+        # Create a custom field that should be inherited by the deal
+        tc2_status_cf = await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+            pd_field_id='123_tc2_status_456',
+        )
+        # Create the corresponding deal custom field
+        await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Deal',
+            pd_field_id='345_tc2_status_678',
+        )
+        await build_custom_field_schema()
+
+        await CustomFieldValue.create(custom_field=tc2_status_cf, company=company, value='pending_email_conf')
+        deal_id = deal.id  # Get the deal ID before deletion
+
+        # Mock company.deals to return the in-memory deal object, then delete it from DB
+        # This simulates the race condition where the deal list is fetched, then a deal is deleted
+        # by another process before we try to create CustomFieldValues
+        async def mock_deals_property():
+            return [deal]
+
+        with mock.patch.object(type(company), 'deals', new_callable=PropertyMock) as mock_deals:
+            # Make the property return an awaitable that yields the deal list
+            mock_deals.return_value = mock_deals_property()
+
+            # Delete the deal from the database AFTER it's in the "fetched" list
+            await Deal.filter(id=deal_id).delete()
+
+            # This should not raise an IntegrityError, but log and continue gracefully
+            await update_or_create_inherited_deal_custom_field_values(company)
+
+        # No CustomFieldValues should be created for the deleted deal
+        assert await CustomFieldValue.filter(deal_id=deal_id).count() == 0
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_client_event_deal_deleted_before_deleting_custom_field_value(self, mock_request):
+        """
+        Test that update_or_create_inherited_deal_custom_field_values handles DoesNotExist gracefully
+        when trying to delete a custom field value for a deal that was deleted.
+
+        This tests the branch where value is None and we try to delete a CustomFieldValue.
+        """
+        from unittest.mock import PropertyMock
+
+        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
+
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Julies Ltd',
+            country='GB',
+            sales_person=admin,
+            tc2_status=None,  # This will be None, triggering the delete branch
+        )
+        deal = await Deal.create(
+            name='Test Deal', company=company, admin=admin, pipeline=self.pipeline, stage=self.stage
+        )
+
+        # Create a custom field that should be inherited by the deal
+        await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+            pd_field_id='123_tc2_status_456',
+        )
+        # Create the corresponding deal custom field
+        deal_cf = await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Deal',
+            pd_field_id='345_tc2_status_678',
+        )
+        await build_custom_field_schema()
+
+        # Create a custom field value for the deal that we'll try to delete
+        cfv = await CustomFieldValue.create(custom_field=deal_cf, deal=deal, value='pending_email_conf')
+
+        # Get the deal ID before deletion
+        deal_id = deal.id
+
+        # Mock company.deals to return the in-memory deal object
+        async def mock_deals_property():
+            return [deal]
+
+        with mock.patch.object(type(company), 'deals', new_callable=PropertyMock) as mock_deals:
+            # Make the property return an awaitable that yields the deal list
+            mock_deals.return_value = mock_deals_property()
+
+            # Delete the deal from the database AFTER it's in the "fetched" list
+            # This will cascade delete the CustomFieldValue too
+            await Deal.filter(id=deal_id).delete()
+
+            # This should not raise a DoesNotExist error, but log and continue gracefully
+            await update_or_create_inherited_deal_custom_field_values(company)
+
+        # The custom field value should have been cascade deleted when the deal was deleted
+        assert await CustomFieldValue.filter(id=cfv.id).count() == 0
