@@ -1526,7 +1526,6 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await company.refresh_from_db()
         assert company.card_saved_dt.date().isoformat() == '2021-06-04'
 
-        
     async def test_activity_webhook(self):
         """Test that activity webhooks are received and handled without errors"""
         # Activities are calendar events that we create in Pipedrive but don't need to sync back
@@ -1535,4 +1534,3 @@ class PipedriveCallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert r.json() == {'status': 'ok'}
-
