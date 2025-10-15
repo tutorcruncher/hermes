@@ -1044,6 +1044,60 @@ class PipedriveCallbackTestCase(HermesTestCase):
         assert not await Deal.exists()
 
     @mock.patch('fastapi.BackgroundTasks.add_task')
+    async def test_deal_delete_with_custom_fields(self, mock_add_task):
+        """Test that delete events with custom fields (including signup_questionnaire) don't crash"""
+        stage = await Stage.create(pd_stage_id=50, name='Stage 1')
+        pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
+        company = await Company.create(name='Test company', pd_org_id=20, sales_person=self.admin)
+        contact = await Contact.create(first_name='Brian', last_name='Blessed', company=company)
+        deal = await Deal.create(
+            name='Test deal',
+            pd_deal_id=9161,
+            company=company,
+            contact=contact,
+            pipeline=pipeline,
+            stage=stage,
+            admin=self.admin,
+        )
+
+        # Create signup_questionnaire custom field
+        await CustomField.create(
+            linked_object_type='Deal',
+            pd_field_id='1c68afb8974133b7f9d0c30fdbf1d39de2255399',
+            machine_name='signup_questionnaire',
+            name='Signup Questionnaire',
+            field_type=CustomField.TYPE_STR,
+        )
+        await build_custom_field_schema()
+
+        assert await Deal.exists()
+        # This mimics the actual delete webhook from production where data is explicitly None
+        data = {
+            'data': None,
+            'previous': {
+                'id': 9161,
+                'add_time': '2025-08-10T02:02:14Z',
+                'currency': 'GBP',
+                'expected_close_date': '2025-08-24',
+                'hermes_id': deal.id,
+                'custom_fields': {
+                    '1c68afb8974133b7f9d0c30fdbf1d39de2255399': {
+                        'type': 'text',
+                        'value': "{'how-did-you-hear-about-us': 'Other'}",
+                    },
+                },
+            },
+            'meta': {
+                'action': 'delete',
+                'entity': 'deal',
+                'entity_id': '9161',
+            },
+        }
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert not await Deal.exists()
+
+    @mock.patch('fastapi.BackgroundTasks.add_task')
     async def test_deal_update(self, mock_add_task):
         stage = await Stage.create(pd_stage_id=50, name='Stage 1')
         pipeline = await Pipeline.create(pd_pipeline_id=60, name='Pipeline 1', dft_entry_stage=stage)
