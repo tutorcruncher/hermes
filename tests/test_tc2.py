@@ -7,9 +7,11 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from requests import HTTPError
+from tortoise.exceptions import DoesNotExist
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal
+from app.tc2.api import get_or_create_company, tc2_request
 from app.tc2.tasks import update_client_from_company
 from app.utils import settings
 from tests._common import HermesTestCase
@@ -1077,3 +1079,130 @@ class TC2TasksTestCase(HermesTestCase):
             'pipedrive_url': f'{settings.pd_base_url}/organization/20/',
             'who_are_you_trying_to_reach': 'support',
         }
+
+    @mock.patch('app.tc2.api.time.sleep')
+    @mock.patch('app.tc2.api.session.request')
+    async def test_tc2_request_429_retry(self, mock_request, mock_sleep):
+        """Test that 429 rate limit errors trigger retry logic"""
+        request_count = {'value': 0}
+
+        def mock_tc2_response(*args, **kwargs):
+            request_count['value'] += 1
+            response = mock.Mock()
+
+            if request_count['value'] < 5:
+                # First 4 attempts: return 429
+                response.status_code = 429
+                response.raise_for_status.side_effect = HTTPError(response=response)
+            else:
+                # 5th attempt: success
+                response.status_code = 200
+                response.raise_for_status = lambda: None
+                response.json.return_value = {'id': 123, 'name': 'Test'}
+
+            return response
+
+        mock_request.side_effect = mock_tc2_response
+
+        # This should retry and eventually succeed
+        result = await tc2_request('clients/123/')
+
+        # Verify retries happened
+        assert request_count['value'] == 5, f'Expected 5 requests, got {request_count["value"]}'
+        assert mock_sleep.call_count == 4, 'Should have slept 4 times for retries'
+        # Verify exponential backoff: 2s, 4s, 6s, 8s
+        mock_sleep.assert_any_call(2)
+        mock_sleep.assert_any_call(4)
+        mock_sleep.assert_any_call(6)
+        mock_sleep.assert_any_call(8)
+
+        # Verify we got the successful response
+        assert result == {'id': 123, 'name': 'Test'}
+
+    @mock.patch('app.tc2.api.time.sleep')
+    @mock.patch('app.tc2.api.session.request')
+    async def test_tc2_request_429_exhausted_retries(self, mock_request, mock_sleep):
+        """Test that 429 errors raise after max retries are exhausted"""
+        request_count = {'value': 0}
+
+        def mock_tc2_response(*args, **kwargs):
+            request_count['value'] += 1
+            response = mock.Mock()
+            response.status_code = 429
+            response.raise_for_status.side_effect = HTTPError(response=response)
+            return response
+
+        mock_request.side_effect = mock_tc2_response
+
+        # This should retry max_retries times, then raise HTTPError
+        with self.assertRaises(HTTPError):
+            await tc2_request('clients/123/')
+
+        # Verify max retries happened
+        assert request_count['value'] == 5, f'Expected 5 requests (max_retries), got {request_count["value"]}'
+        assert mock_sleep.call_count == 4, 'Should have slept 4 times'
+
+    @mock.patch('app.tc2.api.time.sleep')
+    @mock.patch('app.tc2.api.session.request')
+    async def test_tc2_request_other_errors_no_retry(self, mock_request, mock_sleep):
+        """Test that non-429 errors don't trigger retry logic"""
+        request_count = {'value': 0}
+
+        def mock_tc2_response(*args, **kwargs):
+            request_count['value'] += 1
+            response = mock.Mock()
+            response.status_code = 500
+            response.raise_for_status.side_effect = HTTPError(response=response)
+            return response
+
+        mock_request.side_effect = mock_tc2_response
+
+        # This should immediately raise HTTPError without retrying
+        with self.assertRaises(HTTPError):
+            await tc2_request('clients/123/')
+
+        # Verify no retries happened
+        assert request_count['value'] == 1, f'Expected 1 request (no retry), got {request_count["value"]}'
+        assert mock_sleep.call_count == 0, 'Should not have slept for non-429 errors'
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_get_or_create_company_existing(self, mock_request):
+        """Test get_or_create_company when company already exists"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        existing_company = await Company.create(
+            name='Existing Company', tc2_cligency_id=123, sales_person=admin, price_plan=Company.PP_PAYG
+        )
+
+        # Should not make any API calls since company exists
+        result = await get_or_create_company(123)
+
+        assert result.id == existing_company.id
+        assert result.name == 'Existing Company'
+        assert mock_request.call_count == 0, 'Should not call API when company exists'
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_get_or_create_company_new(self, mock_request):
+        """Test get_or_create_company when company doesn't exist"""
+        # Create Admin that the FakeTC2 client references
+        await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+
+        fake_tc2 = FakeTC2()
+        mock_request.side_effect = fake_tc2_request(fake_tc2)
+
+        # Company doesn't exist yet
+        with self.assertRaises(DoesNotExist):
+            await Company.get(tc2_cligency_id=10)
+
+        # Should fetch from API and create company
+        result = await get_or_create_company(10)
+
+        assert result is not None
+        assert result.tc2_cligency_id == 10
+        assert result.name == 'MyTutors'
+        # Verify company now exists in DB
+        company = await Company.get(tc2_cligency_id=10)
+        assert company.id == result.id

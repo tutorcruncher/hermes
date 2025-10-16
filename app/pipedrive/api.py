@@ -11,6 +11,8 @@ We want to create activities in pipedrive when:
 - A new sales/support call is created from the call booker
 """
 
+import time
+from json import JSONDecodeError
 from urllib.parse import urlencode
 
 import logfire
@@ -23,24 +25,40 @@ from app.pipedrive._utils import app_logger
 from app.utils import settings
 
 session = requests.Session()
+max_retries = 5
 
 
-async def pipedrive_request(url: str, *, method: str = 'GET', query_kwargs: dict = None, data: dict = None) -> dict:
+async def pipedrive_request(
+    url: str, *, method: str = 'GET', query_kwargs: dict = None, data: dict = None, retry: int = 1
+) -> dict:
     """
-    Make a request to the Pipedrive API.
+    Make a request to the Pipedrive API with retry logic for empty responses.
     @param url: desired endpoint
     @param method: GET, POST, PUT, DELETE
     @param query_kwargs: used to build the query string for search and list endpoints
     @param data: data to send in the request body
+    @param retry: internal retry counter (starts at 1, max 5)
     @return: json response
     """
     query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
     query_string = urlencode(query_params)
+
     with logfire.span('{method} {url!r}', url=url, method=method):
         r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', json=data)
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
     r.raise_for_status()
-    return r.json()
+
+    try:
+        return r.json()
+    except JSONDecodeError as e:
+        # Pipedrive API sometimes returns HTTP 200 with an empty body instead of proper 404/error responses
+        # This is a known issue: https://devcommunity.pipedrive.com/t/empty-response-body-from-api/8037
+        if retry < max_retries:
+            app_logger.warning(f'PD API returned empty response for {method} {url}, attempt {retry}/{max_retries}...')
+            time.sleep(retry)
+            return await pipedrive_request(url, method=method, query_kwargs=query_kwargs, data=data, retry=retry + 1)
+        else:
+            raise e
 
 
 def _get_search_item(r: dict) -> dict | None:
@@ -147,12 +165,14 @@ async def get_and_create_or_update_organisation(company: Company) -> Organisatio
             if hermes_org_data != pipedrive_org.model_dump(mode='json', by_alias=True):
                 await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
                 app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
+            return pipedrive_org
 
     if not company.pd_org_id:
         if org := await _search_for_organisation(company):
             company.pd_org_id = org.id
             await company.save()
             await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
+            return org
         else:
             # if company is not linked to pipedrive and there is no match, create a new org
             created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
@@ -196,8 +216,14 @@ async def get_and_create_or_update_person(contact: Contact) -> Person:
                 raise
         else:
             if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
-                await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
-                app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
+                try:
+                    await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
+                    app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
+                except Exception as e:
+                    app_logger.error(
+                        'Error updating person %s from contact %s: %s', contact.pd_person_id, contact.id, e
+                    )
+            return pipedrive_person
     if not contact.pd_person_id:
         created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
         pipedrive_person = Person(**created_person)
@@ -242,8 +268,12 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
                 app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
         else:
             if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
-                await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
-                app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+                try:
+                    await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+                    app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+                except Exception as e:
+                    app_logger.error('Error updating deal %s from deal %s: %s', deal.pd_deal_id, deal.id, e)
+            return pipedrive_deal
 
     if not deal.pd_deal_id:
         created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
