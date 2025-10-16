@@ -170,4 +170,4 @@ async def get_companies(request: Request) -> list[dict]:
         raise HTTPException(422, 'Must provide at least one param')
     companies = await Company.filter(**query_params).order_by('name').limit(10)
     schema = Company.pydantic_schema()
-    return [(await schema.from_tortoise_orm(c)).model_dump() for c in companies]
+    return [(await schema.from_tortoise_orm(c)).model_dump(mode='json') for c in companies]

@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 import logfire
 import requests
-from httpx import HTTPError
+from requests.exceptions import HTTPError
 
 from app.models import Company, Contact, Deal, Meeting
 from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
@@ -46,7 +46,15 @@ async def pipedrive_request(
     with logfire.span('{method} {url!r}', url=url, method=method):
         r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', json=data)
     app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
-    r.raise_for_status()
+
+    try:
+        r.raise_for_status()
+    except HTTPError as e:
+        try:
+            error_data = r.json()
+        except Exception:
+            error_data = r.text
+        raise HTTPError(f'{e}. Response: {error_data}', response=r) from e
 
     try:
         return r.json()
@@ -303,7 +311,7 @@ async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Ac
     Creates a new activity within Pipedrive.
     """
     hermes_activity = await Activity.from_meeting(meeting)
-    hermes_activity_data = hermes_activity.model_dump()
+    hermes_activity_data = hermes_activity.model_dump(mode='json')
     if pipedrive_deal:
         hermes_activity_data['deal_id'] = pipedrive_deal.id
     created_activity = (await pipedrive_request('activities/', method='POST', data=hermes_activity_data))['data']

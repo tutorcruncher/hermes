@@ -626,8 +626,10 @@ class TC2CallbackTestCase(HermesTestCase):
         events = [modified_data]
 
         data = {'_request_time': 123, 'events': events}
-        with self.assertRaises(TypeError):
-            await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        r = await self.client.post(self.url, json=data, headers={'Webhook-Signature': self._tc2_sig(data)})
+        assert r.status_code == 400
+        assert 'sales_person' in r.json()['detail']
+        assert 'ID: 20' in r.json()['detail']  # Check company ID is in the error message
 
     async def test_cb_client_deleted_no_linked_data(self):
         """
