@@ -3,6 +3,7 @@ from unittest import mock
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.pipedrive._schema import Activity, PDExtraField, PDFieldOption, PipedriveBaseModel
 from app.pipedrive.tasks import (
     pd_post_process_client_event,
     pd_post_process_sales_call,
@@ -2754,3 +2755,36 @@ class PipedriveTasksTestCase(HermesTestCase):
         # Verify the org was created successfully with the name from Pipedrive
         assert pipedrive_org.name == 'Merged Company'
         assert pipedrive_org.id == 999
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_schema_slugify_and_machine_name(self, mock_request):
+        field = PDExtraField(
+            key='test_key', name='Test Field Name With Spaces', options=[PDFieldOption(id=1, label='Option 1')]
+        )
+
+        assert field.machine_name == 'test_field_name_with_spaces'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_merged_hermes_id_with_invalid_format(self, mock_request):
+        # Test with invalid hermes_id format (not comma-separated integers)
+        values = {'123_hermes_id_456': 'invalid,format,not,numbers'}
+        result = PipedriveBaseModel.handle_merged_hermes_id(values)
+
+        # Should return unchanged when parsing fails
+        assert result['123_hermes_id_456'] == 'invalid,format,not,numbers'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_activity_with_dict_time_value(self, mock_request):
+        """Test dict value extraction for time fields (schema.py:291)"""
+        activity_data = {
+            'id': 1,
+            'subject': 'Test Activity',
+            'type': 'meeting',
+            'due_date': '2025-01-15',
+            'due_time': {'value': '10:00:00'},  # Dict format
+            'duration': '01:00:00',
+            'done': False,
+        }
+
+        activity = Activity(**activity_data)
+        assert activity.due_time == '10:00:00'
