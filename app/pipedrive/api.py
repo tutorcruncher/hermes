@@ -216,8 +216,14 @@ async def get_and_create_or_update_person(contact: Contact) -> Person:
                 raise
         else:
             if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
-                await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
-                app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
+                try:
+                    await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
+                    app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
+                except Exception as e:
+                    app_logger.error(
+                        'Error updating person %s from contact %s: %s', contact.pd_person_id, contact.id, e
+                    )
+            return pipedrive_person
     if not contact.pd_person_id:
         created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
         pipedrive_person = Person(**created_person)
@@ -262,8 +268,12 @@ async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
                 app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
         else:
             if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
-                await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
-                app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+                try:
+                    await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
+                    app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
+                except Exception as e:
+                    app_logger.error('Error updating deal %s from deal %s: %s', deal.pd_deal_id, deal.id, e)
+            return pipedrive_deal
 
     if not deal.pd_deal_id:
         created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
