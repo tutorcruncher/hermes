@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
 from pydantic import ValidationError
 from pytz import utc
 
@@ -21,7 +22,11 @@ async def _create_or_update_company(tc2_client: TCClient) -> tuple[bool, Company
     company_id = company_data.pop('tc2_agency_id')
 
     if company_data['sales_person'] is None:
-        raise ValidationError('Company must have a sales_person, Please add one in TC2')
+        company_name = company_data.get('name', 'Unknown')
+        raise HTTPException(
+            status_code=400,
+            detail=f'Company (ID: {company_id}, Name: {company_name}) must have a sales_person, Please add one in TC2',
+        )
 
     company, created = await Company.get_or_create(tc2_agency_id=company_id, defaults=company_data)
 

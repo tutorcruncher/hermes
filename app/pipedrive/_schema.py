@@ -424,7 +424,7 @@ async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str, pipedri
     elif object_type == PDObjectNames.DEAL:
         hermes_schema = await PDDeal.from_deal(hermes_object)
 
-    hermes_data = hermes_schema.model_dump(by_alias=True)
+    hermes_data = hermes_schema.model_dump(mode='json', by_alias=True)
     await pipedrive_request(pd_endpoint, method='PUT', data=hermes_data)
 
     app_logger.info(f'Updated {object_type} {pipedrive_id} to have hermes_id={hermes_object.id} (was: {hermes_ids})')

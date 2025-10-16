@@ -3,6 +3,8 @@ from json import JSONDecodeError
 from unittest import mock
 from unittest.mock import PropertyMock
 
+from requests.exceptions import HTTPError
+
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
 from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
@@ -2780,7 +2782,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         """
         Test that HTTPErrors other than 404/410 are raised when updating an org.
         """
-        from httpx import HTTPError
 
         mock_request.side_effect = fake_pd_request(
             self.pipedrive, error_responses={('GET', 'organizations', 123): (500, 'Internal Server Error')}
@@ -2805,7 +2806,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         """
         Test that HTTPErrors other than 404/410 are raised when updating a person.
         """
-        from httpx import HTTPError
 
         mock_request.side_effect = fake_pd_request(
             self.pipedrive, error_responses={('GET', 'persons', 456): (500, 'Internal Server Error')}
@@ -2877,8 +2877,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         """
         Test error handling when deleting an organisation fails.
         """
-        from app.pipedrive.api import delete_organisation
-
         mock_request.side_effect = fake_pd_request(
             self.pipedrive, error_responses={('DELETE', 'organizations', 123): Exception('Connection timeout')}
         )
@@ -2905,8 +2903,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         """
         Test error handling when deleting persons fails.
         """
-        from app.pipedrive.api import delete_persons
-
         mock_request.side_effect = fake_pd_request(
             self.pipedrive, error_responses={('DELETE', 'persons', 456): Exception('Connection timeout')}
         )
@@ -2938,8 +2934,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         """
         Test error handling when deleting a deal fails.
         """
-        from app.pipedrive.api import delete_deal
-
         mock_request.side_effect = fake_pd_request(
             self.pipedrive, error_responses={('DELETE', 'deals', 789): Exception('Connection timeout')}
         )
@@ -3454,6 +3448,63 @@ class PipedriveTasksTestCase(HermesTestCase):
         # This should retry 3 times total, then raise JSONDecodeError
         with self.assertRaises(JSONDecodeError):
             await get_and_create_or_update_person(contact)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pipedrive_request_400_error_with_json_body(self, mock_request):
+        """Test that 400 errors from Pipedrive API include the response body in the error message"""
+        error_response_body = {
+            'success': False,
+            'error': 'Bad Request',
+            'error_info': 'Invalid field value for address_country',
+        }
+
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 400
+            response.json.return_value = error_response_body
+            response.text = str(error_response_body)
+            response.raise_for_status.side_effect = HTTPError('400 Client Error: Bad Request', response=response)
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # Verify that HTTPError is raised with enhanced message
+        with self.assertRaises(HTTPError) as context:
+            await pipedrive_request('organizations/123', method='PUT', data={'name': 'test'})
+
+        # Check that the error message includes the response body
+        error_message = str(context.exception)
+        assert 'Bad Request' in error_message, 'Error message should include response body'
+        assert 'address_country' in error_message, 'Error message should include field details'
+
+        # Verify only one request was made (no retries for 400)
+        assert mock_request.call_count == 1
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_pipedrive_request_400_error_with_non_json_body(self, mock_request):
+        """Test that 400 errors with non-JSON responses from Pipedrive API are handled gracefully"""
+
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 400
+            response.json.side_effect = Exception('Not JSON')  # JSON parsing fails
+            response.text = 'Bad Request: Invalid field format'
+            response.raise_for_status.side_effect = HTTPError('400 Client Error: Bad Request', response=response)
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # Verify that HTTPError is still raised even when JSON parsing fails
+        with self.assertRaises(HTTPError) as context:
+            await pipedrive_request('organizations/123', method='PUT', data={'name': 'test'})
+
+        # Should include the text response in error message
+        error_message = str(context.exception)
+        assert '400' in error_message, 'Error message should include status code'
+        assert 'Invalid field format' in error_message, 'Error message should include text response'
+
+        # Verify only one request was made
+        assert mock_request.call_count == 1
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_update_person_when_data_differs(self, mock_request):

@@ -3,7 +3,7 @@
 import re
 from urllib.parse import parse_qs
 
-from httpx import HTTPError
+from requests.exceptions import HTTPError
 
 
 class FakePipedrive:
