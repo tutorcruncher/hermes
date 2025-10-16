@@ -3,6 +3,7 @@ from unittest import mock
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
 from app.pipedrive._schema import Activity, PDExtraField, PDFieldOption, PipedriveBaseModel
 from app.pipedrive.tasks import (
     pd_post_process_client_event,
@@ -2774,6 +2775,115 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         # Should return unchanged when parsing fails
         assert result['123_hermes_id_456'] == 'invalid,format,not,numbers'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_closed_deals_not_updated_when_company_custom_fields_change(self, mock_request):
+        """
+        Test that closed deals (won/lost) are not updated when company custom fields change.
+        This prevents closed deals from being reopened in Pipedrive.
+
+        Reproduces the bug where:
+        1. A deal is closed (won/lost) in Pipedrive
+        2. TC2 sends a webhook that triggers pd_post_process_client_event
+        3. update_or_create_inherited_deal_custom_field_values is called
+        4. The closed deal should NOT be sent to Pipedrive (which would reopen it)
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='steve@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(
+            name='Test Company',
+            country='GB',
+            sales_person=admin,
+            tc2_status=Company.STATUS_PAYING,
+            pd_org_id=1,
+        )
+
+        # Create an open deal and a closed deal (won)
+        open_deal = await Deal.create(
+            name='Open Deal',
+            company=company,
+            admin=admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            status=Deal.STATUS_OPEN,
+            pd_deal_id=1,
+        )
+        won_deal = await Deal.create(
+            name='Won Deal',
+            company=company,
+            admin=admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            status=Deal.STATUS_WON,
+            pd_deal_id=2,
+        )
+        lost_deal = await Deal.create(
+            name='Lost Deal',
+            company=company,
+            admin=admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            status=Deal.STATUS_LOST,
+            pd_deal_id=3,
+        )
+
+        # Create a custom field that should be inherited by deals
+        tc2_status_cf = await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            hermes_field_name='tc2_status',
+            linked_object_type='Company',
+            pd_field_id='123_tc2_status_456',
+        )
+        deal_tc2_status_cf = await CustomField.create(
+            name='TC2 Status',
+            machine_name='tc2_status',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Deal',
+            pd_field_id='345_tc2_status_678',
+        )
+        await build_custom_field_schema()
+
+        await CustomFieldValue.create(custom_field=tc2_status_cf, company=company, value='active')
+
+        # Set up Pipedrive mock database with all three deals
+        self.pipedrive.db['deals'] = {
+            1: {'id': 1, 'title': 'Open Deal', 'org_id': 1, 'user_id': 99, 'status': 'open'},
+            2: {'id': 2, 'title': 'Won Deal', 'org_id': 1, 'user_id': 99, 'status': 'won'},
+            3: {'id': 3, 'title': 'Lost Deal', 'org_id': 1, 'user_id': 99, 'status': 'lost'},
+        }
+        self.pipedrive.db['organizations'] = {1: {'id': 1, 'name': 'Test Company', 'owner_id': 99}}
+
+        # Call the function that should only update open deals
+        await update_or_create_inherited_deal_custom_field_values(company)
+
+        # Verify that only the open deal got updated
+        open_deal_cfv = await CustomFieldValue.filter(custom_field=deal_tc2_status_cf, deal=open_deal).first()
+        assert open_deal_cfv is not None, 'Open deal should have custom field value'
+        assert open_deal_cfv.value == 'active'
+
+        # Verify that closed deals did NOT get custom field values created
+        won_deal_cfv = await CustomFieldValue.filter(custom_field=deal_tc2_status_cf, deal=won_deal).first()
+        assert won_deal_cfv is None, 'Won deal should NOT have custom field value created'
+
+        lost_deal_cfv = await CustomFieldValue.filter(custom_field=deal_tc2_status_cf, deal=lost_deal).first()
+        assert lost_deal_cfv is None, 'Lost deal should NOT have custom field value created'
+
+        # Verify that only the open deal was sent to Pipedrive (by checking mock calls)
+        # Convert call_args_list to strings for easier checking
+        all_calls = str(mock_request.call_args_list)
+        assert 'PUT' in all_calls and 'deals/1' in all_calls, 'Open deal (id=1) should be updated in Pipedrive'
+        assert 'deals/2' not in all_calls, 'Won deal (id=2) should NOT be updated in Pipedrive'
+        assert 'deals/3' not in all_calls, 'Lost deal (id=3) should NOT be updated in Pipedrive'
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_activity_with_dict_time_value(self, mock_request):

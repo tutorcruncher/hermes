@@ -12,7 +12,8 @@ from app.pipedrive.api import get_and_create_or_update_pd_deal
 async def update_or_create_inherited_deal_custom_field_values(company):
     """
     Inherited Custom Field: A custom field on a deal with the same machine name as a Company custom field.
-    Update the inherited custom field values of all company deals.
+    Update the inherited custom field values of all OPEN company deals.
+    Closed deals (won/lost) are not updated to prevent reopening them in Pipedrive.
     """
     with logfire.span('update_or_create_inherited_deal_custom_field_values'):
         deal_custom_fields = await CustomField.filter(linked_object_type='Deal')
@@ -23,7 +24,7 @@ async def update_or_create_inherited_deal_custom_field_values(company):
             .prefetch_related('values')
         )
 
-        deals = await company.deals
+        deals = await Deal.filter(company=company, status=Deal.STATUS_OPEN)
 
         for cf in company_custom_fields_to_inherit:
             # get the associated deal custom field
