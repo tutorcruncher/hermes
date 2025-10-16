@@ -38,7 +38,9 @@ def fake_pd_request(fake_pipedrive: FakePipedrive, error_responses: dict = None)
     """
     error_responses = error_responses or {}
 
-    def _pd_request(*, url: str, method: str, data: dict):
+    def _pd_request(*, url: str, method: str, json: dict = None, data: dict = None):
+        # Support both json= and data= parameters for backwards compatibility
+        payload = json if json is not None else data
         obj_type = re.search(r'/api/v1/(.*?)(?:/|\?api_token=)', url).group(1)
         extra_path = re.search(rf'/api/v1/{obj_type}/(.*?)(?=\?)', url)
         extra_path = extra_path and extra_path.group(1)
@@ -77,13 +79,13 @@ def fake_pd_request(fake_pipedrive: FakePipedrive, error_responses: dict = None)
                     return MockResponse(200, {'data': list(fake_pipedrive.db[obj_type].values())})
         elif method == 'POST':
             obj_id = len(fake_pipedrive.db[obj_type].keys()) + 1
-            data['id'] = obj_id
-            fake_pipedrive.db[obj_type][obj_id] = data
+            payload['id'] = obj_id
+            fake_pipedrive.db[obj_type][obj_id] = payload
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         elif method == 'PUT':
             if obj_id not in fake_pipedrive.db[obj_type]:
                 return MockResponse(404, {'error': 'Not Found'})
-            fake_pipedrive.db[obj_type][obj_id].update(**data)
+            fake_pipedrive.db[obj_type][obj_id].update(**payload)
             return MockResponse(200, {'data': fake_pipedrive.db[obj_type][obj_id]})
         else:
             assert method == 'DELETE'

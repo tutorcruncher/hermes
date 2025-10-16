@@ -1738,3 +1738,189 @@ class PipedriveCallbackTestCase(HermesTestCase):
         called_company = call_args[0][0]
         assert called_company.id == company.id
         assert called_company.tc2_agency_id == 999
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_merged_hermes_id_webhook(self, mock_request):
+        """Test that merged organizations with comma-separated hermes_ids are handled correctly"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        # Create two companies that exist in Hermes
+        # Company 1 is linked to Pipedrive org 100 (the primary org after merge)
+        company1 = await Company.create(name='Company 1', pd_org_id=100, sales_person=self.admin, tc2_agency_id=1001)
+        # Company 2 was linked to Pipedrive org 200 (which got merged into org 100)
+        company2 = await Company.create(name='Company 2', pd_org_id=200, sales_person=self.admin, tc2_agency_id=1002)
+
+        # Add the merged org to the fake Pipedrive database (this represents the state after merge in Pipedrive)
+        self.pipedrive.db['organizations'][100] = {
+            'id': 100,
+            'name': 'Merged Company',
+            'owner_id': self.admin.pd_owner_id,
+            '123_hermes_id_456': f'{company1.id}, {company2.id}',
+        }
+
+        # Simulate Pipedrive merging the organizations - hermes_id becomes comma-separated
+        # Org 100 is the primary, so company1 should be the one that gets updated
+        webhook_data = {
+            'meta': {'action': 'change', 'entity': 'organization', 'entity_id': '100'},
+            'data': {
+                'id': 100,
+                'name': 'Merged Company',
+                'owner_id': self.admin.pd_owner_id,
+                '123_hermes_id_456': f'{company1.id}, {company2.id}',  # Comma-separated IDs
+            },
+            'previous': {
+                'name': 'Company 1',
+                '123_hermes_id_456': company1.id,
+            },
+        }
+
+        r = await self.client.post(self.url, json=webhook_data)
+        assert r.status_code == 200, r.json()
+
+        # Company 1 (linked to pd_org_id=100) should be updated with merged data
+        company1_updated = await Company.get(id=company1.id)
+        assert company1_updated.name == 'Merged Company'
+        assert company1_updated.pd_org_id == 100
+
+        # Company 2 should still exist (no deletion)
+        company2_still_exists = await Company.filter(id=company2.id).exists()
+        assert company2_still_exists
+
+        # Verify Pipedrive was updated with just company1's hermes_id
+        update_calls = [
+            call
+            for call in mock_request.call_args_list
+            if call[1].get('method') == 'PUT' and 'organizations/100' in call[1].get('url', '')
+        ]
+        assert len(update_calls) >= 1, 'Pipedrive should be updated to fix hermes_id'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_merged_hermes_id_webhook(self, mock_request):
+        """Test that merged persons with comma-separated hermes_ids are handled correctly"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(name='Company', pd_org_id=300, sales_person=self.admin)
+
+        # Create two contacts that exist in Hermes
+        # Contact 1 is linked to Pipedrive person 400 (the primary person after merge)
+        contact1 = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', pd_person_id=400, company=company
+        )
+        # Contact 2 was linked to Pipedrive person 500 (which got merged into person 400)
+        contact2 = await Contact.create(
+            first_name='Jane', last_name='Doe', email='jane@example.com', pd_person_id=500, company=company
+        )
+
+        # Add the merged person to the fake Pipedrive database
+        self.pipedrive.db['persons'][400] = {
+            'id': 400,
+            'name': 'Jane Doe',
+            'email': 'jane@example.com',
+            'org_id': company.pd_org_id,
+            'owner_id': self.admin.pd_owner_id,
+            '234_hermes_id_567': f'{contact1.id}, {contact2.id}',
+        }
+
+        # Simulate Pipedrive merging the persons
+        webhook_data = {
+            'meta': {'action': 'change', 'entity': 'person', 'entity_id': '400'},
+            'data': {
+                'id': 400,
+                'name': 'Jane Doe',
+                'email': 'jane@example.com',
+                'org_id': company.pd_org_id,
+                'owner_id': self.admin.pd_owner_id,
+                '234_hermes_id_567': f'{contact1.id}, {contact2.id}',
+            },
+            'previous': {
+                'name': 'John Doe',
+                '234_hermes_id_567': contact1.id,
+            },
+        }
+
+        r = await self.client.post(self.url, json=webhook_data)
+        assert r.status_code == 200, r.json()
+
+        # Contact 1 (linked to pd_person_id=400) should be updated with merged data
+        contact1_updated = await Contact.get(id=contact1.id)
+        assert contact1_updated.first_name == 'Jane'
+        assert contact1_updated.pd_person_id == 400
+
+        # Contact 2 should still exist (no deletion)
+        contact2_still_exists = await Contact.filter(id=contact2.id).exists()
+        assert contact2_still_exists
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_deal_merged_hermes_id_webhook(self, mock_request):
+        """Test that merged deals with comma-separated hermes_ids are handled correctly"""
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(name='Company', pd_org_id=600, sales_person=self.admin)
+        contact = await Contact.create(
+            first_name='Test', last_name='User', email='test@example.com', pd_person_id=700, company=company
+        )
+
+        # Create two deals that exist in Hermes
+        # Deal 1 is linked to Pipedrive deal 800 (the primary deal after merge)
+        deal1 = await Deal.create(
+            name='Deal 1',
+            pd_deal_id=800,
+            company=company,
+            contact=contact,
+            admin=self.admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+        )
+        # Deal 2 was linked to Pipedrive deal 900 (which got merged into deal 800)
+        deal2 = await Deal.create(
+            name='Deal 2',
+            pd_deal_id=900,
+            company=company,
+            contact=contact,
+            admin=self.admin,
+            pipeline=self.pipeline,
+            stage=self.stage,
+        )
+
+        # Add the merged deal to the fake Pipedrive database
+        self.pipedrive.db['deals'][800] = {
+            'id': 800,
+            'title': 'Merged Deal',
+            'org_id': company.pd_org_id,
+            'person_id': contact.pd_person_id,
+            'user_id': self.admin.pd_owner_id,
+            'pipeline_id': self.pipeline.pd_pipeline_id,
+            'stage_id': self.stage.pd_stage_id,
+            '345_hermes_id_678': f'{deal1.id}, {deal2.id}',
+        }
+
+        # Simulate Pipedrive merging the deals
+        webhook_data = {
+            'meta': {'action': 'change', 'entity': 'deal', 'entity_id': '800'},
+            'data': {
+                'id': 800,
+                'title': 'Merged Deal',
+                'org_id': company.pd_org_id,
+                'person_id': contact.pd_person_id,
+                'user_id': self.admin.pd_owner_id,
+                'pipeline_id': self.pipeline.pd_pipeline_id,
+                'stage_id': self.stage.pd_stage_id,
+                '345_hermes_id_678': f'{deal1.id}, {deal2.id}',
+            },
+            'previous': {
+                'title': 'Deal 1',
+                '345_hermes_id_678': deal1.id,
+            },
+        }
+
+        r = await self.client.post(self.url, json=webhook_data)
+        assert r.status_code == 200, r.json()
+
+        # Deal 1 (linked to pd_deal_id=800) should be updated with merged data
+        deal1_updated = await Deal.get(id=deal1.id)
+        assert deal1_updated.name == 'Merged Deal'
+        assert deal1_updated.pd_deal_id == 800
+
+        # Deal 2 should still exist (no deletion)
+        deal2_still_exists = await Deal.filter(id=deal2.id).exists()
+        assert deal2_still_exists
