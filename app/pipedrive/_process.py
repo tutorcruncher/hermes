@@ -7,6 +7,7 @@ from app.models import Company, Contact, CustomField, CustomFieldValue, Deal, Pi
 from app.pipedrive._schema import Organisation, PDDeal, PDPipeline, PDStage, Person
 from app.pipedrive._utils import app_logger
 from app.pipedrive.api import get_and_create_or_update_pd_deal
+from app.tc2.tasks import update_client_from_company
 
 
 async def update_or_create_inherited_deal_custom_field_values(company):
@@ -63,7 +64,7 @@ async def update_or_create_inherited_deal_custom_field_values(company):
                             )
 
 
-async def _process_pd_organisation(
+async def process_pd_organisation(
     current_pd_org: Optional[Organisation], old_pd_org: Optional[Organisation]
 ) -> Company | None:
     """
@@ -128,7 +129,17 @@ async def _process_pd_organisation(
                         current_pd_org.id,
                     )
             else:
-                # The org has been deleted. The linked custom fields will also be deleted
+                # The org has been deleted. Clear the Pipedrive reference in TC2 first
+                if company.tc2_cligency_id:
+                    company.pd_org_id = None
+                    await company.save()
+                    await update_client_from_company(company)
+                    app_logger.info(
+                        'Callback: cleared Pipedrive reference in TC2 for Company %s (TC2 ID: %s)',
+                        company.id,
+                        company.tc2_cligency_id,
+                    )
+                # The linked custom fields will also be deleted
                 await company.delete()
                 app_logger.info('Callback: deleting Company %s from Organisation %s', company.id, old_pd_org.id)
         elif current_pd_org:
@@ -152,7 +163,7 @@ async def _process_pd_organisation(
         return company
 
 
-async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person: Optional[Person]) -> Contact | None:
+async def process_pd_person(current_pd_person: Optional[Person], old_pd_person: Optional[Person]) -> Contact | None:
     """
     Processes a Pipedrive Person/Contact event. Creates the Person/Contact if it didn't exist in Hermes,
     updates it if it did
@@ -204,7 +215,7 @@ async def _process_pd_person(current_pd_person: Optional[Person], old_pd_person:
         return contact
 
 
-async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optional[PDDeal]) -> Deal | None:
+async def process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optional[PDDeal]) -> Deal | None:
     """
     Processes a Pipedrive deal event. Creates the deal if it didn't exist in Hermes, updates it if it did or deletes it
     if it's been removed.
@@ -237,7 +248,7 @@ async def _process_pd_deal(current_pd_deal: Optional[PDDeal], old_pd_deal: Optio
         return deal
 
 
-async def _process_pd_pipeline(
+async def process_pd_pipeline(
     current_pd_pipeline: Optional[PDPipeline], old_pd_pipeline: Optional[PDPipeline]
 ) -> Pipeline | None:
     """
@@ -272,7 +283,7 @@ async def _process_pd_pipeline(
         return pipeline
 
 
-async def _process_pd_stage(current_pd_stage: Optional[PDStage], old_pd_stage: Optional[PDStage]) -> Stage | None:
+async def process_pd_stage(current_pd_stage: Optional[PDStage], old_pd_stage: Optional[PDStage]) -> Stage | None:
     """
     Processes a Pipedrive Stage event. Creates the Stage if it didn't exist in Hermes,
     updates it if it did
