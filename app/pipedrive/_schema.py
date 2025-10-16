@@ -1,11 +1,12 @@
 import re
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, List, Literal, Optional, Union
+from typing import Any, Literal, Optional
 
 import logfire
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
+from tortoise.exceptions import DoesNotExist
 
 from app.base_schema import ForeignKeyField, HermesBaseModel
 from app.models import Admin, Company, Contact, CustomField, Deal, Meeting, Pipeline, Stage
@@ -68,6 +69,40 @@ class PDExtraField(BaseModel):
 
 
 class PipedriveBaseModel(HermesBaseModel):
+    @model_validator(mode='before')
+    @classmethod
+    def handle_merged_hermes_id(cls, values):
+        """
+        Handle cases where Pipedrive merges organizations/persons/deals and the hermes_id custom field
+        becomes a comma-separated list like "55839, 53670". We extract the highest ID (most recent).
+        """
+        if not isinstance(values, dict):
+            return values
+
+        for field_name, field_info in cls.model_fields.items():
+            if field_name == 'hermes_id':
+                # Found the hermes_id field, pd_field_id from the validation_alias
+                field_key = (
+                    field_info.validation_alias
+                    if hasattr(field_info, 'validation_alias') and field_info.validation_alias
+                    else field_name
+                )
+
+                if field_key in values and isinstance(values[field_key], str) and ',' in values[field_key]:
+                    try:
+                        original_value = values[field_key]
+                        ids = [int(id.strip()) for id in original_value.split(',')]
+                        max_id = max(ids)
+                        values[field_key] = max_id
+                        app_logger.info(
+                            f'Merged hermes_id detected in {field_key}: "{original_value}" -> keeping highest ID: {max_id}'
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+                break  # Only one hermes_id field, we're done
+
+        return values
+
     async def custom_field_values(self, custom_fields: list['CustomField']) -> dict:
         """
         When updating a Hermes model from a Pipedrive webhook, we need to get the custom field values from the
@@ -349,100 +384,52 @@ class WebhookMeta(HermesBaseModel):
     entity: str
 
 
-async def update_and_delete_objects(
-    objects: List[Union[Company, Contact, Deal]], main_object: Union[Company, Contact, Deal], object_type: str
-):
+async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str, pipedrive_id: int) -> int:
     """
-    @param objects: a list of objects to update, can be either Company, Contact or Deal
-    @param main_object: the object to keep
-    @param object_type: the type of object we are dealing with
-    @return:    None
-    """
-    for obj in objects:
-        if object_type == PDObjectNames.ORGANISATION:
-            contacts = await Contact.filter(company=obj)
-            for contact in contacts:
-                contact.company = main_object
-                await contact.save()
+    Handles cases where Pipedrive organizations are merged and hermes_id becomes a comma-separated list.
+    When Pipedrive merges entities, the primary one keeps its ID. We find the Hermes object linked to
+    that Pipedrive ID and update Pipedrive to contain only that object's hermes_id.
 
-            deals = await Deal.filter(company=obj)
-            for deal in deals:
-                deal.company = main_object
-                await deal.save()
-
-        elif object_type == PDObjectNames.PERSON:
-            deals = await Deal.filter(contact=obj)
-            for deal in deals:
-                deal.contact = main_object
-                await deal.save()
-
-            meetings = await Meeting.filter(contact=obj)
-            for meeting in meetings:
-                meeting.contact = main_object
-                await meeting.save()
-
-        elif object_type == PDObjectNames.DEAL:
-            meetings = await Meeting.filter(deal=obj)
-            for meeting in meetings:
-                meeting.deal = main_object
-                await meeting.save()
-
-        if obj.id != main_object.id:
-            await obj.delete()
-
-
-async def handle_duplicate_hermes_ids(hermes_ids: str, object_type: str) -> int:
-    """
-    @param hermes_ids: a string of comma-separated hermes IDs
-    @param object_type: the type of object we are dealing with
-    @return: a single hermes ID
+    @param hermes_ids: a string of comma-separated hermes IDs or a single ID
+    @param object_type: the type of object we are dealing with (organization, person, or deal)
+    @param pipedrive_id: the Pipedrive ID of the primary entity (org_id, person_id, or deal_id)
+    @return: the hermes ID of the object linked to the pipedrive_id
     """
     from app.pipedrive.api import pipedrive_request
 
-    with logfire.span('handle_duplicate_hermes_ids:%s of type %s' % (hermes_ids, object_type)):
-        if ',' in hermes_ids:
-            hermes_ids_list = hermes_ids.split(',')
-        else:
-            hermes_ids_list = [hermes_ids]
-
+    # Find the Hermes object linked to this Pipedrive entity
+    try:
         if object_type == PDObjectNames.ORGANISATION:
-            objects = await Company.filter(id__in=hermes_ids_list)
+            hermes_object = await Company.get(pd_org_id=pipedrive_id)
+            pd_endpoint = f'organizations/{pipedrive_id}'
         elif object_type == PDObjectNames.PERSON:
-            objects = await Contact.filter(id__in=hermes_ids_list)
+            hermes_object = await Contact.get(pd_person_id=pipedrive_id)
+            pd_endpoint = f'persons/{pipedrive_id}'
         elif object_type == PDObjectNames.DEAL:
-            objects = await Deal.filter(id__in=hermes_ids_list)
+            hermes_object = await Deal.get(pd_deal_id=pipedrive_id)
+            pd_endpoint = f'deals/{pipedrive_id}'
         else:
             raise ValueError(f'Unknown object type {object_type}')
+    except DoesNotExist:
+        # If we can't find the object, just return the first ID from the list
+        app_logger.warning(f'Could not find {object_type} with Pipedrive ID {pipedrive_id}, using first hermes_id')
+        if ',' in hermes_ids:
+            return int(hermes_ids.split(',')[0].strip())
+        return int(hermes_ids)
 
-        main_object = objects[0]
-        await update_and_delete_objects(objects, main_object, object_type)
-        # update the hermes_id field of the main object in Pipedrive
-        if object_type == PDObjectNames.ORGANISATION:
-            if main_object.pd_org_id:
-                hermes_org = await Organisation.from_company(main_object)
-                hermes_org_data = hermes_org.model_dump(by_alias=True)
-                await pipedrive_request(f'organizations/{main_object.pd_org_id}', method='PUT', data=hermes_org_data)
-                app_logger.info(
-                    f'Updated org {main_object.pd_org_id} from company {main_object.id} by company.pd_org_id'
-                )
+    # Update Pipedrive to have only this object's hermes_id
+    if object_type == PDObjectNames.ORGANISATION:
+        hermes_schema = await Organisation.from_company(hermes_object)
+    elif object_type == PDObjectNames.PERSON:
+        hermes_schema = await Person.from_contact(hermes_object)
+    elif object_type == PDObjectNames.DEAL:
+        hermes_schema = await PDDeal.from_deal(hermes_object)
 
-        elif object_type == PDObjectNames.PERSON:
-            if main_object.pd_person_id:
-                hermes_person = await Person.from_contact(main_object)
-                hermes_person_data = hermes_person.model_dump(by_alias=True)
-                await pipedrive_request(f'persons/{main_object.pd_person_id}', method='PUT', data=hermes_person_data)
-                app_logger.info(
-                    f'Updated person {main_object.pd_person_id} from contact {main_object.id} by contact.pd_person_id'
-                )
+    hermes_data = hermes_schema.model_dump(by_alias=True)
+    await pipedrive_request(pd_endpoint, method='PUT', data=hermes_data)
 
-        elif object_type == PDObjectNames.DEAL:
-            if main_object.pd_deal_id:
-                hermes_deal = await PDDeal.from_deal(main_object)
-                hermes_deal_data = hermes_deal.model_dump(by_alias=True)
-                await pipedrive_request(f'deals/{main_object.pd_deal_id}', method='PUT', data=hermes_deal_data)
-                app_logger.info(f'Updated deal {main_object.pd_deal_id} from deal {main_object.id} by deal.pd_deal_id')
-
-        return main_object.id
+    app_logger.info(f'Updated {object_type} {pipedrive_id} to have hermes_id={hermes_object.id} (was: {hermes_ids})')
+    return hermes_object.id
 
 
 class PipedriveEvent(HermesBaseModel):

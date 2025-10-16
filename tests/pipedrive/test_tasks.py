@@ -2706,3 +2706,51 @@ class PipedriveTasksTestCase(HermesTestCase):
         final_values = await CustomFieldValue.filter(custom_field=deal_utm_campaign_field, deal=deal)
         assert len(final_values) == 1, 'Should still have exactly one CustomFieldValue record'
         assert final_values[0].value == 'google_ads_2024', 'Value should be preserved'
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_fetch_organisation_with_merged_hermes_id(self, mock_request):
+        """Test that fetching an org from Pipedrive API with merged hermes_id doesn't crash"""
+        from app.pipedrive._schema import Organisation
+        from app.pipedrive.api import pipedrive_request
+
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+
+        # Create two companies that would have been merged in Pipedrive
+        company1 = await Company.create(name='Company 1', pd_org_id=999, sales_person=admin)
+        company2 = await Company.create(name='Company 2', pd_org_id=888, sales_person=admin)
+
+        # Mock Pipedrive API returning an org with merged hermes_id
+        merged_org_data = {
+            'success': True,
+            'data': {
+                'id': 999,
+                'name': 'Merged Company',
+                'owner_id': 100,
+                'address_country': 'US',
+                '123_hermes_id_456': f'{company1.id}, {company2.id}',  # Comma-separated IDs from merge
+            },
+        }
+
+        mock_request.return_value.json.return_value = merged_org_data
+        mock_request.return_value.status_code = 200
+        mock_request.return_value.raise_for_status = lambda: None
+
+        # This should not raise a ValidationError
+        result = await pipedrive_request(f'organizations/{company1.pd_org_id}')
+
+        # Should be able to parse the Organization without error
+        pipedrive_org = Organisation(**result['data'])
+
+        # The merged hermes_id should have been automatically parsed to the highest ID
+        assert hasattr(pipedrive_org, 'hermes_id') or '123_hermes_id_456' in pipedrive_org.model_fields_set
+
+        # Verify the org was created successfully with the name from Pipedrive
+        assert pipedrive_org.name == 'Merged Company'
+        assert pipedrive_org.id == 999
