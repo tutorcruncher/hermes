@@ -2758,6 +2758,7 @@ class PipedriveTasksTestCase(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_schema_slugify_and_machine_name(self, mock_request):
+        """Test _slugify function and machine_name property (schema.py:46, 51, 67)"""
         field = PDExtraField(
             key='test_key', name='Test Field Name With Spaces', options=[PDFieldOption(id=1, label='Option 1')]
         )
@@ -2766,6 +2767,7 @@ class PipedriveTasksTestCase(HermesTestCase):
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_merged_hermes_id_with_invalid_format(self, mock_request):
+        """Test ValueError/AttributeError handling in merged hermes_id (schema.py:99-100)"""
         # Test with invalid hermes_id format (not comma-separated integers)
         values = {'123_hermes_id_456': 'invalid,format,not,numbers'}
         result = PipedriveBaseModel.handle_merged_hermes_id(values)
