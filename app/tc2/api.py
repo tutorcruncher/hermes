@@ -41,7 +41,11 @@ async def tc2_request(url: str, *, method: str = 'GET', data: dict = None, retry
             time.sleep(wait_time)
             return await tc2_request(url, method=method, data=data, retry=retry + 1)
         else:
-            raise e
+            try:
+                error_data = r.json()
+            except Exception:
+                error_data = r.text
+            raise HTTPError(f'{e}. Response: {error_data}', response=r) from e
 
 
 async def get_or_create_company(tc2_cligency_id: int) -> Company:

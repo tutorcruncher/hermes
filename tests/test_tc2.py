@@ -1166,6 +1166,64 @@ class TC2TasksTestCase(HermesTestCase):
         assert mock_sleep.call_count == 0, 'Should not have slept for non-429 errors'
 
     @mock.patch('app.tc2.api.session.request')
+    async def test_tc2_request_400_error_with_json_body(self, mock_request):
+        """Test that 400 errors include response body in error message and logs"""
+        error_response_body = {
+            'error': 'Validation failed',
+            'details': {
+                'user': {'email': ['This field is required']},
+                'paid_recipients': [{'email': ['Invalid email format']}],
+            },
+        }
+
+        def mock_tc2_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 400
+            response.json.return_value = error_response_body
+            response.text = json.dumps(error_response_body)
+            response.raise_for_status.side_effect = HTTPError('400 Client Error: Bad Request', response=response)
+            return response
+
+        mock_request.side_effect = mock_tc2_response
+
+        # Verify that HTTPError is raised with enhanced message
+        with self.assertRaises(HTTPError) as context:
+            await tc2_request('clients/', method='POST', data={'name': 'test'})
+
+        # Check that the error message includes the response body
+        error_message = str(context.exception)
+        assert 'Validation failed' in error_message, 'Error message should include response body'
+        assert 'email' in error_message, 'Error message should include field details'
+
+        # Verify only one request was made (no retries for 400)
+        assert mock_request.call_count == 1
+
+    @mock.patch('app.tc2.api.session.request')
+    async def test_tc2_request_400_error_with_non_json_body(self, mock_request):
+        """Test that 400 errors with non-JSON responses are handled gracefully"""
+
+        def mock_tc2_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 400
+            response.json.side_effect = Exception('Not JSON')  # JSON parsing fails
+            response.text = 'Bad Request: Invalid input'
+            response.raise_for_status.side_effect = HTTPError('400 Client Error: Bad Request', response=response)
+            return response
+
+        mock_request.side_effect = mock_tc2_response
+
+        # Verify that HTTPError is still raised even when JSON parsing fails
+        with self.assertRaises(HTTPError) as context:
+            await tc2_request('clients/', method='POST', data={'name': 'test'})
+
+        # Should still get the original error
+        error_message = str(context.exception)
+        assert '400' in error_message, 'Error message should include status code'
+
+        # Verify only one request was made
+        assert mock_request.call_count == 1
+
+    @mock.patch('app.tc2.api.session.request')
     async def test_get_or_create_company_existing(self, mock_request):
         """Test get_or_create_company when company already exists"""
         admin = await Admin.create(
