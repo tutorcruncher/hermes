@@ -3,7 +3,6 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal, Optional
 
-import logfire
 from pydantic import Field, field_validator, model_validator
 from pydantic.main import BaseModel
 from tortoise.exceptions import DoesNotExist
