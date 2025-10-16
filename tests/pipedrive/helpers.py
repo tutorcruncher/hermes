@@ -24,13 +24,39 @@ class MockResponse:
             raise HTTPError(f'{self.status_code} {self.json_data["error"]}')
 
 
-def fake_pd_request(fake_pipedrive: FakePipedrive):
+def fake_pd_request(fake_pipedrive: FakePipedrive, error_responses: dict = None):
+    """
+    Create a mock Pipedrive request handler.
+
+    Args:
+        fake_pipedrive: FakePipedrive instance with test data
+        error_responses: Optional dict mapping (method, obj_type, obj_id) tuples to error responses.
+            - For HTTP errors: tuple of (status_code, error_message)
+            - For exceptions: Exception instance to raise
+            Example: {('GET', 'organizations', 123): (500, 'Internal Server Error')}
+                     {('DELETE', 'deals', 456): Exception('Connection timeout')}
+    """
+    error_responses = error_responses or {}
+
     def _pd_request(*, url: str, method: str, data: dict):
         obj_type = re.search(r'/api/v1/(.*?)(?:/|\?api_token=)', url).group(1)
         extra_path = re.search(rf'/api/v1/{obj_type}/(.*?)(?=\?)', url)
         extra_path = extra_path and extra_path.group(1)
         obj_id = re.search(rf'/api/v1/{obj_type}/(\d+)', url)
         obj_id = obj_id and int(obj_id.group(1))
+
+        # Check if this request should return an error
+        error_key = (method, obj_type, obj_id)
+        if error_key in error_responses:
+            error = error_responses[error_key]
+            if isinstance(error, Exception):
+                raise error
+            else:
+                status_code, error_msg = error
+                response = MockResponse(status_code, {'error': error_msg})
+                response.url = url
+                return response
+
         if method == 'GET':
             if obj_id:
                 # Return 404 if object doesn't exist in the fake database

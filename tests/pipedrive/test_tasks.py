@@ -13,7 +13,7 @@ from app.pipedrive.tasks import (
     pd_post_purge_client_event,
 )
 from tests._common import HermesTestCase
-from tests.pipedrive.helpers import FakePipedrive, MockResponse, fake_pd_request
+from tests.pipedrive.helpers import FakePipedrive, fake_pd_request
 
 
 class PipedriveTasksTestCase(HermesTestCase):
@@ -138,17 +138,9 @@ class PipedriveTasksTestCase(HermesTestCase):
         Test that when a company has a pd_org_id but the org returns 410 Gone in Pipedrive
         (permanently deleted), the code handles it gracefully and creates a new org.
         """
-
-        def mock_pd_with_410(*, url, method, **kwargs):
-            # Return 410 Gone for the specific org
-            if method == 'GET' and 'organizations/16994' in url:
-                response = MockResponse(410, {'error': 'Gone'})
-                response.url = url
-                return response
-            # Otherwise use normal fake_pd_request
-            return fake_pd_request(self.pipedrive)(url=url, method=method, **kwargs)
-
-        mock_request.side_effect = mock_pd_with_410
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('GET', 'organizations', 16994): (410, 'Gone')}
+        )
 
         admin = await Admin.create(
             first_name='Steve',
@@ -2772,3 +2764,328 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         # The custom field value should have been cascade deleted when the deal was deleted
         assert await CustomFieldValue.filter(id=cfv.id).count() == 0
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_update_other_http_error(self, mock_request):
+        """
+        Test that HTTPErrors other than 404/410 are raised when updating an org.
+        """
+        from httpx import HTTPError
+
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('GET', 'organizations', 123): (500, 'Internal Server Error')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=123)
+
+        # This should raise an HTTPError (not catch it)
+        with self.assertRaises(HTTPError):
+            await pd_post_process_client_event(company)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_person_update_other_http_error(self, mock_request):
+        """
+        Test that HTTPErrors other than 404/410 are raised when updating a person.
+        """
+        from httpx import HTTPError
+
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('GET', 'persons', 456): (500, 'Internal Server Error')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=456
+        )
+
+        # This should raise an HTTPError (not catch it)
+        with self.assertRaises(HTTPError):
+            await pd_post_process_client_event(company)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_deal_update_other_http_error(self, mock_request):
+        """
+        Test that HTTPErrors other than 404/410 are logged (not raised) when updating a deal.
+        """
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('GET', 'deals', 789): (500, 'Internal Server Error')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe'}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=789,
+        )
+
+        # This should NOT raise - it logs the error and continues
+        await pd_post_process_client_event(company, deal)
+
+        # Verify that the deal was NOT updated (still has old pd_deal_id)
+        await deal.refresh_from_db()
+        assert deal.pd_deal_id == 789
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_organisation_error(self, mock_request):
+        """
+        Test error handling when deleting an organisation fails.
+        """
+        from app.pipedrive.api import delete_organisation
+
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('DELETE', 'organizations', 123): Exception('Connection timeout')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=123)
+
+        # This should not raise - it logs the error
+        await delete_organisation(company)
+
+        # Verify that pd_org_id is still set (deletion failed)
+        await company.refresh_from_db()
+        assert company.pd_org_id == 123
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_persons_error(self, mock_request):
+        """
+        Test error handling when deleting persons fails.
+        """
+        from app.pipedrive.api import delete_persons
+
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('DELETE', 'persons', 456): Exception('Connection timeout')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=456
+        )
+
+        # This should not raise - it logs the error
+        await delete_persons([contact])
+
+        # Verify that pd_person_id is still set (deletion failed)
+        await contact.refresh_from_db()
+        assert contact.pd_person_id == 456
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_deal_error(self, mock_request):
+        """
+        Test error handling when deleting a deal fails.
+        """
+        from app.pipedrive.api import delete_deal
+
+        mock_request.side_effect = fake_pd_request(
+            self.pipedrive, error_responses={('DELETE', 'deals', 789): Exception('Connection timeout')}
+        )
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe'}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+            pd_deal_id=789,
+        )
+
+        # This should not raise - it logs the error
+        await delete_deal(deal)
+
+        # Verify that pd_deal_id is still set (deletion failed)
+        await deal.refresh_from_db()
+        assert deal.pd_deal_id == 789
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_inherited_custom_field_with_fk_field(self, mock_request):
+        """
+        Test that TYPE_FK_FIELD custom fields are handled correctly in inherited deal custom fields.
+        This covers line 40 in _process.py.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        # Create a FK custom field on Company that should be inherited by Deal
+        await CustomField.create(
+            name='Sales Person',
+            machine_name='sales_person_fk',
+            hermes_field_name='sales_person',
+            field_type=CustomField.TYPE_FK_FIELD,
+            linked_object_type='Company',
+            pd_field_id='company_sales_person_fk',
+        )
+
+        # Create corresponding deal field
+        deal_fk_field = await CustomField.create(
+            name='Sales Person',
+            machine_name='sales_person_fk',
+            field_type=CustomField.TYPE_FK_FIELD,
+            linked_object_type='Deal',
+            pd_field_id='deal_sales_person_fk',
+        )
+
+        await build_custom_field_schema()
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe'}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Update the inherited custom field values
+        await update_or_create_inherited_deal_custom_field_values(company)
+
+        # Verify that the custom field value was created with the admin's ID
+        cfv = await CustomFieldValue.get(custom_field=deal_fk_field, deal=deal)
+        assert cfv.value == str(admin.id)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_inherited_custom_field_delete_none_value(self, mock_request):
+        """
+        Test that custom field values are deleted when the inherited value becomes None.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        admin = await Admin.create(
+            first_name='Steve',
+            last_name='Jobs',
+            username='climan@example.com',
+            is_sales_person=True,
+            tc2_admin_id=20,
+            pd_owner_id=99,
+        )
+        company = await Company.create(name='Test Company', country='GB', sales_person=admin, pd_org_id=1)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company'}
+
+        # Create a custom field on Company that should be inherited by Deal
+        await CustomField.create(
+            name='Test Field',
+            machine_name='test_field',
+            hermes_field_name='website',  # This can be None
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Company',
+            pd_field_id='company_test_field',
+        )
+
+        # Create corresponding deal field
+        deal_field = await CustomField.create(
+            name='Test Field',
+            machine_name='test_field',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Deal',
+            pd_field_id='deal_test_field',
+        )
+
+        await build_custom_field_schema()
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe'}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=admin,
+        )
+
+        # Create a custom field value
+        cfv = await CustomFieldValue.create(custom_field=deal_field, deal=deal, value='old_value')
+
+        # Update the inherited custom field values (website is None, so it should delete the cfv)
+        await update_or_create_inherited_deal_custom_field_values(company)
+
+        # Verify that the custom field value was deleted
+        assert not await CustomFieldValue.filter(id=cfv.id).exists()
