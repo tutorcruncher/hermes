@@ -25,6 +25,8 @@ async def prepare_event_data(event_data: dict) -> dict:
     Custom fields in v2 come as objects with 'type' and 'value'/'id' keys.
     We flatten these into the main data object for easier processing.
     """
+    from app.pipedrive._schema import handle_duplicate_hermes_ids
+
     # Handle webhooks v2 custom fields format: flatten custom_fields object into main object
     for state in [PDStatus.DATA, PDStatus.PREVIOUS]:
         if event_data.get(state) and isinstance(event_data[state], dict):
@@ -61,12 +63,22 @@ async def prepare_event_data(event_data: dict) -> dict:
                             data[PDStatus.DATA][pd_field_id] = data[PDStatus.PREVIOUS][pd_field_id]
 
                     if callable(handle_func):
-                        data[state][pd_field_id] = await handle_func(data[state][pd_field_id], data['meta']['entity'])
+                        # Only process DATA state for callables that modify database (like handle_duplicate_hermes_ids)
+                        # PREVIOUS state should not trigger database changes
+                        if state == PDStatus.DATA:
+                            # Get the Pipedrive entity ID from the webhook data
+                            pipedrive_id = data[state].get('id')
+                            if pipedrive_id:
+                                merged_id = await handle_func(
+                                    data[state][pd_field_id], data['meta']['entity'], pipedrive_id
+                                )
+                                data[state][pd_field_id] = merged_id
+                                # Also update PREVIOUS to use the merged ID so validation doesn't fail
+                                if data.get(PDStatus.PREVIOUS) and pd_field_id in data[PDStatus.PREVIOUS]:
+                                    data[PDStatus.PREVIOUS][pd_field_id] = merged_id
         return data
 
-    ## TODO: Re-enable in #282
-    # event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
-
+    event_data = await handle_custom_field(event_data, 'hermes_id', handle_duplicate_hermes_ids)
     event_data = await handle_custom_field(event_data, 'signup_questionnaire', 'revert changes')
 
     # ignore any updated inherited custom fields on a deal
