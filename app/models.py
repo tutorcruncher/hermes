@@ -182,7 +182,7 @@ class HermesModel(models.Model):
 
         for cf_id, cf_val in updated_created_vals.items():
             _, is_created = await CustomFieldValue.update_or_create(
-                **{'custom_field_id': cf_id, linked_obj_name: self, 'defaults': {'value': cf_val}}
+                **{linked_obj_name: self, 'custom_field_id': cf_id}, defaults={'value': cf_val}
             )
             if is_created:
                 created.append(cf_id)
@@ -508,3 +508,19 @@ class CustomFieldValue(models.Model):
 
     def __repr__(self):
         return str(self)
+
+    class Meta:
+        # Use partial unique indexes to prevent duplicates per entity type
+        # These only apply when the field is not null
+        indexes = (
+            ('custom_field_id', 'company_id'),
+            ('custom_field_id', 'contact_id'),
+            ('custom_field_id', 'deal_id'),
+            ('custom_field_id', 'meeting_id'),
+        )
+        unique_together = (
+            ('custom_field_id', 'company_id'),
+            ('custom_field_id', 'contact_id'),
+            ('custom_field_id', 'deal_id'),
+            ('custom_field_id', 'meeting_id'),
+        )

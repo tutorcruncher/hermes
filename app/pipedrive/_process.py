@@ -54,7 +54,7 @@ async def update_or_create_inherited_deal_custom_field_values(company):
                         # update or create the custom field value
                         try:
                             await CustomFieldValue.update_or_create(
-                                **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': value}}
+                                custom_field_id=deal_cf.id, deal=deal, defaults={'value': value}
                             )
                             await get_and_create_or_update_pd_deal(deal)
                         except IntegrityError:

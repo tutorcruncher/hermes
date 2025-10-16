@@ -94,7 +94,7 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
             deal_cf = next((dcf for dcf in deal_custom_fields if dcf.machine_name == cf.machine_name), None)
             if deal_cf:
                 await CustomFieldValue.update_or_create(
-                    **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': cf.values[0].value}}
+                    custom_field_id=deal_cf.id, deal=deal, defaults={'value': cf.values[0].value}
                 )
 
         else:
@@ -108,7 +108,7 @@ async def _get_or_create_deal(company: Company, contact: Contact | None) -> Deal
                     val = getattr(company, cf.hermes_field_name, None)
                 if deal_cf and val:
                     await CustomFieldValue.update_or_create(
-                        **{'custom_field_id': deal_cf.id, 'deal': deal, 'defaults': {'value': val}}
+                        custom_field_id=deal_cf.id, deal=deal, defaults={'value': val}
                     )
 
     return deal
