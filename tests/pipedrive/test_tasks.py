@@ -1,8 +1,21 @@
 from datetime import date, datetime, timedelta, timezone
+from json import JSONDecodeError
 from unittest import mock
+from unittest.mock import PropertyMock
 
 from app.base_schema import build_custom_field_schema
 from app.models import Admin, Company, Contact, CustomField, CustomFieldValue, Deal, Meeting, Pipeline
+from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
+from app.pipedrive._schema import Organisation
+from app.pipedrive.api import (
+    delete_deal,
+    delete_organisation,
+    delete_persons,
+    get_and_create_or_update_organisation,
+    get_and_create_or_update_pd_deal,
+    get_and_create_or_update_person,
+    pipedrive_request,
+)
 from app.pipedrive.tasks import (
     pd_post_process_client_event,
     pd_post_process_sales_call,
@@ -40,8 +53,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         This would fail if the Organisation schema had datetime fields instead of date fields,
         because Pydantic 2.9+ is strict about datetime-to-date conversions.
         """
-        from app.pipedrive._schema import Organisation
-
         admin = await Admin.create(
             first_name='John',
             last_name='Doe',
@@ -1490,8 +1501,6 @@ class PipedriveTasksTestCase(HermesTestCase):
             value=str(close_date),
         )
 
-        from app.pipedrive.tasks import pd_post_process_sales_call
-
         meeting = await Meeting.create(
             company=company,
             contact=contact,
@@ -2481,9 +2490,6 @@ class PipedriveTasksTestCase(HermesTestCase):
         3. The code tries to create CustomFieldValues for the deleted deal
         4. This should be caught and logged, not raise an IntegrityError
         """
-        from unittest.mock import PropertyMock
-
-        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
 
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
@@ -2554,9 +2560,6 @@ class PipedriveTasksTestCase(HermesTestCase):
 
         This tests the branch where value is None and we try to delete a CustomFieldValue.
         """
-        from unittest.mock import PropertyMock
-
-        from app.pipedrive._process import update_or_create_inherited_deal_custom_field_values
 
         mock_request.side_effect = fake_pd_request(self.pipedrive)
 
@@ -2710,9 +2713,6 @@ class PipedriveTasksTestCase(HermesTestCase):
     @mock.patch('app.pipedrive.api.session.request')
     async def test_fetch_organisation_with_merged_hermes_id(self, mock_request):
         """Test that fetching an org from Pipedrive API with merged hermes_id doesn't crash"""
-        from app.pipedrive._schema import Organisation
-        from app.pipedrive.api import pipedrive_request
-
         admin = await Admin.create(
             first_name='John',
             last_name='Doe',
@@ -2754,3 +2754,641 @@ class PipedriveTasksTestCase(HermesTestCase):
         # Verify the org was created successfully with the name from Pipedrive
         assert pipedrive_org.name == 'Merged Company'
         assert pipedrive_org.id == 999
+
+    @mock.patch('app.pipedrive.api.time.sleep')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_empty_response_from_pipedrive_api(self, mock_request, mock_sleep):
+        """Test that empty responses from Pipedrive API are retried and then raise error"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+        deal = await Deal.create(
+            company=company, contact=contact, admin=admin, pipeline=self.pipeline, stage=self.stage, pd_deal_id=777
+        )
+
+        # Track number of GET requests
+        get_count = {'value': 0}
+
+        # Mock Pipedrive API to return empty response for GET (deleted deal) but valid response for POST (new deal)
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            # Check if this is a GET request (checking existing deal)
+            if kwargs.get('method') == 'GET' or (args and 'GET' in str(args)):
+                get_count['value'] += 1
+                # Simulate empty response for deleted deal (all retries)
+                response.text = ''
+                response.json.side_effect = JSONDecodeError('Expecting value', '', 0)
+            else:
+                # POST request - return valid data for new deal creation
+                response.json.return_value = {
+                    'data': {
+                        'id': 888,
+                        'title': 'Test Deal',
+                        'person_id': 888,
+                        'org_id': 999,
+                        'user_id': 100,
+                        'pipeline_id': self.pipeline.pd_pipeline_id,
+                        'stage_id': self.stage.pd_stage_id,
+                        'status': 'open',
+                    }
+                }
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should retry 5 times total, then raise JSONDecodeError
+        with self.assertRaises(JSONDecodeError):
+            await get_and_create_or_update_pd_deal(deal)
+
+        # Verify that GET was retried 5 times (max_retries = 5)
+        assert get_count['value'] == 5, f'Expected 5 GET requests, got {get_count["value"]}'
+        # Verify sleep was called 4 times (for the 4 retries)
+        assert mock_sleep.call_count == 4
+        # Verify correct sleep times: 1s, 2s, 3s, 4s (based on retry counter)
+        mock_sleep.assert_any_call(1)
+        mock_sleep.assert_any_call(2)
+        mock_sleep.assert_any_call(3)
+        mock_sleep.assert_any_call(4)
+
+    @mock.patch('app.pipedrive.api.time.sleep')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_empty_response_recovers_on_retry(self, mock_request, mock_sleep):
+        """Test that retry succeeds when API recovers on second attempt"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+        deal = await Deal.create(
+            company=company, contact=contact, admin=admin, pipeline=self.pipeline, stage=self.stage, pd_deal_id=777
+        )
+
+        # Track number of GET requests
+        get_count = {'value': 0}
+
+        # Mock Pipedrive API to fail first request but succeed on retry
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            if kwargs.get('method') == 'GET':
+                get_count['value'] += 1
+                if get_count['value'] == 1:
+                    # First attempt - empty response (transient API glitch)
+                    response.text = ''
+                    response.json.side_effect = JSONDecodeError('Expecting value', '', 0)
+                else:
+                    # Second attempt - success! API recovered
+                    response.json.return_value = {
+                        'data': {
+                            'id': 777,
+                            'title': 'Existing Deal',
+                            'person_id': 888,
+                            'org_id': 999,
+                            'user_id': 100,
+                            'pipeline_id': self.pipeline.pd_pipeline_id,
+                            'stage_id': self.stage.pd_stage_id,
+                            'status': 'open',
+                        }
+                    }
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should retry once and succeed
+        result = await get_and_create_or_update_pd_deal(deal)
+
+        # Verify retry happened
+        assert get_count['value'] == 2, 'Should have made 2 GET requests (initial + 1 retry)'
+        assert mock_sleep.call_count == 1, 'Should have slept once'
+        mock_sleep.assert_called_with(1)  # sleep(retry) where retry=1
+
+        # Verify we got the existing deal (no new deal created)
+        assert result.id == 777
+        await deal.refresh_from_db()
+        assert deal.pd_deal_id == 777  # Should still be original ID
+
+    @mock.patch('app.pipedrive.api.time.sleep')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_empty_response_from_pipedrive_api_organisation(self, mock_request, mock_sleep):
+        """Test that empty responses for organisations are retried and then raise error"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+
+        # Mock Pipedrive API to return empty response for GET (deleted org) but valid response for POST (new org)
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            # Check if this is a GET request (checking existing org)
+            if kwargs.get('method') == 'GET':
+                # Simulate empty response for deleted org
+                response.text = ''
+                response.json.side_effect = JSONDecodeError('Expecting value', '', 0)
+            else:
+                # POST request - return valid data for new org creation
+                response.json.return_value = {
+                    'data': {
+                        'id': 1000,
+                        'name': 'Test Company',
+                        'owner_id': 100,
+                        'address_country': None,
+                    }
+                }
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should retry 3 times total, then raise JSONDecodeError
+        with self.assertRaises(JSONDecodeError):
+            await get_and_create_or_update_organisation(company)
+
+    @mock.patch('app.pipedrive.api.time.sleep')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_empty_response_from_pipedrive_api_person(self, mock_request, mock_sleep):
+        """Test that empty responses for persons are retried and then raise error"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+
+        # Mock Pipedrive API to return empty response for GET (deleted person) but valid response for POST (new person)
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            # Check if this is a GET request (checking existing person)
+            if kwargs.get('method') == 'GET':
+                # Simulate empty response for deleted person
+                response.text = ''
+                response.json.side_effect = JSONDecodeError('Expecting value', '', 0)
+            else:
+                # POST request - return valid data for new person creation
+                response.json.return_value = {
+                    'data': {
+                        'id': 1001,
+                        'name': 'John Smith',
+                        'email': ['john@example.com'],
+                        'phone': [],
+                        'org_id': 999,
+                        'owner_id': 100,
+                    }
+                }
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should retry 3 times total, then raise JSONDecodeError
+        with self.assertRaises(JSONDecodeError):
+            await get_and_create_or_update_person(contact)
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_update_person_when_data_differs(self, mock_request):
+        """Test that person update is called when data differs"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+
+        # Track whether PUT was called
+        put_called = {'value': False}
+
+        # Mock Pipedrive API to return data that differs from what we'd send
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            if kwargs.get('method') == 'GET':
+                # Return person data that differs (old email)
+                response.json.return_value = {
+                    'data': {
+                        'id': 888,
+                        'name': 'John Smith',
+                        'email': [{'value': 'old@example.com', 'primary': True}],
+                        'phone': [],
+                        'org_id': 999,
+                        'owner_id': 100,
+                    }
+                }
+            elif kwargs.get('method') == 'PUT':
+                put_called['value'] = True
+                response.json.return_value = {'data': {'id': 888}}
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should trigger an update because the data differs
+        result = await get_and_create_or_update_person(contact)
+
+        # Verify that PUT was called
+        assert put_called['value'], 'PUT request should have been called to update person'
+        assert result.id == 888
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_update_deal_with_exception(self, mock_request):
+        """Test that deal update exception is handled gracefully"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+        deal = await Deal.create(
+            company=company, contact=contact, admin=admin, pipeline=self.pipeline, stage=self.stage, pd_deal_id=777
+        )
+
+        # Mock Pipedrive API to return data that differs and then fail on update
+        def mock_pipedrive_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            if kwargs.get('method') == 'GET':
+                # Return deal data that differs (old title)
+                response.json.return_value = {
+                    'data': {
+                        'id': 777,
+                        'title': 'Old Title',
+                        'person_id': 888,
+                        'org_id': 999,
+                        'user_id': 100,
+                        'pipeline_id': self.pipeline.pd_pipeline_id,
+                        'stage_id': self.stage.pd_stage_id,
+                        'status': 'open',
+                    }
+                }
+            elif kwargs.get('method') == 'PUT':
+                # Simulate an error during update
+                raise Exception('Network error')
+            return response
+
+        mock_request.side_effect = mock_pipedrive_response
+
+        # This should not raise an exception, it should log the error and continue
+        result = await get_and_create_or_update_pd_deal(deal)
+
+        # Verify that we still got the pipedrive deal back (from GET)
+        assert result.id == 777
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_organisation_exception(self, mock_request):
+        """Test that delete_organisation handles exceptions gracefully"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+
+        # Mock API to raise exception
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.raise_for_status.side_effect = Exception('API Error')
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should handle exception gracefully
+        await delete_organisation(company)
+
+        # pd_org_id should still be set (not cleared due to error)
+        await company.refresh_from_db()
+        assert company.pd_org_id == 999
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_persons_exception(self, mock_request):
+        """Test that delete_persons handles exceptions gracefully"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+
+        # Mock API to raise exception
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.raise_for_status.side_effect = Exception('API Error')
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should handle exception gracefully
+        await delete_persons([contact])
+
+        # pd_person_id should still be set (not cleared due to error)
+        await contact.refresh_from_db()
+        assert contact.pd_person_id == 888
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_deal_exception(self, mock_request):
+        """Test that delete_deal handles exceptions gracefully"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+        deal = await Deal.create(
+            company=company, contact=contact, admin=admin, pipeline=self.pipeline, stage=self.stage, pd_deal_id=777
+        )
+
+        # Mock API to raise exception
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.raise_for_status.side_effect = Exception('API Error')
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should handle exception gracefully
+        await delete_deal(deal)
+
+        # pd_deal_id should still be set (not cleared due to error)
+        await deal.refresh_from_db()
+        assert deal.pd_deal_id == 777
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_search_for_organisation_by_phone(self, mock_request):
+        """Test that _search_for_organisation can find org by contact phone"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='Test Company', tc2_cligency_id=123, sales_person=admin)
+        # Create contact with phone but NO email
+        await Contact.create(company=company, first_name='John', last_name='Smith', phone='+1234567890')
+
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            url = args[1] if len(args) > 1 else kwargs.get('url', '')
+
+            # Search by cligency_id in org custom field (no results)
+            if 'organizations/search' in url:
+                response.json.return_value = {'data': {'items': []}}
+            # Search by phone in persons (found!)
+            elif 'persons/search' in url and 'phone' in url:
+                response.json.return_value = {
+                    'data': {'items': [{'item': {'id': 888, 'organization': {'id': 999, 'name': 'Found Org'}}}]}
+                }
+            # Get organization details
+            elif 'organizations/999' in url and kwargs.get('method') == 'GET':
+                response.json.return_value = {
+                    'data': {
+                        'id': 999,
+                        'name': 'Found Org',
+                        'owner_id': 100,
+                        'address_country': 'US',
+                    }
+                }
+            # Update organization
+            elif 'organizations/999' in url and kwargs.get('method') == 'PUT':
+                response.json.return_value = {'data': {'id': 999, 'name': 'Test Company'}}
+            else:
+                response.json.return_value = {'data': {}}
+
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should find org by phone and link it
+        result = await get_and_create_or_update_organisation(company)
+
+        assert result.id == 999
+        await company.refresh_from_db()
+        assert company.pd_org_id == 999
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_search_contacts_duplicate_org_id(self, mock_request):
+        """Test that _search_contacts_by_field skips duplicate org_ids"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        # Create a company that already has this pd_org_id
+        await Company.create(name='Existing Company', pd_org_id=999, sales_person=admin)
+
+        # Create a NEW company without pd_org_id
+        new_company = await Company.create(name='New Company', tc2_cligency_id=456, sales_person=admin)
+        await Contact.create(company=new_company, first_name='Jane', last_name='Doe', email='jane@example.com')
+
+        call_count = {'value': 0}
+
+        def mock_response(*args, **kwargs):
+            call_count['value'] += 1
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            # First call: search by cligency_id (no results)
+            if call_count['value'] == 1:
+                response.json.return_value = {'data': {'items': []}}
+            # Second call: search by email - returns org that's already linked to another company!
+            elif call_count['value'] == 2:
+                response.json.return_value = {
+                    'data': {'items': [{'item': {'id': 777, 'organization': {'id': 999, 'name': 'Duplicate Org'}}}]}
+                }
+            # Third call: create new organization (since duplicate was skipped)
+            else:
+                response.json.return_value = {
+                    'data': {
+                        'id': 1000,
+                        'name': 'New Company',
+                        'owner_id': 100,
+                        'address_country': None,
+                    }
+                }
+
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should skip the duplicate org_id=999 and create a new org
+        result = await get_and_create_or_update_organisation(new_company)
+
+        assert result.id == 1000  # Created new org, not the duplicate
+        await new_company.refresh_from_db()
+        assert new_company.pd_org_id == 1000
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_search_contacts_no_organization(self, mock_request):
+        """Test that _search_contacts_by_field handles contacts with no organization"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='New Company', tc2_cligency_id=456, sales_person=admin)
+        await Contact.create(company=company, first_name='Jane', last_name='Doe', email='jane@example.com')
+
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            url = args[1] if len(args) > 1 else kwargs.get('url', '')
+
+            # Search by cligency_id (no results)
+            if 'organizations/search' in url:
+                response.json.return_value = {'data': {'items': []}}
+            # Search by email - returns a contact with NO organization
+            elif 'persons/search' in url:
+                response.json.return_value = {'data': {'items': [{'item': {'id': 777, 'organization': None}}]}}
+            # Create new organization
+            elif 'organizations' in url and kwargs.get('method') == 'POST':
+                response.json.return_value = {
+                    'data': {
+                        'id': 1000,
+                        'name': 'New Company',
+                        'owner_id': 100,
+                        'address_country': None,
+                    }
+                }
+            else:
+                response.json.return_value = {'data': {}}
+
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should create new org since contact has no organization
+        result = await get_and_create_or_update_organisation(company)
+
+        assert result.id == 1000  # Created new org
+        await company.refresh_from_db()
+        assert company.pd_org_id == 1000
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_delete_deal_no_pd_deal_id(self, mock_request):
+        """Test that delete_deal handles deal with no pd_deal_id gracefully"""
+        admin = await Admin.create(
+            first_name='John', last_name='Doe', username='john@example.com', is_sales_person=True, tc2_admin_id=30
+        )
+        company = await Company.create(name='Test Company', pd_org_id=999, sales_person=admin)
+        contact = await Contact.create(
+            company=company, first_name='John', last_name='Smith', email='john@example.com', pd_person_id=888
+        )
+        # Create deal WITHOUT pd_deal_id
+        deal = await Deal.create(
+            company=company, contact=contact, admin=admin, pipeline=self.pipeline, stage=self.stage
+        )
+
+        # Should not make any API calls since pd_deal_id is None
+        await delete_deal(deal)
+
+        # Verify no API calls were made
+        assert mock_request.call_count == 0
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_search_contacts_empty_item(self, mock_request):
+        """Test that _search_contacts_by_field handles contacts with empty item"""
+        admin = await Admin.create(
+            first_name='John',
+            last_name='Doe',
+            username='john@example.com',
+            is_sales_person=True,
+            tc2_admin_id=30,
+            pd_owner_id=100,
+        )
+        company = await Company.create(name='New Company', tc2_cligency_id=456, sales_person=admin)
+        await Contact.create(company=company, first_name='Jane', last_name='Doe', email='jane@example.com')
+
+        def mock_response(*args, **kwargs):
+            response = mock.Mock()
+            response.status_code = 200
+            response.raise_for_status = lambda: None
+
+            url = args[1] if len(args) > 1 else kwargs.get('url', '')
+
+            # Search by cligency_id (no results)
+            if 'organizations/search' in url:
+                response.json.return_value = {'data': {'items': []}}
+            # Search by email - returns items with empty/None 'item' field
+            elif 'persons/search' in url:
+                response.json.return_value = {
+                    'data': {'items': [{'item': None}, {'item': {}}]}  # Empty item should be skipped
+                }
+            # Create new organization
+            elif 'organizations' in url and kwargs.get('method') == 'POST':
+                response.json.return_value = {
+                    'data': {
+                        'id': 1000,
+                        'name': 'New Company',
+                        'owner_id': 100,
+                        'address_country': None,
+                    }
+                }
+            else:
+                response.json.return_value = {'data': {}}
+
+            return response
+
+        mock_request.side_effect = mock_response
+
+        # Should create new org since contacts have no valid items
+        result = await get_and_create_or_update_organisation(company)
+
+        assert result.id == 1000  # Created new org
+        await company.refresh_from_db()
+        assert company.pd_org_id == 1000
