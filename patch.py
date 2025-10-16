@@ -2,7 +2,7 @@ import asyncio
 import os
 
 from app.base_schema import build_custom_field_schema
-from app.pipedrive._process import _process_pd_organisation
+from app.pipedrive._process import process_pd_organisation
 from app.pipedrive._schema import PipedriveEvent
 from app.pipedrive.api import pipedrive_request, get_and_create_or_update_organisation
 
@@ -57,7 +57,7 @@ async def update_companies_from_pipedrive_organisations_with_missing_bdr_sales_i
             event_instance.data and await event_instance.data.a_validate()
 
             # Update Company from Organisation
-            await _process_pd_organisation(current_pd_org=event_instance.data, old_pd_org=None)
+            await process_pd_organisation(current_pd_org=event_instance.data, old_pd_org=None)
 
             try:
                 # Update company in TC2

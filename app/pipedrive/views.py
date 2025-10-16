@@ -4,16 +4,11 @@ from fastapi import APIRouter
 from starlette.background import BackgroundTasks
 
 from app.models import CustomField
-from app.pipedrive._process import (
-    _process_pd_deal,
-    _process_pd_organisation,
-    _process_pd_person,
-    _process_pd_pipeline,
-    _process_pd_stage,
-)
-from app.pipedrive._schema import PDObjectNames, PDStatus, PipedriveEvent
-from app.pipedrive._utils import app_logger
 from app.tc2.tasks import update_client_from_company
+
+from ._process import process_pd_deal, process_pd_organisation, process_pd_person, process_pd_pipeline, process_pd_stage
+from ._schema import PDObjectNames, PDStatus, PipedriveEvent
+from ._utils import app_logger
 
 pipedrive_router = APIRouter()
 
@@ -127,7 +122,7 @@ async def callback(event: dict, tasks: BackgroundTasks):
             if deal_to_delete:
                 company = await deal_to_delete.company
 
-        deal = await _process_pd_deal(event_instance.data, event_instance.previous)
+        deal = await process_pd_deal(event_instance.data, event_instance.previous)
 
         # For updates/creates, get the company from the deal after processing
         if deal:
@@ -137,13 +132,13 @@ async def callback(event: dict, tasks: BackgroundTasks):
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)
     elif event_instance.meta.entity == PDObjectNames.PIPELINE:
-        await _process_pd_pipeline(event_instance.data, event_instance.previous)
+        await process_pd_pipeline(event_instance.data, event_instance.previous)
     elif event_instance.meta.entity == PDObjectNames.STAGE:
-        await _process_pd_stage(event_instance.data, event_instance.previous)
+        await process_pd_stage(event_instance.data, event_instance.previous)
     elif event_instance.meta.entity == PDObjectNames.PERSON:
-        await _process_pd_person(event_instance.data, event_instance.previous)
+        await process_pd_person(event_instance.data, event_instance.previous)
     elif event_instance.meta.entity == PDObjectNames.ORGANISATION:
-        company = await _process_pd_organisation(event_instance.data, event_instance.previous)
+        company = await process_pd_organisation(event_instance.data, event_instance.previous)
         if company and company.tc2_agency_id:
             # We only update the client if the deal has a company with a tc2_agency_id
             tasks.add_task(update_client_from_company, company)

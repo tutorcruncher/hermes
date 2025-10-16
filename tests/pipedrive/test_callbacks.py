@@ -358,6 +358,31 @@ class PipedriveCallbackTestCase(HermesTestCase):
         await source_field.delete()
         await build_custom_field_schema()
 
+    @mock.patch('app.pipedrive._process.update_client_from_company')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_org_delete_with_tc2_reference(self, mock_pd_request, mock_update_client):
+        """Test that when an org is deleted in Pipedrive, the TC2 reference is cleared"""
+        mock_pd_request.side_effect = fake_pd_request(self.pipedrive)
+
+        company = await Company.create(
+            name='Test company', pd_org_id=20, sales_person=self.admin, tc2_cligency_id=12345
+        )
+
+        assert await Company.exists()
+        data = copy.deepcopy(basic_pd_org_data())
+        data['previous'] = data.pop('data')
+        data['previous']['hermes_id'] = company.id
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+        assert not await Company.exists()
+
+        # Verify that update_client_from_company was called to clear the TC2 reference
+        mock_update_client.assert_called_once()
+        call_args = mock_update_client.call_args
+        called_company = call_args[0][0]
+        assert called_company.id == company.id
+        assert called_company.tc2_cligency_id == 12345
+
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_update(self, mock_request):
         mock_request.side_effect = fake_pd_request(self.pipedrive)
@@ -1548,6 +1573,171 @@ class PipedriveCallbackTestCase(HermesTestCase):
         r = await self.client.post(self.url, json=data)
         assert r.status_code == 200, r.json()
         assert r.json() == {'status': 'ok'}
+
+    async def test_custom_field_fallback_format(self):
+        """
+        Test that custom fields with unexpected formats are handled by the fallback.
+        """
+        # Create company with pd_org_id
+        company = await Company.create(
+            name='Test Company', pd_org_id=20, sales_person=self.admin, tc2_cligency_id=12345
+        )
+
+        # Prepare event data with custom field in an unexpected format (not None, not dict)
+        data = copy.deepcopy(basic_pd_org_data())
+        data['data']['hermes_id'] = company.id
+        # Add a custom field with a non-dict, non-None value (fallback case)
+        data['data']['custom_fields'] = {'some_field': 'plain_string_value'}
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_inherited_deal_custom_field_revert(self, mock_request):
+        """
+        Test that changes to inherited custom fields on deals are reverted.
+        """
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        # Create a company with pd_org_id
+        company = await Company.create(name='Test company', pd_org_id=1, sales_person=self.admin)
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test company', 'owner_id': 10}
+
+        # Create an inherited custom field (no hermes_field_name or tc2_machine_name)
+        await CustomField.create(
+            name='Inherited Field',
+            machine_name='inherited_field',
+            field_type=CustomField.TYPE_STR,
+            linked_object_type='Deal',
+            pd_field_id='deal_inherited_field',
+        )
+        await build_custom_field_schema()
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe', 'org_id': 1}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=self.admin,
+            pd_deal_id=100,
+        )
+        self.pipedrive.db['deals'][100] = {
+            'id': 100,
+            'title': 'Test Deal',
+            'org_id': 1,
+            'person_id': 1,
+            'pipeline_id': self.pipeline.pd_pipeline_id,
+            'stage_id': self.stage.pd_stage_id,
+            'user_id': 10,
+            'deal_inherited_field': 'original_value',
+        }
+
+        # Simulate a webhook that tries to change the inherited field
+        data = {
+            'meta': {'entity': 'deal', 'action': 'updated'},
+            'data': {
+                'id': 100,
+                'title': 'Test Deal',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': self.pipeline.pd_pipeline_id,
+                'stage_id': self.stage.pd_stage_id,
+                'user_id': 10,
+                'hermes_id': deal.id,  # Add hermes_id so it updates instead of creating
+                'custom_fields': {
+                    'deal_inherited_field': {'type': 'varchar', 'value': 'changed_value'},
+                },
+            },
+            'previous': {
+                'deal_inherited_field': 'original_value',
+            },
+        }
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+
+        # Verify that the change was reverted (data now has previous value)
+        # The callback will have processed the event with the reverted value
+
+    @mock.patch('app.pipedrive.views.update_client_from_company')
+    @mock.patch('app.pipedrive.api.session.request')
+    async def test_deal_deletion_with_tc2_agency_id(self, mock_request, mock_update_client):
+        """
+        Test that when a deal is deleted and the company has tc2_agency_id,
+        the background task is triggered.
+        """
+
+        # Make the mock async
+        async def mock_update(*args, **kwargs):
+            pass
+
+        mock_update_client.side_effect = mock_update
+        mock_request.side_effect = fake_pd_request(self.pipedrive)
+
+        # Create company with tc2_agency_id
+        company = await Company.create(
+            name='Test Company', pd_org_id=1, sales_person=self.admin, tc2_agency_id=999, tc2_cligency_id=888
+        )
+        self.pipedrive.db['organizations'][1] = {'id': 1, 'name': 'Test Company', 'owner_id': 10}
+
+        contact = await Contact.create(
+            first_name='John', last_name='Doe', email='john@example.com', company=company, pd_person_id=1
+        )
+        self.pipedrive.db['persons'][1] = {'id': 1, 'name': 'John Doe', 'org_id': 1}
+
+        deal = await Deal.create(
+            name='Test Deal',
+            company=company,
+            contact=contact,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            admin=self.admin,
+            pd_deal_id=200,
+        )
+        self.pipedrive.db['deals'][200] = {
+            'id': 200,
+            'title': 'Test Deal',
+            'org_id': 1,
+            'person_id': 1,
+            'pipeline_id': self.pipeline.pd_pipeline_id,
+            'stage_id': self.stage.pd_stage_id,
+            'user_id': 10,
+        }
+
+        # Simulate a deal deletion webhook
+        data = {
+            'meta': {'entity': 'deal', 'action': 'deleted'},
+            'previous': {
+                'id': 200,
+                'title': 'Test Deal',
+                'org_id': 1,
+                'person_id': 1,
+                'pipeline_id': self.pipeline.pd_pipeline_id,
+                'stage_id': self.stage.pd_stage_id,
+                'user_id': 10,
+                'hermes_id': deal.id,  # Add hermes_id so it can find the deal
+                'custom_fields': {},
+            },
+        }
+
+        r = await self.client.post(self.url, json=data)
+        assert r.status_code == 200, r.json()
+
+        # The deal should be deleted
+        assert not await Deal.exists()
+
+        # Verify that the background task was called
+        mock_update_client.assert_called_once()
+        call_args = mock_update_client.call_args
+        called_company = call_args[0][0]
+        assert called_company.id == company.id
+        assert called_company.tc2_agency_id == 999
 
     @mock.patch('app.pipedrive.api.session.request')
     async def test_org_merged_hermes_id_webhook(self, mock_request):

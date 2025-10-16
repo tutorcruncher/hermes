@@ -227,6 +227,11 @@ Located in `tests/_common.py`:
 - Method: `test_[specific_behavior]`
 - Be descriptive about what's being tested
 
+### Import Rules for Tests
+- **NO local imports in tests** (imports inside functions/methods) unless they cause circular import errors
+- All imports should be at the top of the test file
+- This makes dependencies clear and improves test performance
+
 ## API & Webhooks
 
 ### FastAPI Endpoint Pattern
