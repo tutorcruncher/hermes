@@ -53,6 +53,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('pd_pipeline_id', sa.Integer(), nullable=False),
         sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False),
+        sa.Column('dft_entry_stage_id', sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index(op.f('ix_pipeline_pd_pipeline_id'), 'pipeline', ['pd_pipeline_id'], unique=True)
@@ -64,6 +65,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index(op.f('ix_stage_pd_stage_id'), 'stage', ['pd_stage_id'], unique=True)
+
+    # Add foreign key constraint for pipeline.dft_entry_stage_id after stage table is created
+    op.create_foreign_key('pipeline_dft_entry_stage_id_fkey', 'pipeline', 'stage', ['dft_entry_stage_id'], ['id'])
+
     op.create_table(
         'company',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -84,7 +89,7 @@ def upgrade() -> None:
         sa.Column('has_booked_call', sa.Boolean(), nullable=False),
         sa.Column('has_signed_up', sa.Boolean(), nullable=False),
         sa.Column('narc', sa.Boolean(), nullable=False),
-        sa.Column('paid_invoice_count', sa.Integer(), nullable=False),
+        sa.Column('paid_invoice_count', sa.Integer(), nullable=True),
         sa.Column('tc2_status', sqlmodel.sql.sqltypes.AutoString(length=25), nullable=True),
         sa.Column('pay0_dt', sa.DateTime(), nullable=True),
         sa.Column('pay1_dt', sa.DateTime(), nullable=True),
@@ -119,9 +124,9 @@ def upgrade() -> None:
         sa.Column('meeting_buffer_mins', sa.Integer(), nullable=False),
         sa.Column('meeting_min_start', sqlmodel.sql.sqltypes.AutoString(length=5), nullable=False),
         sa.Column('meeting_max_end', sqlmodel.sql.sqltypes.AutoString(length=5), nullable=False),
-        sa.Column('payg_pipeline_id', sa.Integer(), nullable=True),
-        sa.Column('startup_pipeline_id', sa.Integer(), nullable=True),
-        sa.Column('enterprise_pipeline_id', sa.Integer(), nullable=True),
+        sa.Column('payg_pipeline_id', sa.Integer(), nullable=False),
+        sa.Column('startup_pipeline_id', sa.Integer(), nullable=False),
+        sa.Column('enterprise_pipeline_id', sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
             ['enterprise_pipeline_id'],
             ['pipeline.id'],
@@ -249,6 +254,10 @@ def downgrade() -> None:
     op.drop_table('company')
     op.drop_index(op.f('ix_stage_pd_stage_id'), table_name='stage')
     op.drop_table('stage')
+
+    # Drop foreign key constraint before dropping pipeline table
+    op.drop_constraint('pipeline_dft_entry_stage_id_fkey', 'pipeline', type_='foreignkey')
+
     op.drop_index(op.f('ix_pipeline_pd_pipeline_id'), table_name='pipeline')
     op.drop_table('pipeline')
     op.drop_index(op.f('ix_admin_tc2_admin_id'), table_name='admin')

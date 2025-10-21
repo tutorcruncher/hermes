@@ -1,11 +1,16 @@
+from pathlib import Path
 from typing import Optional
 
 from pydantic import Field, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+
 
 class Settings(BaseSettings):
     """Application settings"""
+
+    model_config = SettingsConfigDict(env_file='.env', extra='allow', case_sensitive=False)
 
     # Dev and Test settings
     testing: bool = False
@@ -40,11 +45,11 @@ class Settings(BaseSettings):
 
     # TC2
     tc2_api_key: str = 'test-key'
-    tc2_base_url: str = 'http://localhost:8000'
+    tc2_base_url: str = 'https://secure.tutorcruncher.com'
 
     # Pipedrive
     pd_api_key: str = 'test-key'
-    pd_base_url: str = 'https://tutorcruncher-sandbox.pipedrive.com'
+    pd_base_url: str = 'https://tutorcruncher.pipedrive.com'
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'
@@ -73,8 +78,6 @@ class Settings(BaseSettings):
             'auth_provider_x509_cert_url': self.g_auth_provider_x509_cert_url,
             'client_x509_cert_url': self.g_client_x509_cert_url,
         }
-
-    model_config = SettingsConfigDict(env_file='.env', extra='allow')
 
 
 settings = Settings()

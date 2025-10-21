@@ -23,13 +23,12 @@ class MeetingBookingError(Exception):
 async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall, db: DBSession) -> Contact:
     """Get or create contact from callbooker event data"""
     # Try to find existing contact by email or last name
-    statement = select(Contact).where(Contact.company_id == company.id)
     if event.email:
-        statement = statement.where(Contact.email == event.email)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id, Contact.email == event.email)).first()
     else:
-        statement = statement.where(Contact.last_name.ilike(event.last_name))
-
-    contact = db.exec(statement).first()
+        contact = db.exec(
+            select(Contact).where(Contact.company_id == company.id, Contact.last_name.ilike(event.last_name))
+        ).first()
 
     if not contact:
         # Create new contact
@@ -67,23 +66,20 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
     # Try to find contact by email or phone, then get their company
     if not company and event.email:
-        statement = select(Contact).where(Contact.email == event.email)
-        contact = db.exec(statement).first()
+        contact = db.exec(select(Contact).where(Contact.email == event.email)).first()
         if contact:
             logger.info(f'Found contact {contact.id} by email')
             company = db.get(Company, contact.company_id)
 
     if not company and event.phone:
-        statement = select(Contact).where(Contact.phone == event.phone)
-        contact = db.exec(statement).first()
+        contact = db.exec(select(Contact).where(Contact.phone == event.phone)).first()
         if contact:
             logger.info(f'Found contact {contact.id} by phone')
             company = db.get(Company, contact.company_id)
 
     # Try to find company by name
     if not company:
-        statement = select(Company).where(Company.name.ilike(event.company_name))
-        company = db.exec(statement).first()
+        company = db.exec(select(Company).where(Company.name.ilike(event.company_name))).first()
         if company:
             logger.info(f'Found company {company.id} by name')
 
@@ -110,41 +106,30 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
 async def get_or_create_deal(company: Company, contact: Contact, db: DBSession) -> Deal:
     """Get or create an Open deal for the company"""
-    statement = select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)
-    deal = db.exec(statement).first()
+    deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).first()
 
     if not deal:
+        # Get config - must exist
+        config = db.exec(select(Config)).first()
+        if not config:
+            raise MeetingBookingError('System configuration not found')
+
         # Get pipeline based on price plan
-        statement = select(Pipeline)
         match company.price_plan:
             case Company.PP_PAYG:
-                config = db.exec(select(Config)).first()
-                if config and config.payg_pipeline_id:
-                    pipeline = db.get(Pipeline, config.payg_pipeline_id)
-                else:
-                    pipeline = db.exec(statement).first()
+                pipeline = db.get(Pipeline, config.payg_pipeline_id)
             case Company.PP_STARTUP:
-                config = db.exec(select(Config)).first()
-                if config and config.startup_pipeline_id:
-                    pipeline = db.get(Pipeline, config.startup_pipeline_id)
-                else:
-                    pipeline = db.exec(statement).first()
+                pipeline = db.get(Pipeline, config.startup_pipeline_id)
             case Company.PP_ENTERPRISE:
-                config = db.exec(select(Config)).first()
-                if config and config.enterprise_pipeline_id:
-                    pipeline = db.get(Pipeline, config.enterprise_pipeline_id)
-                else:
-                    pipeline = db.exec(statement).first()
+                pipeline = db.get(Pipeline, config.enterprise_pipeline_id)
 
         if not pipeline:
             raise MeetingBookingError('No pipeline configured')
 
-        # Get default stage for pipeline (first stage in that pipeline)
-        statement = select(Stage).limit(1)
-        stage = db.exec(statement).first()
-
+        # Get default entry stage from pipeline
+        stage = db.get(Stage, pipeline.dft_entry_stage_id)
         if not stage:
-            raise MeetingBookingError('No stage configured')
+            raise MeetingBookingError('No stage configured for pipeline')
 
         deal = Deal(
             company_id=company.id,
@@ -179,12 +164,13 @@ async def book_meeting(
     # Check no meeting already exists within 2 hours
     two_hours_before = event.meeting_dt - timedelta(hours=2)
     two_hours_after = event.meeting_dt + timedelta(hours=2)
-    statement = select(Meeting).where(
-        Meeting.contact_id == contact.id,
-        Meeting.start_time >= two_hours_before,
-        Meeting.start_time <= two_hours_after,
-    )
-    existing_meeting = db.exec(statement).first()
+    existing_meeting = db.exec(
+        select(Meeting).where(
+            Meeting.contact_id == contact.id,
+            Meeting.start_time >= two_hours_before,
+            Meeting.start_time <= two_hours_after,
+        )
+    ).first()
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
 

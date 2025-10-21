@@ -81,15 +81,15 @@ def test_admin(db: DBSession):
 
 
 @pytest.fixture
-def test_pipeline(db: DBSession):
-    """Create a test pipeline using factory"""
-    return PipelineFactory.create_with_db(db, pd_pipeline_id=1)
+def test_stage(db: DBSession):
+    """Create a test stage using factory"""
+    return StageFactory.create_with_db(db, pd_stage_id=1)
 
 
 @pytest.fixture
-def test_stage(db: DBSession, test_pipeline):
-    """Create a test stage using factory"""
-    return StageFactory.create_with_db(db, pd_stage_id=1)
+def test_pipeline(db: DBSession, test_stage):
+    """Create a test pipeline using factory"""
+    return PipelineFactory.create_with_db(db, pd_pipeline_id=1, dft_entry_stage_id=test_stage.id)
 
 
 @pytest.fixture
@@ -102,3 +102,17 @@ def test_company(db: DBSession, test_admin):
 def test_contact(db: DBSession, test_company):
     """Create a test contact using factory"""
     return ContactFactory.create_with_db(db, company_id=test_company.id)
+
+
+@pytest.fixture
+def test_config(db: DBSession, test_pipeline):
+    """Create a test config with pipeline settings"""
+    from app.main_app.models import Config
+
+    return db.create(
+        Config(
+            payg_pipeline_id=test_pipeline.id,
+            startup_pipeline_id=test_pipeline.id,
+            enterprise_pipeline_id=test_pipeline.id,
+        )
+    )

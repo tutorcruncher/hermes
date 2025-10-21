@@ -1,4 +1,4 @@
-.PHONY: install install-dev test lint format clean run migrate reset-db
+.PHONY: install install-dev test lint format clean run migrate reset-db setup setup-fields setup-admins
 
 install:
 	uv sync
@@ -38,5 +38,14 @@ reset-db:
 	dropdb hermes || true
 	createdb hermes
 	uv run alembic upgrade head
+
+setup:
+	uv run python system_setup.py setup
+
+setup-fields:
+	uv run python system_setup.py fields
+
+setup-admins:
+	uv run python system_setup.py admins
 
 

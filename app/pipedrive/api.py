@@ -28,25 +28,25 @@ async def pipedrive_request(
     Returns:
         Response JSON data
     """
-    url = f'{settings.pd_base_url}/v2/{endpoint}'
-    headers = {'Authorization': f'Bearer {settings.pd_api_key}', 'Content-Type': 'application/json'}
+    url = f'{settings.pd_base_url}/api/v2/{endpoint}'
+    headers = {'x-api-token': settings.pd_api_key, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
     with logfire.span(f'{method} {endpoint}'):
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
             )
-            logger.info(f'Request method={method} url={endpoint} status_code={response.status_code}')
+        logger.info(f'Request method={method} url={endpoint} status_code={response.status_code}')
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
             try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                try:
-                    error_data = response.json()
-                except Exception:
-                    error_data = response.text
-                logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
-                raise
-            return response.json()
+                error_data = response.json()
+            except Exception:
+                error_data = response.text
+            logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
+            raise
+        return response.json()
 
 
 async def create_organisation(org_data: dict) -> dict:

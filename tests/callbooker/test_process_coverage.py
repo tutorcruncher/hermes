@@ -46,7 +46,7 @@ class TestCallbookerProcessEdgeCases:
 
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
-        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage
+        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config
     ):
         """Test that booking raises error when admin doesn't exist"""
         mock_check_gcal.return_value = True
@@ -70,11 +70,11 @@ class TestCallbookerProcessEdgeCases:
         assert r.status_code == 400
         assert 'Admin not found' in r.json()['message']
 
-    async def test_sales_call_no_pipeline_configured_raises_error(self, client, db, test_admin):
-        """Test that booking raises error when no pipeline is configured"""
-        # Delete all pipelines
-        for pipeline in db.exec(select(Pipeline)).all():
-            db.delete(pipeline)
+    async def test_sales_call_no_config_raises_error(self, client, db, test_admin):
+        """Test that booking raises error when no config exists"""
+        # Ensure no Config exists
+        for config in db.exec(select(Config)).all():
+            db.delete(config)
         db.commit()
 
         future_dt = datetime.now(utc) + timedelta(days=1)
@@ -93,13 +93,21 @@ class TestCallbookerProcessEdgeCases:
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
         assert r.status_code == 400
-        assert 'No pipeline configured' in r.json()['message']
+        assert 'System configuration not found' in r.json()['message']
 
-    async def test_sales_call_no_stage_configured_raises_error(self, client, db, test_admin, test_pipeline):
-        """Test that booking raises error when no stage is configured"""
-        # Delete all stages
-        for stage in db.exec(select(Stage)).all():
-            db.delete(stage)
+    async def test_sales_call_stage_not_found_raises_error(self, client, db, test_admin, test_pipeline, test_config):
+        """Test that booking raises error when stage referenced by pipeline doesn't exist"""
+        # Create a pipeline with an invalid dft_entry_stage_id
+        stage = db.create(Stage(pd_stage_id=999, name='Test Stage'))
+        pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage.id))
+
+        # Update config to use this pipeline
+        test_config.payg_pipeline_id = pipeline.id
+        db.add(test_config)
+        db.commit()
+
+        # Delete the stage to simulate it being missing
+        db.delete(stage)
         db.commit()
 
         future_dt = datetime.now(utc) + timedelta(days=1)
@@ -129,7 +137,13 @@ class TestCallbookerProcessEdgeCases:
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
         # Create config with startup pipeline
-        db.create(Config(startup_pipeline_id=test_pipeline.id))
+        db.create(
+            Config(
+                payg_pipeline_id=test_pipeline.id,
+                startup_pipeline_id=test_pipeline.id,
+                enterprise_pipeline_id=test_pipeline.id,
+            )
+        )
 
         future_dt = datetime.now(utc) + timedelta(days=1)
         meeting_data = {
@@ -161,7 +175,13 @@ class TestCallbookerProcessEdgeCases:
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
         # Create config with enterprise pipeline
-        db.create(Config(enterprise_pipeline_id=test_pipeline.id))
+        db.create(
+            Config(
+                payg_pipeline_id=test_pipeline.id,
+                startup_pipeline_id=test_pipeline.id,
+                enterprise_pipeline_id=test_pipeline.id,
+            )
+        )
 
         future_dt = datetime.now(utc) + timedelta(days=1)
         meeting_data = {
@@ -186,7 +206,7 @@ class TestCallbookerProcessEdgeCases:
 
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_fails_when_admin_not_free(
-        self, mock_gcal, client, db, test_admin, test_company, test_pipeline, test_stage
+        self, mock_gcal, client, db, test_admin, test_company, test_pipeline, test_stage, test_config
     ):
         """Test that booking fails when Google Calendar shows admin is busy"""
         # Mock Google Calendar to show admin has a busy slot at the requested time
@@ -325,103 +345,3 @@ class TestAvailabilityEndpoint:
         assert data['status'] == 'ok'
         # Should have some slots but not at 10:00-11:00
         assert isinstance(data['slots'], list)
-
-
-class TestCallbookerPipelineFallbacks:
-    """Test pipeline fallback logic for full coverage"""
-
-    @patch('fastapi.BackgroundTasks.add_task')
-    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_payg_fallback_when_config_has_no_pipeline_id(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin
-    ):
-        """Test PAYG falls back to first pipeline when config exists but payg_pipeline_id is None"""
-        mock_gcal_builder.side_effect = fake_gcal_builder()
-
-        # Create config with payg_pipeline_id = None
-        db.create(Config(payg_pipeline_id=None))
-
-        future_dt = datetime.now(utc) + timedelta(days=1)
-        meeting_data = {
-            'admin_id': test_admin.id,
-            'name': 'John Doe',
-            'email': 'john@example.com',
-            'company_name': 'PAYG Company',
-            'country': 'GB',
-            'estimated_income': 1000,
-            'currency': 'GBP',
-            'price_plan': 'payg',
-            'meeting_dt': future_dt.isoformat(),
-        }
-
-        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
-
-        assert r.status_code == 200
-
-        # Should use first pipeline (fallback)
-        deal = db.exec(select(Deal)).first()
-        assert deal.pipeline_id == test_pipeline.id
-
-    @patch('fastapi.BackgroundTasks.add_task')
-    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_startup_fallback_when_config_has_no_pipeline_id(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin
-    ):
-        """Test startup falls back to first pipeline when config exists but startup_pipeline_id is None"""
-        mock_gcal_builder.side_effect = fake_gcal_builder()
-
-        # Create config with startup_pipeline_id = None
-        db.create(Config(startup_pipeline_id=None))
-
-        future_dt = datetime.now(utc) + timedelta(days=1)
-        meeting_data = {
-            'admin_id': test_admin.id,
-            'name': 'John Doe',
-            'email': 'john@example.com',
-            'company_name': 'Startup Company',
-            'country': 'GB',
-            'estimated_income': 1000,
-            'currency': 'GBP',
-            'price_plan': 'startup',
-            'meeting_dt': future_dt.isoformat(),
-        }
-
-        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
-
-        assert r.status_code == 200
-
-        # Should use first pipeline (fallback)
-        deal = db.exec(select(Deal)).first()
-        assert deal.pipeline_id == test_pipeline.id
-
-    @patch('fastapi.BackgroundTasks.add_task')
-    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_enterprise_fallback_when_config_has_no_pipeline_id(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin
-    ):
-        """Test enterprise falls back to first pipeline when config exists but enterprise_pipeline_id is None"""
-        mock_gcal_builder.side_effect = fake_gcal_builder()
-
-        # Create config with enterprise_pipeline_id = None
-        db.create(Config(enterprise_pipeline_id=None))
-
-        future_dt = datetime.now(utc) + timedelta(days=1)
-        meeting_data = {
-            'admin_id': test_admin.id,
-            'name': 'John Doe',
-            'email': 'john@example.com',
-            'company_name': 'Enterprise Company',
-            'country': 'GB',
-            'estimated_income': 1000,
-            'currency': 'GBP',
-            'price_plan': 'enterprise',
-            'meeting_dt': future_dt.isoformat(),
-        }
-
-        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
-
-        assert r.status_code == 200
-
-        # Should use first pipeline (fallback)
-        deal = db.exec(select(Deal)).first()
-        assert deal.pipeline_id == test_pipeline.id

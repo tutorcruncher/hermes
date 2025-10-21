@@ -4,10 +4,19 @@ Pipedrive field mappings - centralized mapping of Hermes field names to Pipedriv
 This single source of truth is used for both:
 1. Building Pydantic models with validation_alias (incoming webhooks)
 2. Mapping data to send to Pipedrive (outgoing sync)
+
+Field mappings can be overridden by creating a field_mappings_override.py file in the project root.
 """
 
-# Maps Company field names to Pipedrive organization custom field IDs
-COMPANY_PD_FIELD_MAP = {
+import logging
+import os
+import sys
+
+from app.core.config import PROJECT_ROOT
+
+logger = logging.getLogger('hermes.pipedrive')
+
+_DEFAULT_COMPANY_PD_FIELD_MAP = {
     'hermes_id': '7f8959760703808f36b3795c15310566b74f5134',
     'paid_invoice_count': '70527310be44839c869854b055788a69ecbbab66',
     'tc2_cligency_url': 'd8b615ce8885544ed228feaae3ce9f28dcf04531',
@@ -30,8 +39,7 @@ COMPANY_PD_FIELD_MAP = {
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',
 }
 
-# Maps Deal field names to Pipedrive deal custom field IDs
-DEAL_PD_FIELD_MAP = {
+_DEFAULT_DEAL_PD_FIELD_MAP = {
     'hermes_id': '5be1188db52a8c7f0ea49331eb391ae54aeabafc',
     'support_person_id': '6911e0b7f9c56a40931381aa0485f705794f6c9f',
     'tc2_cligency_url': '14256b4f62c1dabb53f3e9516c6cc6e23d3aa0af',
@@ -46,7 +54,31 @@ DEAL_PD_FIELD_MAP = {
     'estimated_income': 'b9276dc6ee42b790c98bffed47b539f25ce3ee1c',
 }
 
-# Maps Contact field names to Pipedrive person custom field IDs
-CONTACT_PD_FIELD_MAP = {
+_DEFAULT_CONTACT_PD_FIELD_MAP = {
     'hermes_id': '8c2f326b6be255cd3d5cf4ee7385eaf544a47f1d',
 }
+
+COMPANY_PD_FIELD_MAP = _DEFAULT_COMPANY_PD_FIELD_MAP.copy()
+DEAL_PD_FIELD_MAP = _DEFAULT_DEAL_PD_FIELD_MAP.copy()
+CONTACT_PD_FIELD_MAP = _DEFAULT_CONTACT_PD_FIELD_MAP.copy()
+
+override_path = PROJECT_ROOT / 'field_mappings_override.py'
+
+if os.path.exists(override_path):
+    override_dir = os.path.dirname(os.path.abspath(override_path))
+    sys.path.insert(0, override_dir)
+    try:
+        import field_mappings_override
+    except ImportError:
+        pass
+    else:
+        if hasattr(field_mappings_override, 'COMPANY_PD_FIELD_MAP'):
+            COMPANY_PD_FIELD_MAP.update(field_mappings_override.COMPANY_PD_FIELD_MAP)
+
+        if hasattr(field_mappings_override, 'DEAL_PD_FIELD_MAP'):
+            DEAL_PD_FIELD_MAP.update(field_mappings_override.DEAL_PD_FIELD_MAP)
+
+        if hasattr(field_mappings_override, 'CONTACT_PD_FIELD_MAP'):
+            CONTACT_PD_FIELD_MAP.update(field_mappings_override.CONTACT_PD_FIELD_MAP)
+
+        logger.info(f'Loaded field mapping overrides from {override_path}')

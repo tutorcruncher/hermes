@@ -1,5 +1,6 @@
 env/
 .env
+field_mappings_override.py
 
 # PyCharm files
 .pytest_cache

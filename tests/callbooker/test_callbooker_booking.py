@@ -59,7 +59,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_creates_company_and_contact(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking sales call creates new company and contact"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -90,7 +90,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_finds_existing_company_by_id(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking sales call finds existing company by company_id"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -113,7 +113,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_finds_existing_contact_by_email(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking sales call finds existing contact by email"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -133,7 +133,7 @@ class TestSalesCallBooking:
         assert len(contacts) == 1
         assert contacts[0].id == existing_contact.id
 
-    async def test_sales_call_prevents_double_booking(self, client, db, test_pipeline, test_stage):
+    async def test_sales_call_prevents_double_booking(self, client, db, test_pipeline, test_stage, test_config):
         """Test that booking prevents double-booking within 2 hours"""
         sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
         company = db.create(Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan='payg', country='GB'))
@@ -163,7 +163,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_exactly_2_hours_before_existing_meeting(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking exactly 2 hours before existing meeting is allowed"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -198,7 +198,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_just_outside_2_hour_window(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking just outside 2 hour window succeeds"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -232,7 +232,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_truncates_very_long_names(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test callbooker truncates very long names to 255 chars"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -275,12 +275,19 @@ class TestSalesCallBooking:
         """Test PAYG uses config.payg_pipeline_id when set"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
 
-        # Create specific pipelines
-        payg_pipeline = db.create(Pipeline(pd_pipeline_id=100, name='PAYG Pipeline'))
-        db.create(Stage(pd_stage_id=200, name='Initial Stage'))
+        # Create stage first, then pipelines
+        stage = db.create(Stage(pd_stage_id=200, name='Initial Stage'))
+        payg_pipeline = db.create(Pipeline(pd_pipeline_id=100, name='PAYG Pipeline', dft_entry_stage_id=stage.id))
+        other_pipeline = db.create(Pipeline(pd_pipeline_id=101, name='Other Pipeline', dft_entry_stage_id=stage.id))
 
         # Create config with payg_pipeline_id set
-        db.create(Config(payg_pipeline_id=payg_pipeline.id))
+        db.create(
+            Config(
+                payg_pipeline_id=payg_pipeline.id,
+                startup_pipeline_id=other_pipeline.id,
+                enterprise_pipeline_id=other_pipeline.id,
+            )
+        )
 
         future_dt = datetime.now(utc) + timedelta(days=1)
         meeting_data = {
@@ -306,7 +313,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_finds_company_by_name(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
     ):
         """Test booking finds existing company by name"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -341,7 +348,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_finds_contact_by_phone(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
     ):
         """Test booking finds existing contact by phone number"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -381,7 +388,7 @@ class TestSalesCallBooking:
         assert len(companies) == 1
         assert companies[0].id == company.id
 
-    async def test_sales_call_requires_contact_email(self, client, db, test_pipeline, test_stage):
+    async def test_sales_call_requires_contact_email(self, client, db, test_pipeline, test_stage, test_config):
         """Test that booking requires contact to have email"""
         sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
         company = db.create(Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan='payg', country='GB'))
@@ -398,7 +405,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_with_bdr_person(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking sales call with BDR person"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -423,6 +430,50 @@ class TestSalesCallBooking:
         company = db.exec(select(Company)).first()
         assert company.bdr_person_id == bdr_person.tc2_admin_id
 
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_uses_pipeline_dft_entry_stage(
+        self, mock_gcal_builder, mock_add_task, client, db, test_admin
+    ):
+        """Test that new deals use pipeline's default entry stage when set"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+
+        # Create stages first
+        db.create(Stage(pd_stage_id=1, name='Lead'))
+        stage2 = db.create(Stage(pd_stage_id=2, name='Qualified'))  # This will be the default
+        db.create(Stage(pd_stage_id=3, name='Proposal'))
+
+        # Create pipeline with a default entry stage
+        pipeline = db.create(Pipeline(pd_pipeline_id=1, name='Sales Pipeline', dft_entry_stage_id=stage2.id))
+
+        # Create config pointing to this pipeline
+        db.create(
+            Config(payg_pipeline_id=pipeline.id, startup_pipeline_id=pipeline.id, enterprise_pipeline_id=pipeline.id)
+        )
+
+        future_dt = datetime.now(utc) + timedelta(days=1)
+        meeting_data = {
+            'admin_id': test_admin.id,
+            'name': 'Test User',
+            'email': 'test@example.com',
+            'phone': '+1234567890',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': future_dt.isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+
+        assert r.status_code == 200
+
+        # Check that the deal was created with the default entry stage
+        deal = db.exec(select(Deal)).first()
+        assert deal is not None
+        assert deal.stage_id == stage2.id  # Should use the configured default stage
+
 
 class TestSupportCallBooking:
     """Test support call booking flow"""
@@ -430,7 +481,7 @@ class TestSupportCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_support_call_creates_contact(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test booking support call creates contact"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -480,7 +531,7 @@ class TestSupportCallBooking:
 class TestCallbookerValidation:
     """Test callbooker request validation"""
 
-    async def test_sales_call_rejects_past_datetime(self, client, db, test_pipeline, test_stage):
+    async def test_sales_call_rejects_past_datetime(self, client, db, test_pipeline, test_stage, test_config):
         """Test that sales call booking rejects past meeting_dt"""
         admin = db.create(Admin(first_name='Test', last_name='Admin', username='test@example.com'))
 
@@ -501,7 +552,7 @@ class TestCallbookerValidation:
 
         assert r.status_code == 422
 
-    async def test_sales_call_rejects_invalid_price_plan(self, client, db, test_pipeline, test_stage):
+    async def test_sales_call_rejects_invalid_price_plan(self, client, db, test_pipeline, test_stage, test_config):
         """Test that sales call booking rejects invalid price_plan"""
         admin = db.create(Admin(first_name='Test', last_name='Admin', username='test@example.com'))
 
@@ -525,7 +576,7 @@ class TestCallbookerValidation:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_with_single_name(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test that single name (no space) is handled correctly"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -553,7 +604,7 @@ class TestCallbookerValidation:
         assert contact.first_name is None
         assert contact.last_name == 'Madonna'
 
-    async def test_support_call_rejects_past_datetime(self, client, db, test_pipeline, test_stage):
+    async def test_support_call_rejects_past_datetime(self, client, db, test_pipeline, test_stage, test_config):
         """Test that support call booking rejects past meeting_dt"""
         admin = db.create(Admin(first_name='Test', last_name='Admin', username='test@example.com'))
         company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg'))
@@ -574,7 +625,7 @@ class TestCallbookerValidation:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_support_call_with_single_name(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test that support call with single name is handled correctly"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -602,7 +653,7 @@ class TestCallbookerValidation:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_accepts_naive_datetime(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test that naive datetime (no timezone) is accepted and converted to UTC"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -632,7 +683,7 @@ class TestCallbookerValidation:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_accepts_non_utc_timezone(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
         """Test that non-UTC timezone is accepted and converted to UTC"""
         import pytz

@@ -75,8 +75,12 @@ class Pipeline(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     pd_pipeline_id: int = Field(unique=True, index=True)
     name: str = Field(max_length=255)
+    dft_entry_stage_id: int = Field(foreign_key='stage.id')
 
     deals: List['Deal'] = Relationship(back_populates='pipeline')
+    dft_entry_stage: 'Stage' = Relationship(
+        sa_relationship_kwargs={'foreign_keys': '[Pipeline.dft_entry_stage_id]', 'lazy': 'select'}
+    )
 
     def __str__(self):
         return self.name
@@ -108,17 +112,17 @@ class Config(SQLModel, table=True):
     meeting_min_start: str = Field(default='10:00', max_length=5)
     meeting_max_end: str = Field(default='17:30', max_length=5)
 
-    payg_pipeline_id: Optional[int] = Field(default=None, foreign_key='pipeline.id')
-    startup_pipeline_id: Optional[int] = Field(default=None, foreign_key='pipeline.id')
-    enterprise_pipeline_id: Optional[int] = Field(default=None, foreign_key='pipeline.id')
+    payg_pipeline_id: int = Field(foreign_key='pipeline.id')
+    startup_pipeline_id: int = Field(foreign_key='pipeline.id')
+    enterprise_pipeline_id: int = Field(foreign_key='pipeline.id')
 
-    payg_pipeline: Optional[Pipeline] = Relationship(
+    payg_pipeline: Pipeline = Relationship(
         sa_relationship_kwargs={'foreign_keys': '[Config.payg_pipeline_id]', 'lazy': 'select'}
     )
-    startup_pipeline: Optional[Pipeline] = Relationship(
+    startup_pipeline: Pipeline = Relationship(
         sa_relationship_kwargs={'foreign_keys': '[Config.startup_pipeline_id]', 'lazy': 'select'}
     )
-    enterprise_pipeline: Optional[Pipeline] = Relationship(
+    enterprise_pipeline: Pipeline = Relationship(
         sa_relationship_kwargs={'foreign_keys': '[Config.enterprise_pipeline_id]', 'lazy': 'select'}
     )
 
@@ -174,7 +178,7 @@ class Company(SQLModel, table=True):
     narc: bool = Field(default=False)
 
     # Fields synced to/from Pipedrive
-    paid_invoice_count: int = Field(default=0)
+    paid_invoice_count: Optional[int] = Field(default=0)
     tc2_status: Optional[str] = Field(default=STATUS_PENDING_EMAIL_CONF, max_length=25)
 
     # Date fields
