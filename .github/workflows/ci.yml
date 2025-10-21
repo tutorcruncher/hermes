@@ -1,12 +1,9 @@
-name: CI
+name: Tests
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - '**'
-  pull_request: {}
+    branches: [main, develop]
+  pull_request:
 
 jobs:
   test:
@@ -22,54 +19,37 @@ jobs:
         ports:
         - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-      redis:
-        image: redis
-        ports:
-          - 6379:6379
-        options: --entrypoint redis-server
 
     env:
       DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/hermes_test'
-      LOGFIRE_SEND_TO_LOGFIRE: 'false'
-      TESTING: 'true'
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: set up python
+      with:
+        # For pull requests, this ensures we checkout the PR branch, not the target branch
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
-        cache: 'pip'
-
-    - name: install dependencies
-      run: |
-        make install
-        pip freeze
-    - name: lint
+        python-version: '3.12'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+    
+    - name: Install dependencies
+      run: make install-dev
+    
+    - name: Run linting
       run: make lint
-
-    - name: test
-      run: make test
+    
+    - name: Run tests with coverage
+      run: make test-cov
 
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  deploy:
-    needs:
-      - test
-    if: "success() && startsWith(github.ref, 'refs/tags/')"
-    runs-on: ubuntu-latest
-
-    env:
-      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      HEROKU_APP: tc-hermes
-
-    steps:
-      - uses: actions/checkout@v4
-      - run: git fetch --unshallow
-      - run: git switch main
-      - run: git remote add heroku https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP.git
-      - run: git push heroku main
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
