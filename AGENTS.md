@@ -1,32 +1,35 @@
-# Hermes - AI Agent Development Guide
+# Hermes v4 - AI Agent Development Guide
 
-This document provides guidelines for AI assistants working on the Hermes codebase to maintain consistency with existing patterns and conventions.
+This document provides guidelines for AI assistants working on the Hermes v4 codebase to maintain consistency with existing patterns and conventions.
 
 ## Table of Contents
 - [Project Overview](#project-overview)
+- [Critical Test Rules](#critical-test-rules)
 - [Code Style](#code-style)
 - [Project Structure](#project-structure)
 - [Models & Database](#models--database)
+- [Field Mapping System](#field-mapping-system)
+- [API Integration Patterns](#api-integration-patterns)
 - [Testing Patterns](#testing-patterns)
-- [API & Webhooks](#api--webhooks)
-- [Background Tasks](#background-tasks)
-- [Schema & Validation](#schema--validation)
-- [Error Handling](#error-handling)
-- [Logging](#logging)
 - [Common Patterns](#common-patterns)
+
+---
 
 ## Project Overview
 
-Hermes is a sales system that connects TutorCruncher (TC2), the callbooker website, and Pipedrive CRM.
+Hermes is a sales integration system that connects three external systems:
+- **TutorCruncher (TC2)** - Internal business management system
+- **Pipedrive CRM** - Sales pipeline management
+- **Website Callbooker** - Customer-facing booking system
 
 **Tech Stack:**
 - FastAPI (web framework)
-- Tortoise ORM (async database)
-- Pydantic (data validation)
+- SQLModel (async ORM built on SQLAlchemy)
+- Pydantic v2 (data validation)
 - PostgreSQL (database)
-- Redis (caching)
 - Logfire (observability)
 - Sentry (error tracking)
+- Google Calendar API (meeting scheduling)
 
 **Glossary:**
 - **Company** = Cligency (TC2) = Organisation (Pipedrive)
@@ -34,106 +37,397 @@ Hermes is a sales system that connects TutorCruncher (TC2), the callbooker websi
 - **Deal** = Deal (Pipedrive only)
 - **Meeting** = Activity (Pipedrive)
 
+**Data Flow:**
+- TC2 → Hermes → Pipedrive ✅
+- Callbooker → Hermes → Pipedrive ✅
+- Pipedrive → Hermes (NO TC2 sync) ✅
+
+---
+
+## Critical Test Rules
+
+### 0. End-to-End Testing Philosophy
+
+**All tests must start with an HTTP request or a background task call.**
+
+#### ✅ Good - Testing through webhooks
+```python
+async def test_tc2_webhook_creates_company(client, db):
+    """Test that TC2 webhook creates company"""
+    webhook_data = {...}
+    
+    r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+    
+    assert r.status_code == 200
+    
+    # Verify company was created
+    company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+    assert company is not None
+```
+
+#### ✅ Good - Testing background tasks directly
+```python
+@patch('app.pipedrive.api.pipedrive_request')
+async def test_sync_company_task(mock_api, db, test_company):
+    """Test sync task"""
+    mock_api.return_value = {'data': {'id': 999}}
+    
+    await sync_company_to_pipedrive(test_company.id)
+    
+    assert mock_api.called
+```
+
+#### ❌ Bad - Testing internal functions directly
+```python
+async def test_process_organisation(db, test_company):
+    """Test process_organisation function"""
+    org_data = Organisation(...)
+    
+    # ❌ Don't call internal functions directly
+    company = await process_organisation(org_data, None, db)
+    
+    assert company is not None
+```
+
+#### ❌ Bad - Testing Pydantic models directly
+```python
+def test_model_validation():
+    """Test model validation"""
+    # ❌ Don't instantiate models directly for testing
+    event = CBSalesCall(...)
+    assert event.first_name == 'Test'
+```
+
+**Why?** End-to-end tests ensure the entire flow works (request → validation → processing → response), not just isolated functions.
+
+**Exception:** Model property tests (`__str__`, computed properties) and pure helper functions can be tested directly.
+
+### 1. URL Generation Rules
+
+**ALWAYS use `client.app.url_path_for()` for URL references in tests.**
+
+#### ✅ Good - Using url_path_for
+```python
+def test_tc2_callback(client, db):
+    r = client.post(
+        client.app.url_path_for('tc2-callback'),
+        json=webhook_data
+    )
+    assert r.status_code == 200
+```
+
+#### ❌ Bad - Hardcoded URLs
+```python
+def test_tc2_callback(client, db):
+    r = client.post('/tc2/callback/', json=webhook_data)  # ❌ Hardcoded
+    assert r.status_code == 200
+```
+
+### 2. Test Data Creation Rules
+
+**Always use `db.create()` instead of `add`, `commit`, and `refresh`.**
+
+#### ✅ Good - Using db.create()
+```python
+def test_create_company(db, test_admin):
+    company = db.create(Company(
+        name='Test Company',
+        sales_person_id=test_admin.id,
+        price_plan='payg',
+        country='GB',
+    ))
+    
+    assert company.id is not None
+    assert company.name == 'Test Company'
+```
+
+#### ❌ Bad - Manual add, commit, refresh
+```python
+def test_create_company(db, test_admin):
+    company = Company(name='Test Company', sales_person_id=test_admin.id)
+    db.add(company)  # ❌
+    db.commit()      # ❌
+    db.refresh(company)  # ❌
+```
+
+### 3. Test Response Structure Rules
+
+**Always check the entire response structure, not just individual keys.**
+
+#### ✅ Good - Complete structure check
+```python
+def test_choose_sales_person(client, test_admin):
+    r = client.get(
+        client.app.url_path_for('choose-sales-person'),
+        params={'plan': 'payg', 'country_code': 'GB'}
+    )
+    
+    assert r.status_code == 200
+    assert r.json() == {
+        'id': test_admin.id,
+        'first_name': 'Test',
+        'last_name': 'Admin',
+        'email': 'test@example.com',
+        'tc2_admin_id': 1,
+        'pd_owner_id': 1,
+    }
+```
+
+#### ❌ Bad - Checking only individual keys
+```python
+def test_choose_sales_person(client, test_admin):
+    r = client.get(...)
+    data = r.json()
+    assert data['first_name'] == 'Test'  # ❌ Only checking one field
+```
+
+### 4. Test Code Style Rules
+
+#### Use `r` for Response Variables
+Always use `r` instead of `response` when calling client methods in tests.
+
+#### ✅ Good - Using r for response
+```python
+def test_endpoint(client):
+    r = client.get(client.app.url_path_for('endpoint'))
+    assert r.status_code == 200
+    assert r.json() == {'status': 'ok'}
+```
+
+#### ❌ Bad - Using response
+```python
+def test_endpoint(client):
+    response = client.get(client.app.url_path_for('endpoint'))  # ❌ Use r instead
+    assert response.status_code == 200
+```
+
+#### Use Inline select() Statements
+Don't create intermediate `statement` variables for simple queries. Use inline `select()` calls.
+
+#### ✅ Good - Inline select
+```python
+def test_get_company(db):
+    company = db.exec(select(Company)).first()
+    assert company.name == 'Test'
+    
+    # With where clause
+    contact = db.exec(select(Contact).where(Contact.email == 'test@example.com')).first()
+    assert contact is not None
+```
+
+#### ❌ Bad - Intermediate statement variable
+```python
+def test_get_company(db):
+    statement = select(Company)  # ❌ Unnecessary variable
+    company = db.exec(statement).first()
+    assert company.name == 'Test'
+```
+
+#### No Comments Except Docstrings
+Tests should have NO inline comments unless absolutely necessary for complex logic.
+
+#### ✅ Good - Clean test with only docstring
+```python
+def test_process_tc_client_creates_company(db, test_admin, sample_tc_client_data):
+    """Test that processing TC2 client creates a company in Hermes"""
+    tc_client = TCClient(**sample_tc_client_data)
+    company = await process_tc_client(tc_client, db)
+    
+    assert company is not None
+    assert company.name == 'Test Agency'
+```
+
+#### ❌ Bad - Unnecessary comments
+```python
+def test_process_tc_client_creates_company(db, test_admin, sample_tc_client_data):
+    tc_client = TCClient(**sample_tc_client_data)  # ❌ Create client
+    company = await process_tc_client(tc_client, db)  # ❌ Process client
+    
+    assert company is not None  # ❌ Check company exists
+```
+
+### 5. Mocking Patterns
+
+**Always use `@patch` decorator instead of inline `with patch()` blocks.**
+
+**Use MockResponse object for consistent HTTP response mocking:**
+
+#### ✅ Good - Testing request functions with MockResponse
+```python
+from tests.helpers import MockResponse, create_mock_response, create_error_response
+
+@patch('httpx.AsyncClient.request')
+async def test_api_request(mock_request):
+    """Test API request function with MockResponse"""
+    mock_response = create_mock_response({'data': {'id': 999}})
+    mock_request.return_value = mock_response
+    
+    result = await pipedrive_request('organizations')
+    assert result['data']['id'] == 999
+```
+
+#### ✅ Good - Testing higher-level functions by patching internal request
+```python
+@patch('app.pipedrive.api.pipedrive_request')
+async def test_sync_company(mock_request, db, test_company):
+    """Test sync function by mocking internal request function"""
+    mock_request.return_value = {'data': {'id': 999}}
+    await sync_company_to_pipedrive(test_company.id)
+```
+
+#### ❌ Bad - Patching entire client class
+```python
+@patch('httpx.AsyncClient')  # ❌ Don't patch entire class
+async def test_api_call(mock_client_class):
+    ...
+```
+
+#### ❌ Bad - Inline with patch()
+```python
+async def test_sync_company(db, test_company):
+    with patch('app.pipedrive.api.pipedrive_request') as mock_api:  # ❌ Inline
+        mock_api.return_value = {'data': {'id': 999}}
+        await sync_company_to_pipedrive(test_company.id)
+```
+
+### 6. Coverage Requirements
+
+**Maintain test coverage above 95% for the entire application.**
+
+```bash
+uv run pytest --cov=app --cov-report=term-missing
+```
+
+**Coverage Targets:**
+- Overall: Minimum 95%
+- Critical paths: 100% (webhooks, sync tasks, booking logic)
+- API endpoints: 100%
+- Business logic: 100%
+
+---
+
 ## Code Style
 
 ### Formatting (Ruff)
 ```toml
 line-length = 120
-quote-style = 'single'  # Use single quotes
+quote-style = 'single'  # Single quotes for strings
 combine-as-imports = true
 ```
 
 ### Key Conventions
-1. **Quotes**: Use single quotes for strings
+1. **Quotes**: Use single quotes for strings, double quotes for docstrings
 2. **Line Length**: Maximum 120 characters
-3. **Imports**: Combine imports from same module
-4. **Type Hints**: Use modern Python type hints (e.g., `str | None` instead of `Optional[str]`)
-5. **Docstrings**: Use for complex functions and classes, triple quotes with description
+3. **Imports**: Combine imports from same module, module-level only
+4. **Type Hints**: Modern Python type hints (e.g., `str | None` instead of `Optional[str]`)
+5. **Docstrings**: Use for all functions and classes, triple double-quotes
 6. **f-strings**: Prefer f-strings over `.format()` or `%` formatting
 
 ### Naming Conventions
-- **Files**: Snake case (`_utils.py`, `_schema.py`, `_process.py`)
-- **Classes**: PascalCase (`Company`, `CustomField`, `PDDeal`)
+- **Files**: Snake case (`models.py`, `field_mappings.py`, `process.py`)
+- **Classes**: PascalCase (`Company`, `Organisation`, `TCClient`)
 - **Functions/Variables**: Snake case (`get_config`, `sales_person`, `tc2_admin_id`)
-- **Constants**: UPPER_SNAKE_CASE (`STATUS_PENDING`, `TYPE_STR`)
-- **Private**: Leading underscore (`_clean_for_pd`, `_slugify`)
+- **Constants**: UPPER_SNAKE_CASE (`PP_PAYG`, `TYPE_SALES`) or mapping dicts (`COMPANY_PD_FIELD_MAP`)
+- **Private**: Leading underscore (`_company_to_org_data`)
+
+---
 
 ## Project Structure
 
 ```
-app/
-├── admin/           # Admin interface (FastAPI-Admin)
-├── callbooker/      # Website callbooker integration
-├── hermes/          # Core Hermes endpoints
-├── pipedrive/       # Pipedrive integration
-│   ├── _schema.py   # Pydantic models for Pipedrive
-│   ├── _process.py  # Business logic for processing webhooks
-│   ├── _utils.py    # Helper utilities
-│   ├── api.py       # Pipedrive API client
-│   ├── tasks.py     # Background tasks
-│   └── views.py     # API endpoints/webhooks
-├── tc2/             # TutorCruncher integration (same structure)
-├── models.py        # Tortoise ORM models
-├── base_schema.py   # Shared Pydantic base classes
-├── settings.py      # Configuration/settings
-├── utils.py         # Shared utilities
-└── main.py          # FastAPI app initialization
-
-tests/
-├── conftest.py      # Pytest fixtures
-├── _common.py       # Shared test utilities
-└── [app]/           # Tests mirror app structure
-    ├── test_*.py
-    └── helpers.py   # Test helpers
+v4/
+├── app/
+│   ├── main_app/           # Core Hermes application
+│   │   ├── models.py       # SQLModel database models
+│   │   └── views.py        # Core endpoints (round-robin, search)
+│   ├── pipedrive/          # Pipedrive CRM integration
+│   │   ├── models.py       # Pydantic webhook schemas
+│   │   ├── field_mappings.py  # Single source of truth for field IDs
+│   │   ├── api.py          # Pipedrive API v2 client
+│   │   ├── tasks.py        # Background sync tasks
+│   │   ├── process.py      # Webhook processing
+│   │   └── views.py        # Webhook endpoint
+│   ├── tc2/                # TutorCruncher integration
+│   │   ├── models.py       # Pydantic webhook schemas
+│   │   ├── api.py          # TC2 API client
+│   │   ├── process.py      # Data processing
+│   │   └── views.py        # Webhook endpoint
+│   ├── callbooker/         # Website callbooker
+│   │   ├── models.py       # Request schemas
+│   │   ├── views.py        # Booking endpoints
+│   │   ├── process.py      # Booking logic
+│   │   ├── availability.py # Slot calculation
+│   │   ├── google.py       # Google Calendar
+│   │   ├── meeting_templates.py
+│   │   └── utils.py
+│   ├── core/               # Infrastructure
+│   │   ├── config.py       # Settings
+│   │   ├── database.py     # SQLModel setup
+│   │   └── logging.py      # Logging config
+│   ├── common/             # Shared utilities
+│   │   ├── utils.py
+│   │   └── api/errors.py
+│   └── main.py             # FastAPI application
+├── tests/
+│   ├── conftest.py         # Pytest fixtures
+│   ├── tc2/
+│   ├── pipedrive/
+│   └── callbooker/
+└── migrations/             # Alembic migrations
 ```
 
 ### Module Organization Pattern
-Each app module follows this structure:
-- `views.py`: FastAPI endpoints and webhooks
-- `_schema.py`: Pydantic schemas for validation
-- `_process.py`: Business logic (processing data)
-- `_utils.py`: Helper functions and logger
-- `api.py`: External API client functions
-- `tasks.py`: Background/async tasks
+- **`models.py`** in main_app = SQLModel database models (ORM)
+- **`models.py`** in integrations = Pydantic validation models (API)
+- **`views.py`** = FastAPI endpoints
+- **`process.py`** = Business logic
+- **`api.py`** = External API client
+- **`tasks.py`** = Background sync tasks
+
+---
 
 ## Models & Database
 
-### Tortoise ORM Patterns
+### SQLModel Patterns
 
 ```python
-from tortoise import fields, models
+from datetime import datetime, timezone
+from typing import ClassVar, List, Optional
+from sqlmodel import Field, Relationship, SQLModel
 
-class Company(HermesModel):
+class Company(SQLModel, table=True):
     """
     Model docstring explaining what it represents.
-    Cross-system mapping in glossary.
     """
-    # Constants at top
-    STATUS_PENDING = 'pending_email_conf'
-    STATUS_TRIAL = 'trial'
+    # Constants as ClassVar (not database fields)
+    STATUS_PENDING: ClassVar[str] = 'pending_email_conf'
+    PP_PAYG: ClassVar[str] = 'payg'
     
     # Primary key
-    id = fields.IntField(primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     
     # Required fields
-    name = fields.CharField(max_length=255)
+    name: str = Field(max_length=255)
     
-    # Optional fields with null=True
-    tc2_agency_id = fields.IntField(unique=True, null=True)
+    # Optional fields
+    tc2_agency_id: Optional[int] = Field(default=None, unique=True, index=True)
     
-    # Foreign keys with related_name
-    sales_person = fields.ForeignKeyField(
-        'models.Admin', 
-        related_name='sales'
-    )
+    # Dates - use timezone-aware defaults
+    created: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    # Reverse relations as type hints
-    contacts: fields.ReverseRelation['Contact']
+    # Foreign keys
+    sales_person_id: int = Field(foreign_key='admin.id')
+    
+    # Relationships
+    sales_person: 'Admin' = Relationship(back_populates='sales_companies')
+    contacts: List['Contact'] = Relationship(back_populates='company')
     
     # Properties for computed values
     @property
     def pd_org_url(self):
-        return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
+        if self.pd_org_id:
+            return f'{settings.pd_base_url}/organization/{self.pd_org_id}/'
+        return None
     
     # String representation
     def __str__(self):
@@ -141,340 +435,269 @@ class Company(HermesModel):
 ```
 
 ### Key Model Classes
-- **HermesModel**: Base for Company, Contact, Deal, Meeting (adds custom field support)
-- **models.Model**: Base for Config, CustomField, etc.
-- **AbstractAdmin**: Base for Admin (from fastapi-admin)
+- **Admin** - Sales/support/BDR personnel
+- **Company** - Organizations (has 29 fields including Pipedrive mappings)
+- **Contact** - Individual contacts
+- **Deal** - Sales deals (has all Company fields for Pipedrive)
+- **Meeting** - Sales/support meetings
+- **Pipeline & Stage** - Pipedrive tracking
+- **Config** - Application settings
 
 ### Database Operations
 ```python
+from sqlmodel import select
+
+# Create using db.create()
+company = db.create(Company(name='Test', ...))
+
+# Get single
+company = db.get(Company, company_id)
+
+# Filter with select
+statement = select(Company).where(Company.narc == False)
+companies = db.exec(statement).all()
+
+# Get first
+company = db.exec(statement).first()
+
+# With relationships (use selectinload for eager loading)
+from sqlalchemy.orm import selectinload
+
+statement = select(Company).options(selectinload(Company.contacts))
+company = db.exec(statement).first()
+```
+
+---
+
+## Field Mapping System
+
+**This is unique to Hermes v4** - eliminates CustomField/CustomFieldValue tables!
+
+### The Pattern
+
+**Step 1:** Define mapping once in `pipedrive/field_mappings.py`
+
+```python
+COMPANY_PD_FIELD_MAP = {
+    'paid_invoice_count': '70527310be44839c869854b055788a69ecbbab66',
+    'tc2_status': '57170eb130b8fa45925381623c86011e4e598e21',
+    # ... all field name → Pipedrive field ID mappings
+}
+```
+
+**Step 2:** Reference in Pydantic models (for incoming webhooks)
+
+```python
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+class Organisation(BaseModel):
+    # Standard fields
+    id: Optional[int] = None
+    name: Optional[str] = None
+    
+    # Custom fields - reference the mapping
+    paid_invoice_count: Optional[int] = Field(
+        default=0,
+        validation_alias=COMPANY_PD_FIELD_MAP['paid_invoice_count']
+    )
+```
+
+**Step 3:** Use in sync tasks (for outgoing to Pipedrive)
+
+```python
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+def _company_to_org_data(company: Company) -> dict:
+    custom_fields = {}
+    for field_name, pd_field_id in COMPANY_PD_FIELD_MAP.items():
+        value = getattr(company, field_name, None)
+        if value is not None:
+            custom_fields[pd_field_id] = value
+    return {'custom_fields': custom_fields, ...}
+```
+
+**Benefits:**
+- Single source of truth
+- Add new field in one place, works everywhere
+- No CustomField tables needed
+- Type-safe and maintainable
+
+---
+
+## API Integration Patterns
+
+### Pipedrive API v2 Client
+
+**Key differences from v1:**
+- Bearer token auth (not query param)
+- `/v2/` endpoint prefix
+- PATCH for updates (not PUT)
+- Only send changed fields
+
+```python
+from app.pipedrive import api
+
 # Create
-company = await Company.create(name='Test', ...)
+result = await api.create_organisation(org_data)
 
-# Get single (raises DoesNotExist if not found)
-company = await Company.get(id=1)
+# Update with PATCH (only changed fields)
+old_data = await api.get_organisation(org_id)
+new_data = _company_to_org_data(company)
+changed_fields = api.get_changed_fields(old_data, new_data)
 
-# Filter
-companies = await Company.filter(narc=False)
+if changed_fields:
+    await api.update_organisation(org_id, changed_fields)
 
-# With related objects
-company = await Company.get(id=1).prefetch_related('contacts')
-contacts = await company.contacts  # Already loaded
+# Delete
+await api.delete_organisation(org_id)
 
-# Select for update (in transactions)
-async with in_transaction():
-    company = await Company.select_for_update().get(id=1)
-    # ... modify company
-    await company.save()
-
-# Update or create
-company, created = await Company.update_or_create(
-    tc2_agency_id=123,
-    defaults={'name': 'New Name'}
-)
+# Search
+results = await api.search_organisations(term='Test', fields=['name'])
 ```
 
-## Testing Patterns
+### TC2 API Client
 
-### Test Structure
 ```python
-from tests._common import HermesTestCase
-from tests.pipedrive.helpers import FakePipedrive, fake_pd_request
+from app.tc2 import api
 
-class PipedriveTasksTestCase(HermesTestCase):
-    def setUp(self):
-        """Synchronous setup (called for each test)"""
-        super().setUp()
-        self.pipedrive = FakePipedrive()
-    
-    async def asyncSetUp(self):
-        """Async setup (called for each test)"""
-        await super().asyncSetUp()
-        # Create test data
-        self.admin = await Admin.create(...)
-        await CustomField.create(...)
-        await build_custom_field_schema()
-    
-    @mock.patch('app.pipedrive.api.session.request')
-    async def test_something(self, mock_request):
-        """Test description"""
-        # Arrange
-        mock_request.side_effect = fake_pd_request(self.pipedrive)
-        company = await Company.create(...)
-        
-        # Act
-        await pd_post_process_client_event(company)
-        
-        # Assert
-        assert self.pipedrive.db['organizations'] == {...}
+# Get client
+client_data = await api.get_client(tc2_cligency_id)
+
+# Update client
+await api.update_client(tc2_cligency_id, data={'status': 'active'})
 ```
 
-### HermesTestCase Base Class
-Located in `tests/_common.py`:
-- Inherits from `tortoise.contrib.test.TestCase`
-- Sets up async test client
-- Creates default Pipeline and Stage
-- Configures settings for testing
+### Background Tasks Pattern
 
-### Test Helpers
-- **FakePipedrive**: Mock Pipedrive API responses
-- **fake_pd_request**: Helper for mocking API calls
-- Use `@mock.patch` for external dependencies
-- Use fixtures in `conftest.py` for shared setup
-
-### Test Naming
-- File: `test_[feature].py`
-- Class: `[Feature]TestCase`
-- Method: `test_[specific_behavior]`
-- Be descriptive about what's being tested
-
-### Import Rules for Tests
-- **NO local imports in tests** (imports inside functions/methods) unless they cause circular import errors
-- All imports should be at the top of the test file
-- This makes dependencies clear and improves test performance
-
-## API & Webhooks
-
-### FastAPI Endpoint Pattern
 ```python
-from fastapi import APIRouter, Header, HTTPException
-from starlette.background import BackgroundTasks
-from starlette.requests import Request
+from fastapi import BackgroundTasks
 
-router = APIRouter()
-
-@router.post('/callback/', name='System callback')
-async def callback(
-    request: Request,
-    webhook: WebhookSchema,  # Pydantic schema
-    webhook_signature: Optional[str] = Header(None),
-    tasks: BackgroundTasks = None  # For background tasks
-):
-    """
-    Webhook endpoint description.
-    What it does, what it triggers, etc.
-    """
-    # 1. Verify signature (if required)
-    if not settings.dev_mode:
-        expected_sig = hmac.new(...)
-        if not compare_digest(webhook_signature, expected_sig):
-            raise HTTPException(status_code=403, detail='Unauthorized')
+@router.post('/callback/')
+async def webhook(event: WebhookData, background_tasks: BackgroundTasks):
+    # Process event immediately
+    company = await process_event(event)
     
-    # 2. Process each event
-    for event in webhook.events:
-        company, deal = await update_from_event(event.subject)
-        
-        # 3. Queue background tasks
-        if company:
-            tasks.add_task(pd_post_process_client_event, company, deal)
+    # Queue background task
+    background_tasks.add_task(sync_company_to_pipedrive, company.id)
     
     return {'status': 'ok'}
 ```
 
-### Router Registration (in `main.py`)
+**Important:** Background tasks run AFTER the response is sent, so pass IDs not objects.
+
+---
+
+## Testing Patterns
+
+### Test Structure
+
 ```python
-app.include_router(tc2_router, prefix='/tc2')
-app.include_router(pipedrive_router, prefix='/pipedrive')
-```
+from unittest.mock import patch
 
-### Background Tasks
-Use `BackgroundTasks` for operations that should happen after response:
-- Syncing to external systems
-- Long-running operations
-- Non-critical operations
+import pytest
 
-**Important**: Background tasks run AFTER the response is sent, so objects may be deleted/modified before they run.
+from app.main_app.models import Company
 
-## Background Tasks
 
-### Task Pattern (in `tasks.py`)
-```python
-import logfire
-from tortoise.exceptions import DoesNotExist
-
-from app.pipedrive._utils import app_logger
-
-async def pd_post_process_client_event(company: Company, deal: Deal = None):
-    """
-    Called after a client event from TC2. For example, a client paying an invoice.
-    """
-    with logfire.span('pd_post_process_client_event'):
-        try:
-            await _transy_get_and_create_or_update_organisation(company)
-            for contact in await company.contacts:
-                await _transy_get_and_create_or_update_person(contact)
-            if deal:
-                await _transy_get_and_create_or_update_deal(deal)
-                await update_or_create_inherited_deal_custom_field_values(company)
-        except DoesNotExist as e:
-            app_logger.info(f'Object no longer exists, skipping Pipedrive updates: {e}')
-```
-
-### Key Principles
-1. **Wrap in logfire span** for observability
-2. **Handle DoesNotExist** - objects may be deleted before task runs
-3. **Use transactions** when modifying database
-4. **Prefix with module** (e.g., `pd_post_`, `tc2_`)
-5. **Log info, not errors** for expected failures
-
-### Transaction Pattern
-```python
-async def _transy_get_and_create_or_update_deal(deal: Deal) -> PDDeal:
-    """
-    Create or update a Deal in Pipedrive in a transaction
-    """
-    async with in_transaction():
-        deal = await Deal.select_for_update().get(id=deal.id)
-        return await get_and_create_or_update_pd_deal(deal)
-```
-
-## Schema & Validation
-
-### Pydantic Schema Pattern
-```python
-from pydantic import Field, field_validator, model_validator
-from app.base_schema import HermesBaseModel
-
-class Organisation(PipedriveBaseModel):
-    """Pipedrive Organization schema"""
-    id: Optional[int] = Field(None, exclude=True)
-    name: Optional[str] = None
-    owner_id: Optional[int] = ForeignKeyField(None, model=Admin, fk_field_name='pd_owner_id')
+class TestTC2Integration:
+    """Test TC2 webhook processing"""
     
-    # Validator for field transformation
-    _get_obj_id = field_validator('owner_id', mode='before')(_get_obj_id)
-    
-    @classmethod
-    async def from_company(cls, company: Company) -> 'Organisation':
-        """Create from Hermes Company model"""
-        cls_kwargs = dict(
-            name=company.name,
-            owner_id=(await company.sales_person).pd_owner_id,
-            ...
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_tc2_webhook_creates_company(self, mock_api, client, db, test_admin):
+        """Test that TC2 webhook creates company and syncs to Pipedrive"""
+        mock_api.return_value = {'data': {'id': 999}}
+        
+        webhook_data = {
+            'events': [{
+                'action': 'UPDATE',
+                'verb': 'update',
+                'subject': {
+                    'model': 'Client',
+                    'id': 123,
+                    'meta_agency': {...},
+                    # ... full client data
+                }
+            }],
+            '_request_time': 1234567890,
+        }
+        
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            json=webhook_data
         )
-        cls_kwargs.update(await cls.get_custom_field_vals(company))
-        final_kwargs = _clean_for_pd(**cls_kwargs)
-        return cls(**final_kwargs)
+        
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        
+        # Verify company was created
+        from sqlmodel import select
+        
+        statement = select(Company).where(Company.tc2_cligency_id == 123)
+        company = db.exec(statement).first()
+        
+        assert company is not None
+        assert company.name == 'Test Agency'
+```
+
+### Test Fixtures
+
+Located in `tests/conftest.py`:
+
+```python
+@pytest.fixture
+def test_admin(db):
+    """Create a test admin"""
+    return db.create(Admin(
+        first_name='Test',
+        last_name='Admin',
+        username='test@example.com',
+        tc2_admin_id=1,
+        pd_owner_id=1,
+        is_sales_person=True,
+    ))
+```
+
+**Important:** Use `db.create()` not manual add/commit/refresh!
+
+### Test Data Patterns
+
+```python
+@pytest.fixture
+def sample_tc_client_data():
+    """Sample TC2 client data"""
+    return {
+        'id': 123,
+        'meta_agency': {
+            'id': 456,
+            'name': 'Test Agency',
+            # ... all required fields
+        },
+        # ... rest of structure
+    }
+```
+
+### Testing Database Operations
+
+```python
+async def test_company_creation(db, test_admin):
+    """Test creating a company"""
+    company = db.create(Company(
+        name='Test',
+        sales_person_id=test_admin.id,
+        price_plan='payg',
+    ))
     
-    async def company_dict(self, custom_fields: list[CustomField]) -> dict:
-        """Convert to dict for creating/updating Company"""
-        return _clean_for_pd(
-            name=self.name,
-            ...
-        )
+    assert company.id is not None
+    assert company.sales_person_id == test_admin.id
 ```
 
-### Base Classes
-- **HermesBaseModel**: Base for all schemas, includes custom field support
-- **PipedriveBaseModel**: Extends HermesBaseModel for Pipedrive schemas
-
-### Common Validators
-```python
-def _get_obj_id(v) -> str | int:
-    """Extract ID from dict or return value directly"""
-    if isinstance(v, dict):
-        return v['value']
-    return v
-
-def _clean_for_pd(**kwargs) -> dict:
-    """Clean data for Pipedrive API (remove None, convert datetime to date)"""
-    data = {}
-    for k, v in kwargs.items():
-        if v is None:
-            continue
-        elif isinstance(v, datetime):
-            v = v.date()
-        data[k] = v
-    return data
-```
-
-## Error Handling
-
-### Exception Patterns
-```python
-from tortoise.exceptions import DoesNotExist
-from fastapi import HTTPException
-
-# Database: Use try/except for DoesNotExist
-try:
-    company = await Company.get(id=1)
-except DoesNotExist:
-    app_logger.info(f'Company {id} not found')
-    # Don't raise - log and continue gracefully
-
-# API: Use HTTPException for client errors
-if not authorized:
-    raise HTTPException(status_code=403, detail='Unauthorized')
-
-# Background tasks: Catch and log, don't raise
-try:
-    await external_api_call()
-except Exception as e:
-    app_logger.error(f'Failed to sync: {e}')
-    # Don't raise - task already sent response
-```
-
-### When to Raise vs Log
-- **Raise**: During request handling, validation, auth
-- **Log**: In background tasks, expected failures, cleanup
-
-## Logging
-
-### Logger Setup (in `_utils.py`)
-```python
-import logging
-
-app_logger = logging.getLogger('hermes.pipedrive')
-```
-
-### Logging Patterns
-```python
-# Info: Normal operations, expected events
-app_logger.info(f'Company {company.id} updated successfully')
-
-# Warning: Unexpected but handled
-app_logger.warning(f'Duplicate hermes_id {hermes_id} found')
-
-# Error: Actual errors (but still handled)
-app_logger.error(f'Failed to create organization: {e}')
-
-# Use f-strings, not old-style formatting
-# ❌ app_logger.info('Company %s updated', company.id)
-# ✅ app_logger.info(f'Company {company.id} updated')
-```
-
-### Logfire Spans
-Wrap expensive or important operations:
-```python
-import logfire
-
-with logfire.span('operation_name'):
-    await expensive_operation()
-```
+---
 
 ## Common Patterns
 
-### Custom Fields
-Custom fields sync data between TC2 and Pipedrive:
-```python
-# Get custom fields for an object type
-custom_fields = await CustomField.filter(linked_object_type='Company')
-
-# Get custom field values from Pydantic model
-cls_kwargs.update(await cls.get_custom_field_vals(company))
-
-# Process custom field values on save
-await company.process_custom_field_vals(old_vals, new_vals)
-```
-
-### Async/Await
-- Always use `async def` for functions that do I/O
-- Always `await` async functions
-- Use `async with` for transactions
-- Use `async for` for async iterators
-
 ### Settings
 ```python
-from app.utils import settings
+from app.core.config import settings
 
 # Access settings
 api_key = settings.pd_api_key
@@ -485,87 +708,338 @@ if settings.dev_mode:
     # Skip auth, etc.
 ```
 
-### Admin Utilities
+### Database Session
 ```python
-from app.utils import get_config, get_redis_client
+from app.core.database import DBSession, get_db
+from fastapi import Depends
 
-# Get singleton config
-config = await get_config()
-
-# Get Redis client
-redis = await get_redis_client()
+@router.post('/endpoint/')
+async def endpoint(db: DBSession = Depends(get_db)):
+    company = db.get(Company, company_id)
+    # ... work with db
 ```
 
-### API Requests Pattern
-```python
-import httpx
+### Error Handling
 
-async def get_organization(org_id: int) -> dict:
-    """Get organization from Pipedrive"""
-    url = f'{settings.pd_base_url}/api/v1/organizations/{org_id}'
-    params = {'api_token': settings.pd_api_key}
+```python
+from app.common.api.errors import HTTP403, HTTP404
+
+# In endpoints
+if not authorized:
+    raise HTTP403('Unauthorized')
+
+if not found:
+    raise HTTP404('Company not found')
+
+# In background tasks - log, don't raise
+try:
+    await external_api_call()
+except Exception as e:
+    logger.error(f'Failed to sync: {e}', exc_info=True)
+    # Don't raise - task already sent response
+```
+
+### Logging
+
+```python
+import logging
+
+logger = logging.getLogger('hermes.pipedrive')
+
+# Info: Normal operations
+logger.info(f'Company {company.id} updated successfully')
+
+# Warning: Unexpected but handled
+logger.warning(f'Duplicate hermes_id {hermes_id} found')
+
+# Error: Actual errors
+logger.error(f'Failed to create organization: {e}', exc_info=True)
+
+# Use f-strings, not old-style formatting
+```
+
+### Logfire Spans
+
+Wrap important operations:
+
+```python
+import logfire
+
+with logfire.span('operation_name'):
+    await expensive_operation()
+```
+
+---
+
+## API & Webhooks
+
+### FastAPI Endpoint Pattern
+
+```python
+from fastapi import APIRouter, Depends, BackgroundTasks
+from sqlmodel import select
+
+from app.core.database import DBSession, get_db
+
+router = APIRouter()
+
+@router.post('/callback/', name='system-callback')
+async def callback(
+    webhook: WebhookSchema,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db)
+):
+    """
+    Webhook endpoint description.
+    """
+    # Process each event
+    for event in webhook.events:
+        company = await process_event(event, db)
+        
+        # Queue background tasks (pass IDs not objects!)
+        if company:
+            background_tasks.add_task(sync_to_external, company.id)
     
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-        return response.json()['data']
+    return {'status': 'ok'}
 ```
+
+### Router Registration (in `main.py`)
+
+```python
+from app.tc2.views import router as tc2_router
+
+app.include_router(tc2_router, prefix='/tc2', tags=['tc2'])
+```
+
+---
+
+## Async/Await
+
+- Always use `async def` for functions that do I/O
+- Always `await` async functions
+- Use `async for` for async iterators
+- Use `async with` for async context managers
+
+---
 
 ## Development Workflow
 
 ### Making Changes
 1. **Create/modify code** following patterns above
-2. **Run linter**: `ruff check app/` (fixes many issues automatically)
-3. **Format code**: `ruff format app/`
-4. **Run tests**: `make test` or `pytest tests/[specific_test].py`
-5. **Check migrations**: If models changed, run `aerich migrate`
-6. **Update this guide** if adding new patterns
+2. **Run linter**: `make lint` or `uv run ruff check app/`
+3. **Format code**: `make format` or `uv run ruff format app/`
+4. **Run tests**: `make test` or `uv run pytest tests/`
+5. **Check migrations**: If models changed, run `make migrate-create msg="..."`
 
 ### Common Commands
 ```bash
-make install        # Install dependencies
-make install-dev    # Install dev dependencies
+make install-dev    # Install dependencies
 make test           # Run tests
+make test-cov       # Run tests with coverage
+make lint           # Check code quality
+make format         # Format code
+make run            # Run application
+make migrate        # Apply migrations
 make reset-db       # Reset database
-ruff check app/     # Lint code
-ruff format app/    # Format code
 ```
 
 ### Testing Workflow
 1. Write test first (TDD when possible)
-2. Run specific test: `pytest tests/pipedrive/test_tasks.py::TestClass::test_method -v`
-3. Check coverage: `pytest --cov=app tests/`
+2. Run specific test: `uv run pytest tests/tc2/test_tc2_integration.py::TestClass::test_method -v`
+3. Check coverage: `uv run pytest --cov=app --cov-report=html`
 4. All tests should pass before committing
+
+---
 
 ## Key Differences from Typical Patterns
 
-1. **Single quotes** not double quotes (enforced by ruff)
-2. **Modern type hints** (e.g., `str | None` instead of `Optional[str]`)
-3. **Background tasks** need DoesNotExist handling
-4. **Custom fields** are dynamic - loaded at startup
-5. **Three systems** (TC2, Pipedrive, Hermes) must stay in sync
-6. **app_logger.info** not `logfire.warn` for expected failures
-7. **Always use transactions** when updating related objects
+1. **Single quotes** for strings (not double)
+2. **Double quotes** for docstrings
+3. **Modern type hints** (`str | None` not `Optional[str]`)
+4. **Background tasks** use IDs (objects may be deleted)
+5. **Field mapping** instead of CustomFields
+6. **PATCH not PUT** for Pipedrive updates
+7. **One-way Pipedrive sync** (doesn't propagate to TC2)
+8. **Three systems** (TC2, Pipedrive, Hermes) must stay in sync
+9. **ClassVar** for model constants
+10. **No `serialization_alias` on SQLModel** (Pydantic only)
+
+---
 
 ## Anti-Patterns to Avoid
 
-❌ **Don't** use double quotes for strings
-❌ **Don't** use `Optional[Type]` - use `Type | None`
-❌ **Don't** raise exceptions in background tasks
-❌ **Don't** use `.format()` or `%` - use f-strings
-❌ **Don't** forget to handle DoesNotExist in tasks
-❌ **Don't** use `logfire.warn()` with multiple args - use f-strings
-❌ **Don't** create models without `__str__` method
-❌ **Don't** forget `related_name` on foreign keys
+❌ **Don't** use double quotes for strings (except docstrings)  
+❌ **Don't** use `Optional[Type]` - use `Type | None`  
+❌ **Don't** raise exceptions in background tasks  
+❌ **Don't** use `.format()` or `%` - use f-strings  
+❌ **Don't** use `datetime.utcnow()` - use `datetime.now(timezone.utc)`  
+❌ **Don't** use `class Config:` - use `model_config = ConfigDict(...)`  
+❌ **Don't** use `@app.on_event()` - use `lifespan` context manager  
+❌ **Don't** create models without `__str__` method  
+❌ **Don't** forget `related_name` on foreign keys  
+❌ **Don't** put `serialization_alias` on SQLModel Field() (Pydantic only!)  
+❌ **Don't** use local/in-function imports  
+❌ **Don't** compare booleans with `== True` (use `if field:`)  
+❌ **Don't** use magic strings for Pipedrive field IDs (use `COMPANY_PD_FIELD_MAP['field_name']`)  
+
+---
+
+## Testing Best Practices
+
+### Always Use
+✅ `client.app.url_path_for('route-name')` for URLs  
+✅ `db.create(Model(...))` for test data  
+✅ `@patch` decorator (not inline)  
+✅ Check complete response structures  
+✅ Module-level imports only  
+✅ Docstrings (no inline comments)  
+✅ Async test functions for async code  
+
+### Never Use
+❌ Hardcoded URLs in tests  
+❌ `db.add()`, `db.commit()`, `db.refresh()` separately  
+❌ Inline `with patch()` blocks  
+❌ Checking only individual response keys  
+❌ Inline comments (except for complex logic)  
+❌ Explicit IDs when creating test objects  
+
+---
+
+## Examples
+
+### Good Test Example
+
+```python
+@patch('app.pipedrive.api.pipedrive_request')
+async def test_sync_company_to_pipedrive(self, mock_api, client, db, test_admin):
+    """Test that company syncs to Pipedrive with correct field mapping"""
+    mock_api.return_value = {'data': {'id': 999}}
+    
+    company = db.create(Company(
+        name='Test Company',
+        sales_person_id=test_admin.id,
+        price_plan='payg',
+        paid_invoice_count=5,
+    ))
+    
+    await sync_company_to_pipedrive(company.id)
+    
+    assert mock_api.called
+    call_data = mock_api.call_args.kwargs['data']
+    assert call_data['custom_fields'][COMPANY_PD_FIELD_MAP['paid_invoice_count']] == 5
+```
+
+### Good Endpoint Example
+
+```python
+from fastapi import APIRouter, Depends
+from sqlmodel import select
+
+from app.core.database import DBSession, get_db
+from app.main_app.models import Company
+
+router = APIRouter()
+
+@router.get('/companies/', name='get-companies')
+async def get_companies(
+    name: str | None = None,
+    country: str | None = None,
+    db: DBSession = Depends(get_db)
+):
+    """Get companies by filter parameters"""
+    statement = select(Company)
+    
+    if name:
+        statement = statement.where(Company.name.ilike(f'%{name}%'))
+    if country:
+        statement = statement.where(Company.country == country)
+    
+    companies = db.exec(statement.limit(10)).all()
+    
+    return [{'id': c.id, 'name': c.name, 'country': c.country} for c in companies]
+```
+
+---
+
+## Important Notes
+
+### Field Mapping is Critical
+When adding a new Pipedrive custom field:
+
+1. Add to `pipedrive/field_mappings.py` mapping dict
+2. Add to SQLModel in `main_app/models.py`
+3. Add to Pydantic model in `pipedrive/models.py` with `validation_alias=MAPPING['field']`
+4. That's it! Sync logic automatically picks it up.
+
+### Sync Directions Matter
+- **TC2 → Hermes → Pipedrive** ✅ Full propagation
+- **Callbooker → Hermes → Pipedrive** ✅ Full propagation
+- **Pipedrive → Hermes** ✅ Update Hermes ONLY (no TC2 sync)
+
+This prevents circular updates!
+
+### Background Tasks
+Always pass IDs to background tasks, not model instances:
+
+```python
+# ✅ Good
+background_tasks.add_task(sync_company, company.id)
+
+# ❌ Bad
+background_tasks.add_task(sync_company, company)  # Object may be deleted!
+```
+
+---
 
 ## Questions or Additions?
 
 When in doubt:
 1. Look at existing similar code
 2. Check this guide
-3. Run the linter
-4. Write tests
-5. Ask the team
+3. Check tc-ai-backend AGENTS.md for general FastAPI patterns
+4. Run the linter
+5. Write tests
+6. Ask the team
 
 This guide should be updated as new patterns emerge or existing ones evolve.
+
+---
+
+## Quick Reference
+
+### Import Patterns
+```python
+# Database models
+from app.main_app.models import Admin, Company, Contact, Deal
+
+# API validation models  
+from app.pipedrive.models import Organisation, Person, PDDeal
+from app.tc2.models import TCClient, TCWebhook
+from app.callbooker.models import CBSalesCall
+
+# Field mappings
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+# API clients
+from app.pipedrive import api
+from app.tc2 import api
+
+# Utilities
+from app.common.utils import sign_args, get_bearer
+from app.common.api.errors import HTTP403, HTTP404
+from app.core.config import settings
+from app.core.database import get_db, get_session
+```
+
+### Route Naming
+Use kebab-case for route names:
+- `'tc2-callback'`
+- `'book-sales-call'`
+- `'choose-sales-person'`
+- `'get-companies'`
+
+---
+
+This guide ensures consistency, maintainability, and quality across the Hermes v4 codebase.
+
 

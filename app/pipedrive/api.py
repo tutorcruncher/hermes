@@ -1,312 +1,131 @@
-"""
-We want to update the pipedrive person/org when:
-- A TC meta client is updated/created/deleted
-- A TC company is terminated/updated
-- A TC meta invoice is created/updated/deleted
-- A new sales/support call is created from the call booker
-We want to update deals in pipedrive when:
-- Nothing. This should be handled by us updating the person/org; there are then automations in pipedrive to update the
-  deal/person/org.
-We want to create activities in pipedrive when:
-- A new sales/support call is created from the call booker
-"""
+import logging
+from typing import Optional
 
-import time
-from json import JSONDecodeError
-from urllib.parse import urlencode
-
+import httpx
 import logfire
-import requests
-from httpx import HTTPError
 
-from app.models import Company, Contact, Deal, Meeting
-from app.pipedrive._schema import Activity, Organisation, PDDeal, Person
-from app.pipedrive._utils import app_logger
-from app.utils import settings
+from app.core.config import settings
 
-session = requests.Session()
-max_retries = 5
+logger = logging.getLogger('hermes.pipedrive')
 
 
 async def pipedrive_request(
-    url: str, *, method: str = 'GET', query_kwargs: dict = None, data: dict = None, retry: int = 1
+    endpoint: str,
+    *,
+    method: str = 'GET',
+    query_params: Optional[dict] = None,
+    data: Optional[dict] = None,
 ) -> dict:
     """
-    Make a request to the Pipedrive API with retry logic for empty responses.
-    @param url: desired endpoint
-    @param method: GET, POST, PUT, DELETE
-    @param query_kwargs: used to build the query string for search and list endpoints
-    @param data: data to send in the request body
-    @param retry: internal retry counter (starts at 1, max 5)
-    @return: json response
+    Make a request to the Pipedrive API v2 with proper authentication and error handling.
+
+    Args:
+        endpoint: The API endpoint (without /v2/ prefix)
+        method: HTTP method (GET, POST, PATCH, DELETE)
+        query_params: Query parameters dict
+        data: Request body data
+
+    Returns:
+        Response JSON data
     """
-    query_params = {'api_token': settings.pd_api_key, **(query_kwargs or {})}
-    query_string = urlencode(query_params)
+    url = f'{settings.pd_base_url}/v2/{endpoint}'
+    headers = {'Authorization': f'Bearer {settings.pd_api_key}', 'Content-Type': 'application/json'}
 
-    with logfire.span('{method} {url!r}', url=url, method=method):
-        r = session.request(method=method, url=f'{settings.pd_base_url}/api/v1/{url}?{query_string}', json=data)
-    app_logger.info('Request method=%s url=%s status_code=%s', method, url, r.status_code, extra={'data': data})
-    r.raise_for_status()
-
-    try:
-        return r.json()
-    except JSONDecodeError as e:
-        # Pipedrive API sometimes returns HTTP 200 with an empty body instead of proper 404/error responses
-        # This is a known issue: https://devcommunity.pipedrive.com/t/empty-response-body-from-api/8037
-        if retry < max_retries:
-            app_logger.warning(f'PD API returned empty response for {method} {url}, attempt {retry}/{max_retries}...')
-            time.sleep(retry)
-            return await pipedrive_request(url, method=method, query_kwargs=query_kwargs, data=data, retry=retry + 1)
-        else:
-            raise e
-
-
-def _get_search_item(r: dict) -> dict | None:
-    """
-    Get the first item from a search response.
-    """
-    if r['data']['items']:
-        return r['data']['items'][0]['item']
-
-
-async def _search_contacts_by_field(values: list[str], field: str) -> int | None:
-    """
-    Search Pipdrive for a Person by a field.Searches first by email first, then phone number from the Hermes contacts.
-    If found, returns the associated Organisation ID to the Person.
-
-    @param values:
-    @param field:
-    @return: Organisation.id
-    """
-
-    for value in values[:2]:  # We have to limit it to 2 contacts else we'll hit their API ratelimit.
-        pd_data = await pipedrive_request('persons/search', query_kwargs={'term': value, 'limit': 10, 'fields': field})
-        for contact in pd_data['data']['items']:
-            if contact_item := contact['item']:
-                if contact_item.get('organization'):
-                    # Check if the pd_org_id already exists in the database
-                    existing_company = await Company.filter(pd_org_id=contact_item['organization']['id']).first()
-                    if existing_company:
-                        app_logger.error(
-                            f'pd_org_id {contact_item["organization"]["id"]} already exists for company {existing_company.id}'
-                        )
-                        continue
-                    app_logger.info(f'Found org {contact_item["organization"]["id"]} from contact {contact_item["id"]}')
-                    return contact_item['organization']['id']
-    return None
-
-
-async def _search_for_organisation(company: Company) -> Organisation | None:
-    """
-    Search for an Organisation within Pipedrive. First we search using their tc2_cligency_id, if there is no match
-    then we search using their contacts' email addresses and phone numbers.
-    """
-    search_terms = []
-    if company.tc2_cligency_id:
-        search_terms.append(company.tc2_cligency_id)
-        query_kwargs = {'term': company.tc2_cligency_id, 'exact_match': True, 'limit': 1}
-        pd_response = await pipedrive_request('organizations/search', query_kwargs=query_kwargs)
-        if search_item := _get_search_item(pd_response):
-            app_logger.info(
-                f'Found org {search_item["id"]} from company {company.id} by searching pipedrive for the '
-                f'tc2_cligency_id'
+    with logfire.span(f'{method} {endpoint}'):
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
             )
-            return Organisation(**search_item)
-
-    await company.fetch_related('contacts')
-    contact_emails, contact_phones = set(), set()
-    for contact in company.contacts:
-        if contact.email:
-            contact_emails.add(contact.email)
-        if contact.phone:
-            contact_phones.add(contact.phone)
-
-    if org_id := await _search_contacts_by_field(list(contact_emails), 'email'):
-        app_logger.info(f'Found org {org_id} from company {company.id} by contacts email')
-        return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
-    if org_id := await _search_contacts_by_field(list(contact_phones), 'phone'):
-        app_logger.info(f'Found org {org_id} from company {company.id} by contacts phone')
-        return Organisation(**(await pipedrive_request(f'organizations/{org_id}/'))['data'])
-
-
-async def get_and_create_or_update_organisation(company: Company) -> Organisation:
-    """
-    This function is responsible for creating or updating an Organisation within Pipedrive.
-
-    If the Company already has a Pipedrive Organisation ID:
-       - Updates the Organisation in Pipedrive with the Company's latest data if there are any changes.
-
-    If the Company doesn't have a Pipedrive Organisation ID:
-       - Searches Pipedrive for an Organisation matching the Company's 'tc2_cligency_id' or Contact email or phone number .
-       - If found, updates this Organisation with the Company's details.
-       - If not found, creates a new Organisation in Pipedrive and links it to the Company.
-
-    @param company: Company object
-    @return: Organisation object
-    """
-    hermes_org = await Organisation.from_company(company)
-    hermes_org_data = hermes_org.model_dump(mode='json', by_alias=True)
-    if company.pd_org_id:
-        # get by pipedrive Org ID
-        try:
-            pipedrive_org = Organisation(**(await pipedrive_request(f'organizations/{company.pd_org_id}'))['data'])
-        except HTTPError as e:
-            if '404' in str(e) or '410' in str(e):
-                # Organization was deleted in Pipedrive (404 Not Found or 410 Gone)
-                app_logger.info(f'Organisation {company.pd_org_id} not found in Pipedrive for company {company.id}')
-                company.pd_org_id = None
-                await company.save()
-            else:
-                raise
-        else:
-            app_logger.info(
-                f'Found org {pipedrive_org.id} from company {company.id} by company.pd_org_id {company.pd_org_id}'
-            )
-            if hermes_org_data != pipedrive_org.model_dump(mode='json', by_alias=True):
-                await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-                app_logger.info(f'Updated org {company.pd_org_id} from company {company.id} by company.pd_org_id')
-            return pipedrive_org
-
-    if not company.pd_org_id:
-        if org := await _search_for_organisation(company):
-            company.pd_org_id = org.id
-            await company.save()
-            await pipedrive_request(f'organizations/{company.pd_org_id}', method='PUT', data=hermes_org_data)
-            return org
-        else:
-            # if company is not linked to pipedrive and there is no match, create a new org
-            created_org = (await pipedrive_request('organizations', method='POST', data=hermes_org_data))['data']
-            pipedrive_org = Organisation(**created_org)
-            company.pd_org_id = pipedrive_org.id
-            await company.save()
-            app_logger.info('Created org %s from company %s', company.pd_org_id, company.id)
-            return pipedrive_org
-
-
-async def delete_organisation(company: Company):
-    """
-    Delete an organisation within Pipedrive.
-    """
-    if company.pd_org_id:
-        try:
-            await pipedrive_request(f'organizations/{company.pd_org_id}', method='DELETE')
-            company.pd_org_id = None
-            await company.save()
-            app_logger.info('Deleted org %s from company %s', company.pd_org_id, company.id)
-        except Exception as e:
-            app_logger.error('Error deleting org %s', e)
-
-
-async def get_and_create_or_update_person(contact: Contact) -> Person:
-    """
-    Get and create or update a Person within Pipedrive.
-    """
-    hermes_person = await Person.from_contact(contact)
-    hermes_person_data = hermes_person.model_dump(mode='json', by_alias=True)
-    if contact.pd_person_id:
-        try:
-            pipedrive_person = Person(**(await pipedrive_request(f'persons/{contact.pd_person_id}'))['data'])
-        except HTTPError as e:
-            if '404' in str(e) or '410' in str(e):
-                # Person was deleted in Pipedrive (404 Not Found or 410 Gone)
-                app_logger.info(f'Person {contact.pd_person_id} not found in Pipedrive for contact {contact.id}')
-                contact.pd_person_id = None
-                await contact.save()
-            else:
-                raise
-        else:
-            if hermes_person_data != pipedrive_person.model_dump(mode='json', by_alias=True):
+            logger.info(f'Request method={method} url={endpoint} status_code={response.status_code}')
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
                 try:
-                    await pipedrive_request(f'persons/{contact.pd_person_id}', method='PUT', data=hermes_person_data)
-                    app_logger.info('Updated person %s from contact %s', contact.pd_person_id, contact.id)
-                except Exception as e:
-                    app_logger.error(
-                        'Error updating person %s from contact %s: %s', contact.pd_person_id, contact.id, e
-                    )
-            return pipedrive_person
-    if not contact.pd_person_id:
-        created_person = (await pipedrive_request('persons', method='POST', data=hermes_person_data))['data']
-        pipedrive_person = Person(**created_person)
-        contact.pd_person_id = pipedrive_person.id
-        await contact.save()
-        app_logger.info('Created person %s from contact %s', contact.pd_person_id, contact.id)
-        return pipedrive_person
+                    error_data = response.json()
+                except Exception:
+                    error_data = response.text
+                logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
+                raise
+            return response.json()
 
 
-async def delete_persons(contacts: list[Contact]):
+async def create_organisation(org_data: dict) -> dict:
+    """Create organization in Pipedrive using v2 API"""
+    return await pipedrive_request('organizations', method='POST', data=org_data)
+
+
+async def update_organisation(org_id: int, changed_fields: dict) -> dict:
     """
-    Delete a Person within Pipedrive.
+    Update organization using PATCH (v2 API).
+    Only send changed fields to minimize conflicts.
     """
-    pd_person_ids = [contact.pd_person_id for contact in contacts if contact.pd_person_id]
-    if pd_person_ids:
-        try:
-            await pipedrive_request(f'persons/{",".join(map(str, pd_person_ids))}', method='DELETE')
-            for contact in contacts:
-                contact.pd_person_id = None
-                await contact.save()
-                app_logger.info('Deleted person %s from contact %s', contact.pd_person_id, contact.id)
-        except Exception as e:
-            app_logger.error('Error deleting persons %s', e)
+    return await pipedrive_request(f'organizations/{org_id}', method='PATCH', data=changed_fields)
 
 
-async def get_and_create_or_update_pd_deal(deal: Deal) -> PDDeal:
-    """
-    Get and create or update a Deal within Pipedrive.
-    """
-    pd_deal = await PDDeal.from_deal(deal)
-    pd_deal_data = pd_deal.model_dump(mode='json', by_alias=True)
-    if deal.pd_deal_id:
-        try:
-            pipedrive_deal = PDDeal(**(await pipedrive_request(f'deals/{deal.pd_deal_id}'))['data'])
-        except HTTPError as e:
-            if '404' in str(e) or '410' in str(e):
-                # Deal was deleted in Pipedrive (404 Not Found or 410 Gone)
-                app_logger.info(f'Deal {deal.pd_deal_id} not found in Pipedrive for deal {deal.id}, will create new')
-                deal.pd_deal_id = None
-                await deal.save()
-            else:
-                app_logger.error('Error updating deal %s, deal id: %s', str(e), deal.id)
-        else:
-            if pd_deal_data != pipedrive_deal.model_dump(mode='json', by_alias=True):
-                try:
-                    await pipedrive_request(f'deals/{deal.pd_deal_id}', method='PUT', data=pd_deal_data)
-                    app_logger.info('Updated deal %s from deal %s', deal.pd_deal_id, deal.id)
-                except Exception as e:
-                    app_logger.error('Error updating deal %s from deal %s: %s', deal.pd_deal_id, deal.id, e)
-            return pipedrive_deal
-
-    if not deal.pd_deal_id:
-        created_deal = (await pipedrive_request('deals', method='POST', data=pd_deal_data))['data']
-        pipedrive_deal = PDDeal(**created_deal)
-        deal.pd_deal_id = pipedrive_deal.id
-        await deal.save()
-        app_logger.info('Created deal %s from deal %s', deal.pd_deal_id, deal.id)
-        return pipedrive_deal
+async def get_organisation(org_id: int) -> dict:
+    """Get organization from Pipedrive"""
+    return await pipedrive_request(f'organizations/{org_id}', method='GET')
 
 
-async def delete_deal(deal: Deal):
-    """
-    Delete a deal within Pipedrive.
-    """
-    if deal.pd_deal_id:
-        try:
-            await pipedrive_request(f'deals/{deal.pd_deal_id}', method='DELETE')
-            deal.pd_deal_id = None
-            await deal.save()
-            app_logger.info('Deleted deal %s from deal %s', deal.pd_deal_id, deal.id)
-        except Exception as e:
-            app_logger.error('Error deleting deal %s', e)
+async def delete_organisation(org_id: int) -> dict:
+    """Delete organization from Pipedrive"""
+    return await pipedrive_request(f'organizations/{org_id}', method='DELETE')
 
 
-async def create_activity(meeting: Meeting, pipedrive_deal: PDDeal = None) -> Activity:
+async def create_person(person_data: dict) -> dict:
+    """Create person in Pipedrive using v2 API"""
+    return await pipedrive_request('persons', method='POST', data=person_data)
+
+
+async def update_person(person_id: int, changed_fields: dict) -> dict:
+    """Update person using PATCH"""
+    return await pipedrive_request(f'persons/{person_id}', method='PATCH', data=changed_fields)
+
+
+async def get_person(person_id: int) -> dict:
+    """Get person from Pipedrive"""
+    return await pipedrive_request(f'persons/{person_id}', method='GET')
+
+
+async def create_deal(deal_data: dict) -> dict:
+    """Create deal in Pipedrive using v2 API"""
+    return await pipedrive_request('deals', method='POST', data=deal_data)
+
+
+async def update_deal(deal_id: int, changed_fields: dict) -> dict:
+    """Update deal using PATCH"""
+    return await pipedrive_request(f'deals/{deal_id}', method='PATCH', data=changed_fields)
+
+
+async def get_deal(deal_id: int) -> dict:
+    """Get deal from Pipedrive"""
+    return await pipedrive_request(f'deals/{deal_id}', method='GET')
+
+
+async def create_activity(activity_data: dict) -> dict:
+    """Create activity in Pipedrive"""
+    return await pipedrive_request('activities', method='POST', data=activity_data)
+
+
+def get_changed_fields(old_data: Optional[dict], new_data: dict) -> dict:
     """
-    Creates a new activity within Pipedrive.
+    Compare old and new data to find changed fields.
+    Used for PATCH requests to only send changed fields.
+
+    Args:
+        old_data: Original data from Pipedrive (None if creating new)
+        new_data: New data to send
+
+    Returns:
+        Dict containing only changed fields
     """
-    hermes_activity = await Activity.from_meeting(meeting)
-    hermes_activity_data = hermes_activity.model_dump()
-    if pipedrive_deal:
-        hermes_activity_data['deal_id'] = pipedrive_deal.id
-    created_activity = (await pipedrive_request('activities/', method='POST', data=hermes_activity_data))['data']
-    activity = Activity(**created_activity)
-    app_logger.info('Created activity for deal %s from meeting %s', activity.id, meeting.id)
-    return activity
+    if old_data is None:
+        return new_data
+
+    changed = {}
+    for key, new_value in new_data.items():
+        old_value = old_data.get(key)
+        if old_value != new_value:
+            changed[key] = new_value
+
+    return changed

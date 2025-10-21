@@ -1,0 +1,203 @@
+import logging
+
+from sqlmodel import select
+
+from app.core.database import DBSession
+from app.main_app.models import Admin, Company, Contact, Deal
+from app.tc2.api import get_client
+from app.tc2.models import TCClient, TCRecipient
+
+logger = logging.getLogger('hermes.tc2')
+
+
+async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) -> Company:
+    """
+    Get or create a company from TC2 data.
+    Fetches full client data from TC2 API.
+    """
+    statement = select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)
+    company = db.exec(statement).first()
+
+    if not company:
+        # Fetch from TC2 API
+        tc_client_data = await get_client(tc2_cligency_id)
+        tc_client = TCClient(**tc_client_data)
+
+        # Create company from TC2 data
+        company = await process_tc_client(tc_client, db)
+
+    return company
+
+
+async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: bool = True) -> Company:
+    """
+    Process TC2 client data and create/update Company and Contacts.
+
+    Args:
+        tc_client: Validated TC2 client data
+        db: Database session
+        create_deal: Whether to create a deal (default True, False for support calls)
+
+    Returns:
+        Created or updated Company
+    """
+    # Get or create company
+    statement = select(Company).where(Company.tc2_cligency_id == tc_client.id)
+    company = db.exec(statement).first()
+
+    # Get admin relationships
+    sales_person = None
+    support_person = None
+    bdr_person = None
+
+    if tc_client.sales_person_id:
+        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)
+        sales_person = db.exec(stmt).first()
+
+    if tc_client.associated_admin_id:
+        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.associated_admin_id)
+        support_person = db.exec(stmt).first()
+
+    if tc_client.bdr_person_id:
+        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)
+        bdr_person = db.exec(stmt).first()
+
+    if not sales_person:
+        logger.error(f'Sales person {tc_client.sales_person_id} not found for client {tc_client.id}')
+        # You may want to handle this differently - perhaps assign to a default admin
+        return None
+
+    # Get extra attributes and map to company fields
+    extra_attrs_dict = {}
+    if tc_client.extra_attrs:
+        for attr in tc_client.extra_attrs:
+            extra_attrs_dict[attr.machine_name] = attr.value
+
+    if company:
+        # Update existing company
+        company.name = tc_client.meta_agency.name[:255]
+        company.tc2_agency_id = tc_client.meta_agency.id
+        company.tc2_status = tc_client.meta_agency.status
+        company.country = tc_client.meta_agency.country
+        company.website = tc_client.meta_agency.website
+        company.paid_invoice_count = tc_client.meta_agency.paid_invoice_count
+        company.price_plan = tc_client.meta_agency.price_plan
+        company.narc = tc_client.meta_agency.narc or False
+        company.pay0_dt = tc_client.meta_agency.pay0_dt
+        company.pay1_dt = tc_client.meta_agency.pay1_dt
+        company.pay3_dt = tc_client.meta_agency.pay3_dt
+        company.card_saved_dt = tc_client.meta_agency.card_saved_dt
+        company.email_confirmed_dt = tc_client.meta_agency.email_confirmed_dt
+        company.gclid_expiry_dt = tc_client.meta_agency.gclid_expiry_dt
+        company.created = tc_client.meta_agency.created
+
+        # Close open deals if company is NARC or terminated
+        if company.narc or company.tc2_status == 'terminated':
+            statement = select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)
+            open_deals = db.exec(statement).all()
+            for deal in open_deals:
+                deal.status = Deal.STATUS_LOST
+                db.add(deal)
+            if open_deals:
+                db.commit()
+                logger.info(
+                    f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
+                )
+
+        # Update relationships
+        company.sales_person_id = sales_person.id
+        company.support_person_id = support_person.id if support_person else None
+        company.bdr_person_id = bdr_person.id if bdr_person else None
+
+        # Update extra attributes
+        if 'utm_source' in extra_attrs_dict:
+            company.utm_source = extra_attrs_dict['utm_source']
+        if 'utm_campaign' in extra_attrs_dict:
+            company.utm_campaign = extra_attrs_dict['utm_campaign']
+        if 'gclid' in extra_attrs_dict:
+            company.gclid = extra_attrs_dict['gclid']
+        if 'signup_questionnaire' in extra_attrs_dict:
+            company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
+        if 'estimated_monthly_income' in extra_attrs_dict:
+            company.estimated_income = extra_attrs_dict['estimated_monthly_income']
+
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+    else:
+        # Create new company
+        company = Company(
+            name=tc_client.meta_agency.name[:255],
+            tc2_agency_id=tc_client.meta_agency.id,
+            tc2_cligency_id=tc_client.id,
+            tc2_status=tc_client.meta_agency.status,
+            country=tc_client.meta_agency.country,
+            website=tc_client.meta_agency.website,
+            paid_invoice_count=tc_client.meta_agency.paid_invoice_count,
+            price_plan=tc_client.meta_agency.price_plan,
+            narc=tc_client.meta_agency.narc or False,
+            pay0_dt=tc_client.meta_agency.pay0_dt,
+            pay1_dt=tc_client.meta_agency.pay1_dt,
+            pay3_dt=tc_client.meta_agency.pay3_dt,
+            card_saved_dt=tc_client.meta_agency.card_saved_dt,
+            email_confirmed_dt=tc_client.meta_agency.email_confirmed_dt,
+            gclid=extra_attrs_dict.get('gclid'),
+            gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
+            utm_source=extra_attrs_dict.get('utm_source'),
+            utm_campaign=extra_attrs_dict.get('utm_campaign'),
+            signup_questionnaire=extra_attrs_dict.get('signup_questionnaire'),
+            estimated_income=extra_attrs_dict.get('estimated_monthly_income'),
+            created=tc_client.meta_agency.created,
+            sales_person_id=sales_person.id,
+            support_person_id=support_person.id if support_person else None,
+            bdr_person_id=bdr_person.id if bdr_person else None,
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+    # Process paid recipients (contacts)
+    for recipient in tc_client.paid_recipients:
+        await process_tc_recipient(recipient, company, db)
+
+    return company
+
+
+async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBSession) -> Contact:
+    """
+    Process TC2 recipient (contact) data.
+
+    Args:
+        recipient: TC2 recipient data
+        company: Company the contact belongs to
+        db: Database session
+
+    Returns:
+        Created or updated Contact
+    """
+    statement = select(Contact).where(Contact.tc2_sr_id == recipient.id)
+    contact = db.exec(statement).first()
+
+    if contact:
+        # Update existing contact
+        contact.first_name = recipient.first_name
+        contact.last_name = recipient.last_name
+        contact.email = recipient.email
+        contact.company_id = company.id
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+    else:
+        # Create new contact
+        contact = Contact(
+            tc2_sr_id=recipient.id,
+            first_name=recipient.first_name[:255] if recipient.first_name else None,
+            last_name=recipient.last_name[:255] if recipient.last_name else None,
+            email=recipient.email[:255] if recipient.email else None,
+            company_id=company.id,
+        )
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+
+    return contact
