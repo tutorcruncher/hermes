@@ -49,8 +49,8 @@ class Person(BaseModel):
 
     id: Optional[int] = None
     name: Optional[str] = None
-    email: Optional[list[str]] = None
-    phone: Optional[str] = None
+    email: Optional[list[str]] = Field(default=None, validation_alias='emails')
+    phone: Optional[str] = Field(default=None, validation_alias='phones')
     owner_id: Optional[int] = None
     org_id: Optional[int] = None
 
@@ -176,5 +176,10 @@ class PipedriveEvent(BaseModel):
     """Pipedrive webhook event"""
 
     meta: WebhookMeta
-    current: Optional[dict] = None
+    data: Optional[dict] = Field(default=None, validation_alias='data')
     previous: Optional[dict] = None
+
+    @property
+    def current(self) -> Optional[dict]:
+        """Alias for 'data' field to maintain compatibility"""
+        return self.data

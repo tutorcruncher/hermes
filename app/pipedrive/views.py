@@ -39,6 +39,8 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
         current_data = None
         previous_data = None
 
+        print('webhook event', webhook_event)
+
         if entity == 'organization':
             if webhook_event.current:
                 current_data = Organisation(**webhook_event.current)
@@ -51,6 +53,8 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
                 current_data = Person(**webhook_event.current)
             if webhook_event.previous:
                 previous_data = Person(**webhook_event.previous)
+            print('previous', previous_data)
+            print('current', current_data)
             await process_person(current_data, previous_data, db)
 
         elif entity == 'deal':
