@@ -215,7 +215,7 @@ def _company_to_org_data(company: Company) -> dict:
         else:
             value = getattr(company, field_name, None)
 
-        if value is not None:
+        if value is not None and value != '':
             # Convert datetime to ISO date string
             if isinstance(value, datetime):
                 value = value.date().isoformat()
@@ -231,8 +231,8 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
 
     data = {
         'name': contact.name,
-        'email': [contact.email] if contact.email else [],
-        'phone': contact.phone,
+        'email': [{'value': contact.email, 'label': 'work', 'primary': True}] if contact.email else [],
+        'phone': [{'value': contact.phone, 'label': 'work', 'primary': True}] if contact.phone else [],
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
@@ -275,7 +275,7 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         else:
             value = getattr(deal, field_name, None)
 
-        if value is not None:
+        if value is not None and value != '':
             custom_fields[pd_field_id] = value
 
     data['custom_fields'] = custom_fields

@@ -281,7 +281,13 @@ async def process_pipeline(pipeline_data: PDPipeline | None, previous_pipeline: 
         db.commit()
         logger.info(f'Updated pipeline {pipeline.id}')
     else:
-        pipeline = Pipeline(pd_pipeline_id=pipeline_data.id, name=pipeline_data.name)
+        # Get or create a default stage for this pipeline
+        stage = db.exec(select(Stage).limit(1)).first()
+        if not stage:
+            logger.warning(f'Cannot create pipeline {pipeline_data.id} - no stages available')
+            return None
+
+        pipeline = Pipeline(pd_pipeline_id=pipeline_data.id, name=pipeline_data.name, dft_entry_stage_id=stage.id)
         db.add(pipeline)
         db.commit()
         db.refresh(pipeline)

@@ -125,7 +125,7 @@ class TestPipedriveWebhookEndpoint:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-    async def test_pipedrive_callback_pipeline_creates_new(self, client, db):
+    async def test_pipedrive_callback_pipeline_creates_new(self, client, db, test_stage):
         """Test webhook creates new pipeline"""
         webhook_data = {
             'meta': {'entity': 'pipeline', 'action': 'added'},

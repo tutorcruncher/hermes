@@ -11,7 +11,7 @@ from app.tc2.process import process_tc_client
 
 logger = logging.getLogger('hermes.tc2')
 
-router = APIRouter()
+router = APIRouter(prefix='/tc2', tags=['tc2'])
 
 
 @router.post('/callback/', name='tc2-callback')

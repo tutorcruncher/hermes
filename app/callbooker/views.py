@@ -26,7 +26,7 @@ from app.tc2.process import get_or_create_company_from_tc2
 
 logger = logging.getLogger('hermes.callbooker')
 
-router = APIRouter()
+router = APIRouter(prefix='/callbooker', tags=['callbooker'])
 
 
 @router.post('/sales/book/', name='book-sales-call')

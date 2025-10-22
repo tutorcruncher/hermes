@@ -1,7 +1,7 @@
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 
@@ -57,6 +57,43 @@ class Person(BaseModel):
     # Custom fields - reference the centralized mapping
     # hermes_id can be string when Pipedrive merges entities (e.g., "123, 456")
     hermes_id: Optional[int | str] = Field(default=None, validation_alias=CONTACT_PD_FIELD_MAP['hermes_id'])
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalize_email(cls, v: Any) -> Optional[list[str]]:
+        """
+        Normalize email field to list of strings.
+        Pipedrive v2 webhooks send arrays of objects with value/label/primary.
+        We normalize to simple list of strings for internal use.
+        """
+        if v is None or v == []:
+            return []
+        if isinstance(v, list):
+            if all(isinstance(item, dict) and 'value' in item for item in v):
+                return [item['value'] for item in v]
+            if all(isinstance(item, str) for item in v):
+                return v
+        return v
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def normalize_phone(cls, v: Any) -> Optional[str]:
+        """
+        Normalize phone field to string.
+        Pipedrive v2 webhooks send arrays of objects with value/label/primary.
+        We normalize to a simple string (first phone number) for internal use.
+        """
+        if v is None:
+            return None
+        if isinstance(v, list) and len(v) > 0:
+            if isinstance(v[0], dict) and 'value' in v[0]:
+                return v[0]['value']
+            if isinstance(v[0], str):
+                return v[0]
+        if isinstance(v, str):
+            return v
+        # This should never be reached with valid Pydantic types
+        return None
 
     model_config = ConfigDict(populate_by_name=True)
 

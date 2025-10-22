@@ -5,8 +5,12 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.callbooker.views import router as callbooker_router
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.main_app.views import router as main_app_router
+from app.pipedrive.views import router as pipedrive_router
+from app.tc2.views import router as tc2_router
 
 logger = get_logger('hermes')
 
@@ -63,13 +67,7 @@ async def health():
     return {'status': 'healthy'}
 
 
-# Include routers
-from app.callbooker.views import router as callbooker_router  # noqa: E402
-from app.main_app.views import router as main_app_router  # noqa: E402
-from app.pipedrive.views import router as pipedrive_router  # noqa: E402
-from app.tc2.views import router as tc2_router  # noqa: E402
-
-app.include_router(main_app_router, prefix='/hermes', tags=['hermes'])
-app.include_router(pipedrive_router, prefix='/pipedrive', tags=['pipedrive'])
-app.include_router(tc2_router, prefix='/tc2', tags=['tc2'])
-app.include_router(callbooker_router, prefix='/callbooker', tags=['callbooker'])
+app.include_router(main_app_router)
+app.include_router(pipedrive_router)
+app.include_router(tc2_router)
+app.include_router(callbooker_router)

@@ -431,3 +431,45 @@ class TestTC2EdgeCases:
         # Name should be truncated to 255 chars
         assert len(company.name) == 255
         assert company.name == 'X' * 255
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_empty_strings_not_sent_to_pipedrive(self, mock_api, db, test_admin):
+        """Test that empty strings are filtered out from custom fields sent to Pipedrive"""
+        from app.pipedrive.tasks import sync_company_to_pipedrive
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        company = db.create(
+            Company(
+                name='Test Company',
+                sales_person_id=test_admin.id,
+                price_plan='payg',
+                country='GB',
+                website='',
+                utm_source='',
+                utm_campaign='google',
+                gclid='',
+            )
+        )
+
+        await sync_company_to_pipedrive(company.id)
+
+        # Verify the API was called
+        assert mock_api.called
+        call_data = mock_api.call_args.kwargs['data']
+        custom_fields = call_data['custom_fields']
+
+        # Empty strings should not be in custom_fields
+        from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+        # These fields have empty strings - should not be sent
+        assert COMPANY_PD_FIELD_MAP['website'] not in custom_fields
+        assert COMPANY_PD_FIELD_MAP['utm_source'] not in custom_fields
+        assert COMPANY_PD_FIELD_MAP['gclid'] not in custom_fields
+
+        # This field has a value - should be sent
+        assert COMPANY_PD_FIELD_MAP['utm_campaign'] in custom_fields
+        assert custom_fields[COMPANY_PD_FIELD_MAP['utm_campaign']] == 'google'
+
+        # hermes_id should always be sent (it's an int)
+        assert COMPANY_PD_FIELD_MAP['hermes_id'] in custom_fields

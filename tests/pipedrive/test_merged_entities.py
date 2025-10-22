@@ -384,6 +384,91 @@ class TestPipedriveWebhookEdgeCases:
         assert test_contact.email == 'new@example.com'
         assert test_contact.phone == '+1234567890'
 
+    async def test_person_webhook_with_v2_email_phone_format(self, client, db, test_contact):
+        """Test person webhook handles v2 format with email/phone as arrays of objects"""
+        test_contact.pd_person_id = 888
+        db.add(test_contact)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'current': {
+                'id': 888,
+                CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
+                'name': 'Test Person',
+                'email': [
+                    {'value': 'primary@example.com', 'label': 'work', 'primary': True},
+                    {'value': 'secondary@example.com', 'label': 'home', 'primary': False},
+                ],
+                'phone': [
+                    {'value': '+9876543210', 'label': 'work', 'primary': True},
+                    {'value': '+1111111111', 'label': 'mobile', 'primary': False},
+                ],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_contact)
+        assert test_contact.email == 'primary@example.com'
+        assert test_contact.phone == '+9876543210'
+
+    async def test_person_webhook_with_null_phone(self, client, db, test_contact):
+        """Test person webhook handles null phone"""
+        test_contact.pd_person_id = 888
+        db.add(test_contact)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'current': {
+                'id': 888,
+                CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
+                'name': 'Test Person',
+                'email': ['test@example.com'],
+                'phone': None,
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_contact)
+        assert test_contact.phone is None
+
+    async def test_person_webhook_with_phone_as_string_list(self, client, db, test_contact):
+        """Test person webhook handles phone as list of strings (edge case)"""
+        test_contact.pd_person_id = 888
+        db.add(test_contact)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'current': {
+                'id': 888,
+                CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
+                'name': 'Test Person',
+                'email': ['test@example.com'],
+                'phone': ['+9999999999', '+8888888888'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_contact)
+        assert test_contact.phone == '+9999999999'
+
     async def test_person_webhook_links_to_organization(self, client, db, test_contact, test_company):
         """Test person webhook links to organization via org_id"""
         test_contact.pd_person_id = 888

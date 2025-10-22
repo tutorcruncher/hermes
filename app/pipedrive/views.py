@@ -8,7 +8,7 @@ from app.pipedrive.process import process_deal, process_organisation, process_pe
 
 logger = logging.getLogger('hermes.pipedrive')
 
-router = APIRouter()
+router = APIRouter(prefix='/pipedrive', tags=['pipedrive'])
 
 
 @router.post('/callback/', name='pipedrive-callback')
