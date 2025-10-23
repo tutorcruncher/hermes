@@ -50,7 +50,9 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     support_person = None
     bdr_person = None
 
-    logger.info(f'Processing client {tc_client.id}: sales_person_id={tc_client.sales_person_id}, support_person_id={tc_client.associated_admin_id}, bdr_person_id={tc_client.bdr_person_id}')
+    logger.info(
+        f'Processing client {tc_client.id}: sales_person_id={tc_client.sales_person_id}, support_person_id={tc_client.associated_admin_id}, bdr_person_id={tc_client.bdr_person_id}'
+    )
 
     if tc_client.sales_person_id:
         stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)
@@ -168,7 +170,9 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     return company
 
 
-async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBSession, user_email: str = None, user_phone: str = None) -> Contact:
+async def process_tc_recipient(
+    recipient: TCRecipient, company: Company, db: DBSession, user_email: str = None, user_phone: str = None
+) -> Contact:
     """
     Process TC2 recipient (contact) data.
 
