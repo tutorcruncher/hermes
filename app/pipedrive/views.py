@@ -21,7 +21,6 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
 
     Supported entities: organization, person, deal, pipeline, stage
     """
-    print('EVENT', event)
     entity = event.get('meta', {}).get('entity')
     action = event.get('meta', {}).get('action')
 
