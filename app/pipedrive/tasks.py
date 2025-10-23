@@ -205,8 +205,12 @@ def _company_to_org_data(company: Company) -> dict:
     data = {
         'name': company.name,
         'owner_id': company.sales_person.pd_owner_id if company.sales_person else None,
-        'address': company.country,
     }
+
+    # Only include address if country is set
+    # Note: Pipedrive v2 requires 'value' field when 'country' is provided
+    if company.country:
+        data['address'] = {'value': company.country, 'country': company.country}
 
     # Build custom_fields using field mapping
     custom_fields = {}

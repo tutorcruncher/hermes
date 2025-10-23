@@ -25,22 +25,14 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
     action = event.get('meta', {}).get('action')
 
     logger.info(f'Received Pipedrive webhook: entity={entity}, action={action}')
-
-    # Only process entities we care about
     if entity not in ('organization', 'person', 'deal', 'pipeline', 'stage'):
         logger.info(f'Ignoring {entity} event')
         return {'status': 'ok'}
 
     try:
-        # Parse the webhook event
         webhook_event = PipedriveEvent(**event)
-
-        # Parse current and previous data based on entity type
         current_data = None
         previous_data = None
-
-        print('webhook event', webhook_event)
-
         if entity == 'organization':
             if webhook_event.current:
                 current_data = Organisation(**webhook_event.current)
@@ -53,8 +45,6 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
                 current_data = Person(**webhook_event.current)
             if webhook_event.previous:
                 previous_data = Person(**webhook_event.previous)
-            print('previous', previous_data)
-            print('current', current_data)
             await process_person(current_data, previous_data, db)
 
         elif entity == 'deal':

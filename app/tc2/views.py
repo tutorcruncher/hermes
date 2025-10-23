@@ -40,6 +40,7 @@ async def tc2_callback(
 
             try:
                 # Process the client (creates/updates Company and Contacts)
+                print('TC2 EVENT\n', event)
                 company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
 
                 if company:
