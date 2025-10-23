@@ -20,7 +20,7 @@ class TestPipedriveWebhookMergedEntities:
         # Simulate Pipedrive merging org 200 into org 100
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 100,  # Primary org after merge
                 COMPANY_PD_FIELD_MAP['hermes_id']: f'{company1.id}, {company2.id}',  # Comma-separated
                 'name': 'Merged Company',
@@ -67,7 +67,7 @@ class TestPipedriveWebhookMergedEntities:
         # Simulate Pipedrive merging person 500 into person 400
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 400,  # Primary person after merge
                 CONTACT_PD_FIELD_MAP['hermes_id']: f'{contact1.id}, {contact2.id}',  # Comma-separated
                 'name': 'Jane Doe',
@@ -119,7 +119,7 @@ class TestPipedriveWebhookMergedEntities:
         # Simulate Pipedrive merging deal 900 into deal 800
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 800,  # Primary deal after merge
                 DEAL_PD_FIELD_MAP['hermes_id']: f'{deal1.id}, {deal2.id}',  # Comma-separated
                 'title': 'Merged Deal',
@@ -150,7 +150,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test organization webhook with no hermes_id or id"""
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 # No id or hermes_id
                 'name': 'Test Org',
             },
@@ -166,7 +166,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test organization webhook with hermes_id that doesn't exist"""
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: 999,  # Non-existent company
                 'name': 'Test Org',
@@ -183,7 +183,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test person webhook with no hermes_id or id"""
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 # No id or hermes_id
                 'name': 'Test Person',
                 'email': ['test@example.com'],
@@ -200,7 +200,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test person webhook with hermes_id that doesn't exist"""
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 CONTACT_PD_FIELD_MAP['hermes_id']: 999,  # Non-existent contact
                 'name': 'Test Person',
@@ -218,7 +218,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test deal webhook with no hermes_id or id"""
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 # No id or hermes_id
                 'title': 'Test Deal',
                 'status': 'open',
@@ -235,7 +235,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test deal webhook with hermes_id that doesn't exist"""
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 DEAL_PD_FIELD_MAP['hermes_id']: 999,  # Non-existent deal
                 'title': 'Test Deal',
@@ -257,7 +257,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Test Company',
@@ -288,7 +288,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Test Company',
@@ -315,7 +315,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'deleted'},
-            'current': None,
+            'data': None,
             'previous': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
@@ -339,7 +339,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'UpdatedFirst UpdatedLast',
@@ -365,7 +365,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -392,7 +392,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -425,7 +425,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -451,7 +451,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -479,7 +479,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -514,7 +514,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'deleted'},
-            'current': None,
+            'data': None,
             'previous': {
                 'id': 888,
                 DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
@@ -558,7 +558,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
                 'title': 'Updated Deal',
@@ -586,7 +586,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test inactive pipeline webhook is ignored"""
         webhook_data = {
             'meta': {'entity': 'pipeline', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 'name': 'Inactive Pipeline',
                 'active': False,  # Inactive
@@ -612,7 +612,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'pipeline', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 'name': 'Updated Pipeline Name',
                 'active': True,
@@ -637,7 +637,7 @@ class TestPipedriveWebhookEdgeCases:
 
         webhook_data = {
             'meta': {'entity': 'stage', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 'name': 'Updated Stage Name',
                 'pipeline_id': 1,
@@ -658,7 +658,7 @@ class TestPipedriveWebhookEdgeCases:
         """Test stage deletion webhook is ignored (returns None)"""
         webhook_data = {
             'meta': {'entity': 'stage', 'action': 'deleted'},
-            'current': None,  # Deleted
+            'data': None,  # Deleted
             'previous': {
                 'id': 999,
                 'name': 'Deleted Stage',

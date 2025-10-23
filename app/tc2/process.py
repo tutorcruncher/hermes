@@ -88,6 +88,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         company.pay3_dt = tc_client.meta_agency.pay3_dt
         company.card_saved_dt = tc_client.meta_agency.card_saved_dt
         company.email_confirmed_dt = tc_client.meta_agency.email_confirmed_dt
+        company.gclid = tc_client.meta_agency.gclid
         company.gclid_expiry_dt = tc_client.meta_agency.gclid_expiry_dt
         company.created = tc_client.meta_agency.created
 
@@ -114,8 +115,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             company.utm_source = extra_attrs_dict['utm_source']
         if 'utm_campaign' in extra_attrs_dict:
             company.utm_campaign = extra_attrs_dict['utm_campaign']
-        if 'gclid' in extra_attrs_dict:
-            company.gclid = extra_attrs_dict['gclid']
         if 'signup_questionnaire' in extra_attrs_dict:
             company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
         if 'estimated_monthly_income' in extra_attrs_dict:
@@ -141,7 +140,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             pay3_dt=tc_client.meta_agency.pay3_dt,
             card_saved_dt=tc_client.meta_agency.card_saved_dt,
             email_confirmed_dt=tc_client.meta_agency.email_confirmed_dt,
-            gclid=extra_attrs_dict.get('gclid'),
+            gclid=tc_client.meta_agency.gclid,
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),

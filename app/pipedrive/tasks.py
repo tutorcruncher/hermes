@@ -71,6 +71,9 @@ async def sync_organization(company: Company, db):
                 company.pd_org_id = None
                 db.add(company)
                 db.commit()
+            else:
+                # Re-raise non-404/410 errors to prevent orphaned contacts
+                raise
 
     if not company.pd_org_id:
         # Create new organization
@@ -82,6 +85,8 @@ async def sync_organization(company: Company, db):
             logger.info(f'Created organization {company.pd_org_id} for company {company.id}')
         except Exception as e:
             logger.error(f'Error creating organization for company {company.id}: {e}')
+            # Re-raise to prevent orphaned contacts/persons
+            raise
 
 
 async def sync_person(contact: Contact, db):
@@ -200,7 +205,7 @@ def _company_to_org_data(company: Company) -> dict:
     data = {
         'name': company.name,
         'owner_id': company.sales_person.pd_owner_id if company.sales_person else None,
-        'address_country': company.country,
+        'address': company.country,
     }
 
     # Build custom_fields using field mapping
@@ -231,8 +236,8 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
 
     data = {
         'name': contact.name,
-        'email': [{'value': contact.email, 'label': 'work', 'primary': True}] if contact.email else [],
-        'phone': [{'value': contact.phone, 'label': 'work', 'primary': True}] if contact.phone else [],
+        'emails': [{'value': contact.email, 'label': 'work', 'primary': True}] if contact.email else [],
+        'phones': [{'value': contact.phone, 'label': 'work', 'primary': True}] if contact.phone else [],
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }

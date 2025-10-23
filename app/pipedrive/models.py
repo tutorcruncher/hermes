@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 
@@ -40,6 +40,29 @@ class Organisation(BaseModel):
         default=None, validation_alias=COMPANY_PD_FIELD_MAP['email_confirmed_dt']
     )
     card_saved_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['card_saved_dt'])
+
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_custom_fields(cls, data: Any) -> Any:
+        """
+        Flatten Pipedrive v2 webhook custom_fields structure.
+
+        Pipedrive v2 sends: {'field_id': {'type': 'varchar', 'value': 'actual_value'}}
+        We need: {'field_id': 'actual_value'}
+        """
+        if isinstance(data, dict) and 'custom_fields' in data:
+            custom_fields = data.get('custom_fields', {})
+            if isinstance(custom_fields, dict):
+                flattened = {}
+                for field_id, field_data in custom_fields.items():
+                    if isinstance(field_data, dict) and 'value' in field_data:
+                        flattened[field_id] = field_data['value']
+                    else:
+                        # Already flattened or None
+                        flattened[field_id] = field_data
+                # Merge flattened custom fields into top level
+                data.update(flattened)
+        return data
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -95,6 +118,22 @@ class Person(BaseModel):
         # This should never be reached with valid Pydantic types
         return None
 
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_custom_fields(cls, data: Any) -> Any:
+        """Flatten Pipedrive v2 webhook custom_fields structure."""
+        if isinstance(data, dict) and 'custom_fields' in data:
+            custom_fields = data.get('custom_fields', {})
+            if isinstance(custom_fields, dict):
+                flattened = {}
+                for field_id, field_data in custom_fields.items():
+                    if isinstance(field_data, dict) and 'value' in field_data:
+                        flattened[field_id] = field_data['value']
+                    else:
+                        flattened[field_id] = field_data
+                data.update(flattened)
+        return data
+
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -126,6 +165,22 @@ class PDDeal(BaseModel):
     website: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['website'])
     price_plan: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['price_plan'])
     estimated_income: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['estimated_income'])
+
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_custom_fields(cls, data: Any) -> Any:
+        """Flatten Pipedrive v2 webhook custom_fields structure."""
+        if isinstance(data, dict) and 'custom_fields' in data:
+            custom_fields = data.get('custom_fields', {})
+            if isinstance(custom_fields, dict):
+                flattened = {}
+                for field_id, field_data in custom_fields.items():
+                    if isinstance(field_data, dict) and 'value' in field_data:
+                        flattened[field_id] = field_data['value']
+                    else:
+                        flattened[field_id] = field_data
+                data.update(flattened)
+        return data
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -176,7 +231,7 @@ class PipedriveEvent(BaseModel):
     """Pipedrive webhook event"""
 
     meta: WebhookMeta
-    data: Optional[dict] = Field(default=None, validation_alias='data')
+    data: Optional[dict] = None
     previous: Optional[dict] = None
 
     @property

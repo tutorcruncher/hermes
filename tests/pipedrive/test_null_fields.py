@@ -20,7 +20,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Test Company',
@@ -46,7 +46,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 # No name field
@@ -68,7 +68,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -97,7 +97,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
                 # No title field
@@ -131,7 +131,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
                 'title': 'Updated Deal',
@@ -158,7 +158,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'pipeline', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 # No name field
                 'active': True,
@@ -184,7 +184,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'stage', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 # No name field
                 'pipeline_id': 1,
@@ -210,7 +210,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Test Company',
@@ -236,7 +236,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': 'Test Person',
@@ -272,7 +272,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
                 'title': 'Test Deal',
@@ -306,7 +306,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': very_long_name,
@@ -334,7 +334,7 @@ class TestPipedriveWebhookNullFields:
 
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
-            'current': {
+            'data': {
                 'id': 888,
                 CONTACT_PD_FIELD_MAP['hermes_id']: test_contact.id,
                 'name': very_long_name,

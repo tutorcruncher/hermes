@@ -194,10 +194,11 @@ class TestTC2Integration:
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2024'},
-            {'machine_name': 'gclid', 'value': 'ABC123'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
             {'machine_name': 'signup_questionnaire', 'value': 'some_data'},
         ]
+        # gclid comes from meta_agency, not extra_attrs
+        sample_tc_client_data['meta_agency']['gclid'] = 'ABC123'
 
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -239,11 +240,12 @@ class TestTC2Integration:
         assert company is None
 
     async def test_process_client_updates_gclid_extra_attr(self, db, test_admin, sample_tc_client_data):
-        """Test that gclid extra attribute is mapped correctly on update"""
+        """Test that gclid from meta_agency is mapped correctly on update"""
         tc_client = TCClient(**sample_tc_client_data)
         await process_tc_client(tc_client, db)
 
-        sample_tc_client_data['extra_attrs'] = [{'machine_name': 'gclid', 'value': 'NEW_GCLID'}]
+        # gclid comes from meta_agency, not extra_attrs
+        sample_tc_client_data['meta_agency']['gclid'] = 'NEW_GCLID'
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
