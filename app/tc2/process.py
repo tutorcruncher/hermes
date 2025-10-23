@@ -199,6 +199,7 @@ async def process_tc_recipient(
         contact.last_name = recipient.last_name
         contact.email = contact_email
         contact.phone = contact_phone
+        contact.country = company.country
         contact.company_id = company.id
         db.add(contact)
         db.commit()
@@ -211,6 +212,7 @@ async def process_tc_recipient(
             last_name=recipient.last_name[:255] if recipient.last_name else None,
             email=contact_email[:255] if contact_email else None,
             phone=contact_phone[:255] if contact_phone else None,
+            country=company.country,
             company_id=company.id,
         )
         db.add(contact)
