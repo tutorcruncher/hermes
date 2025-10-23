@@ -50,6 +50,8 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     support_person = None
     bdr_person = None
 
+    logger.info(f'Processing client {tc_client.id}: sales_person_id={tc_client.sales_person_id}, support_person_id={tc_client.associated_admin_id}, bdr_person_id={tc_client.bdr_person_id}')
+
     if tc_client.sales_person_id:
         stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)
         sales_person = db.exec(stmt).first()
@@ -61,6 +63,10 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     if tc_client.bdr_person_id:
         stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)
         bdr_person = db.exec(stmt).first()
+        if not bdr_person:
+            logger.warning(f'BDR person {tc_client.bdr_person_id} not found for client {tc_client.id}')
+    else:
+        logger.info(f'Client {tc_client.id} has no bdr_person_id in TC2 data')
 
     if not sales_person:
         logger.error(f'Sales person {tc_client.sales_person_id} not found for client {tc_client.id}')
@@ -157,12 +163,12 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
 
     # Process paid recipients (contacts)
     for recipient in tc_client.paid_recipients:
-        await process_tc_recipient(recipient, company, db)
+        await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
 
     return company
 
 
-async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBSession) -> Contact:
+async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBSession, user_email: str = None, user_phone: str = None) -> Contact:
     """
     Process TC2 recipient (contact) data.
 
@@ -170,6 +176,8 @@ async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBS
         recipient: TC2 recipient data
         company: Company the contact belongs to
         db: Database session
+        user_email: Fallback email from TC2 user if recipient has none
+        user_phone: Fallback phone from TC2 user if recipient has none
 
     Returns:
         Created or updated Contact
@@ -177,11 +185,16 @@ async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBS
     statement = select(Contact).where(Contact.tc2_sr_id == recipient.id)
     contact = db.exec(statement).first()
 
+    # Use recipient email/phone if available, otherwise fallback to user email/phone
+    contact_email = recipient.email or user_email
+    contact_phone = user_phone  # Recipients don't have phone, always use user phone
+
     if contact:
         # Update existing contact
         contact.first_name = recipient.first_name
         contact.last_name = recipient.last_name
-        contact.email = recipient.email
+        contact.email = contact_email
+        contact.phone = contact_phone
         contact.company_id = company.id
         db.add(contact)
         db.commit()
@@ -192,7 +205,8 @@ async def process_tc_recipient(recipient: TCRecipient, company: Company, db: DBS
             tc2_sr_id=recipient.id,
             first_name=recipient.first_name[:255] if recipient.first_name else None,
             last_name=recipient.last_name[:255] if recipient.last_name else None,
-            email=recipient.email[:255] if recipient.email else None,
+            email=contact_email[:255] if contact_email else None,
+            phone=contact_phone[:255] if contact_phone else None,
             company_id=company.id,
         )
         db.add(contact)
