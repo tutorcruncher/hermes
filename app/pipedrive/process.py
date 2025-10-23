@@ -219,10 +219,80 @@ async def process_deal(deal_data: PDDeal | None, previous_deal: PDDeal | None, d
         return None
 
     if not deal:
-        logger.warning(f'Deal with hermes_id {hermes_id} not found, cannot update from Pipedrive')
-        return None
+        # Deal doesn't exist in Hermes - create it if we have all required fields
+        logger.info(f'Deal not found in Hermes, attempting to create from Pipedrive deal {deal_data.id}')
 
-    # Update deal from Pipedrive data
+        # Look up required foreign keys
+        admin = None
+        if deal_data.user_id:
+            statement = select(Admin).where(Admin.pd_owner_id == deal_data.user_id)
+            admin = db.exec(statement).first()
+
+        company = None
+        if deal_data.org_id:
+            statement = select(Company).where(Company.pd_org_id == deal_data.org_id)
+            company = db.exec(statement).first()
+
+        pipeline = None
+        if deal_data.pipeline_id:
+            statement = select(Pipeline).where(Pipeline.pd_pipeline_id == deal_data.pipeline_id)
+            pipeline = db.exec(statement).first()
+
+        stage = None
+        if deal_data.stage_id:
+            statement = select(Stage).where(Stage.pd_stage_id == deal_data.stage_id)
+            stage = db.exec(statement).first()
+
+        # Check all required fields are present
+        if not admin:
+            logger.warning(f'Cannot create deal: no admin found for user_id {deal_data.user_id}')
+            return None
+        if not company:
+            logger.warning(f'Cannot create deal: no company found for org_id {deal_data.org_id}')
+            return None
+        if not pipeline:
+            logger.warning(f'Cannot create deal: no pipeline found for pipeline_id {deal_data.pipeline_id}')
+            return None
+        if not stage:
+            logger.warning(f'Cannot create deal: no stage found for stage_id {deal_data.stage_id}')
+            return None
+
+        # Look up optional contact
+        contact = None
+        if deal_data.person_id:
+            statement = select(Contact).where(Contact.pd_person_id == deal_data.person_id)
+            contact = db.exec(statement).first()
+
+        # Create the deal
+        deal = Deal(
+            pd_deal_id=deal_data.id,
+            name=deal_data.title[:255] if deal_data.title else 'Untitled Deal',
+            status=deal_data.status or Deal.STATUS_OPEN,
+            admin_id=admin.id,
+            company_id=company.id,
+            pipeline_id=pipeline.id,
+            stage_id=stage.id,
+            contact_id=contact.id if contact else None,
+            support_person_id=deal_data.support_person_id,
+            bdr_person_id=deal_data.bdr_person_id,
+            paid_invoice_count=deal_data.paid_invoice_count or 0,
+            tc2_status=deal_data.tc2_status,
+            website=deal_data.website,
+            price_plan=deal_data.price_plan,
+            estimated_income=deal_data.estimated_income,
+            signup_questionnaire=deal_data.signup_questionnaire,
+            utm_campaign=deal_data.utm_campaign,
+            utm_source=deal_data.utm_source,
+        )
+
+        db.add(deal)
+        db.commit()
+        db.refresh(deal)
+
+        logger.info(f'Created new deal {deal.id} from Pipedrive deal {deal_data.id}')
+        return deal
+
+    # Deal exists - update it from Pipedrive data
     deal.name = (deal_data.title or deal.name)[:255] if deal_data.title else deal.name
     deal.pd_deal_id = deal_data.id
     deal.status = deal_data.status or deal.status

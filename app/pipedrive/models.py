@@ -144,7 +144,7 @@ class PDDeal(BaseModel):
     title: Optional[str] = None
     person_id: Optional[int] = None
     org_id: Optional[int] = None
-    user_id: Optional[int] = None
+    user_id: Optional[int] = Field(default=None, validation_alias='owner_id')
     pipeline_id: Optional[int] = None
     stage_id: Optional[int] = None
     status: Optional[str] = None
