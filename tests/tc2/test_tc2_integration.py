@@ -475,3 +475,242 @@ class TestTC2EdgeCases:
 
         # hermes_id should always be sent (it's an int)
         assert COMPANY_PD_FIELD_MAP['hermes_id'] in custom_fields
+
+
+class TestTC2DealCreation:
+    """Test deal creation from TC2 webhooks"""
+
+    async def test_process_tc_client_creates_deal_for_new_trial_company(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that processing a new trial company creates a deal"""
+        from datetime import datetime, timezone
+
+        # Set company as trial, created recently, no paid invoices
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Verify deal was created
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 1
+        deal = deals[0]
+
+        assert deal.name == company.name
+        assert deal.company_id == company.id
+        assert deal.admin_id == company.sales_person_id
+        assert deal.status == Deal.STATUS_OPEN
+        assert deal.pipeline_id == test_config.payg_pipeline_id
+        assert deal.contact_id is not None  # Should have primary contact
+
+    async def test_process_tc_client_creates_deal_for_pending_email_conf_company(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that processing pending email confirmation company creates a deal"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'pending_email_conf'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 1
+
+    async def test_process_tc_client_no_deal_for_active_company(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that active (paying) companies don't get deals created"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 0
+
+    async def test_process_tc_client_no_deal_for_old_company(self, db, test_admin, test_config, sample_tc_client_data):
+        """Test that companies older than 90 days don't get deals created"""
+        from datetime import datetime, timedelta, timezone
+
+        # Company created 91 days ago
+        old_date = datetime.now(timezone.utc) - timedelta(days=91)
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = old_date.isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 0
+
+    async def test_process_tc_client_no_deal_for_company_with_paid_invoices(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that companies with paid invoices don't get deals created"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 1  # Has paid invoice
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 0
+
+    async def test_process_tc_client_no_deal_for_narc_company(self, db, test_admin, test_config, sample_tc_client_data):
+        """Test that NARC companies don't get deals created"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['meta_agency']['narc'] = True
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 0
+
+    async def test_process_tc_client_no_deal_when_create_deal_false(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that deals are not created when create_deal=False"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=False)
+
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(deals) == 0
+
+    async def test_deal_inherits_company_fields(self, db, test_admin, test_config, sample_tc_client_data):
+        """Test that deal inherits custom fields from company"""
+        from datetime import datetime, timezone
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'google'},
+            {'machine_name': 'utm_campaign', 'value': 'summer2024'},
+            {'machine_name': 'estimated_monthly_income', 'value': '5000'},
+            {'machine_name': 'signup_questionnaire', 'value': 'some_data'},
+        ]
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal is not None
+        assert deal.utm_source == company.utm_source
+        assert deal.utm_campaign == company.utm_campaign
+        assert deal.estimated_income == company.estimated_income
+        assert deal.signup_questionnaire == company.signup_questionnaire
+        assert deal.tc2_status == company.tc2_status
+        assert deal.website == company.website
+        assert deal.price_plan == company.price_plan
+
+    async def test_deal_uses_correct_pipeline_for_startup(self, db, test_admin, sample_tc_client_data):
+        """Test that startup companies get deals in startup pipeline"""
+        from datetime import datetime, timezone
+
+        from app.main_app.models import Config, Pipeline
+
+        # Create separate pipelines for each price plan
+        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=1))
+        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=1))
+        enterprise_pipeline = db.create(Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=1))
+
+        db.create(
+            Config(
+                payg_pipeline_id=payg_pipeline.id,
+                startup_pipeline_id=startup_pipeline.id,
+                enterprise_pipeline_id=enterprise_pipeline.id,
+            )
+        )
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['meta_agency']['price_plan'] = 'monthly-startup'
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal.pipeline_id == startup_pipeline.id
+
+    async def test_deal_uses_correct_pipeline_for_enterprise(self, db, test_admin, sample_tc_client_data):
+        """Test that enterprise companies get deals in enterprise pipeline"""
+        from datetime import datetime, timezone
+
+        from app.main_app.models import Config, Pipeline
+
+        # Create separate pipelines for each price plan
+        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=1))
+        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=1))
+        enterprise_pipeline = db.create(Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=1))
+
+        db.create(
+            Config(
+                payg_pipeline_id=payg_pipeline.id,
+                startup_pipeline_id=startup_pipeline.id,
+                enterprise_pipeline_id=enterprise_pipeline.id,
+            )
+        )
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['meta_agency']['price_plan'] = 'monthly-enterprise'
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal.pipeline_id == enterprise_pipeline.id
+
+    async def test_get_or_create_deal_returns_existing_open_deal(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that get_or_create_deal returns existing open deal instead of creating new one"""
+        from datetime import datetime, timezone
+
+        from app.tc2.process import get_or_create_deal
+
+        # Create company first
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Get the created deal
+        deal1 = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+
+        # Try to create another deal - should return existing one
+        deal2 = await get_or_create_deal(company, None, db)
+
+        assert deal1.id == deal2.id
+        # Verify only one deal exists
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 1

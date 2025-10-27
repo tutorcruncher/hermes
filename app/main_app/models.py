@@ -75,7 +75,7 @@ class Pipeline(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     pd_pipeline_id: int = Field(unique=True, index=True)
     name: str = Field(max_length=255)
-    dft_entry_stage_id: int = Field(foreign_key='stage.id')
+    dft_entry_stage_id: Optional[int] = Field(default=None, foreign_key='stage.id')
 
     deals: List['Deal'] = Relationship(back_populates='pipeline')
     dft_entry_stage: 'Stage' = Relationship(

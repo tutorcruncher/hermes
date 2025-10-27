@@ -1,9 +1,10 @@
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import select
 
 from app.core.database import DBSession
-from app.main_app.models import Admin, Company, Contact, Deal
+from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline
 from app.tc2.api import get_client
 from app.tc2.models import TCClient, TCRecipient
 
@@ -160,8 +161,29 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         db.refresh(company)
 
     # Process paid recipients (contacts)
-    for recipient in tc_client.paid_recipients:
-        await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
+    primary_contact = None
+    for i, recipient in enumerate(tc_client.paid_recipients):
+        contact = await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
+        if i == 0:
+            primary_contact = contact
+
+    # Create deal if requested and conditions are met
+    deal = None
+    if create_deal and not company.narc:
+        # Determine if we should create a deal based on company status and age
+        should_create_deal = (
+            tc_client.meta_agency.status in [Company.STATUS_PENDING_EMAIL_CONF, Company.STATUS_TRIAL]
+            and tc_client.meta_agency.created > datetime.now(timezone.utc) - timedelta(days=90)
+            and tc_client.meta_agency.paid_invoice_count == 0
+            and tc_client.sales_person_id is not None
+        )
+
+        if should_create_deal:
+            try:
+                deal = await get_or_create_deal(company, primary_contact, db)
+                logger.info(f'Deal {deal.id} created/found for company {company.id}')
+            except Exception as e:
+                logger.error(f'Failed to create deal for company {company.id}: {e}')
 
     return company
 
@@ -215,3 +237,81 @@ async def process_tc_recipient(
         db.refresh(contact)
 
     return contact
+
+
+async def get_or_create_deal(company: Company, contact: Contact | None, db: DBSession) -> Deal:
+    """
+    Get or create an Open deal for a company.
+
+    Args:
+        company: Company to create deal for
+        contact: Optional primary contact for the deal
+        db: Database session
+
+    Returns:
+        Created or existing Deal
+    """
+    # Check if there's already an open deal for this company
+    existing_deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).first()
+
+    if existing_deal:
+        logger.info(f'Found existing open deal {existing_deal.id} for company {company.id}')
+        return existing_deal
+
+    # Get config to determine pipeline
+    config = db.exec(select(Config)).first()
+    if not config:
+        logger.error('No config found, cannot create deal')
+        raise ValueError('Config not found')
+
+    # Determine pipeline based on price plan
+    pipeline_id = None
+    match company.price_plan:
+        case Company.PP_PAYG:
+            pipeline_id = config.payg_pipeline_id
+        case Company.PP_STARTUP:
+            pipeline_id = config.startup_pipeline_id
+        case Company.PP_ENTERPRISE:
+            pipeline_id = config.enterprise_pipeline_id
+        case _:
+            logger.error(f'Unknown price plan {company.price_plan} for company {company.id}')
+            raise ValueError(f'Unknown price plan {company.price_plan}')
+
+    # Get the pipeline to get default entry stage
+    pipeline = db.exec(select(Pipeline).where(Pipeline.id == pipeline_id)).first()
+    if not pipeline:
+        logger.error(f'Pipeline {pipeline_id} not found')
+        raise ValueError(f'Pipeline {pipeline_id} not found')
+
+    if not pipeline.dft_entry_stage_id:
+        logger.error(f'Pipeline {pipeline_id} has no default entry stage')
+        raise ValueError(f'Pipeline {pipeline_id} has no default entry stage')
+
+    # Create the deal
+    deal = Deal(
+        company_id=company.id,
+        contact_id=contact.id if contact else None,
+        name=company.name,
+        pipeline_id=pipeline.id,
+        admin_id=company.sales_person_id,
+        stage_id=pipeline.dft_entry_stage_id,
+        status=Deal.STATUS_OPEN,
+        # Copy company fields to deal
+        support_person_id=company.support_person_id,
+        bdr_person_id=company.bdr_person_id,
+        paid_invoice_count=company.paid_invoice_count,
+        tc2_status=company.tc2_status,
+        website=company.website,
+        price_plan=company.price_plan,
+        estimated_income=company.estimated_income,
+        signup_questionnaire=company.signup_questionnaire,
+        utm_campaign=company.utm_campaign,
+        utm_source=company.utm_source,
+    )
+
+    db.add(deal)
+    db.commit()
+    db.refresh(deal)
+
+    logger.info(f'Created new deal {deal.id} for company {company.id} in pipeline {pipeline.name}')
+    return deal
