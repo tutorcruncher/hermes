@@ -130,7 +130,7 @@ async def choose_sales_person(plan: str, country_code: str, db: DBSession = Depe
         select(Company)
         .where(Company.price_plan == plan, Company.sales_person_id.isnot(None))
         .order_by(Company.created.desc())
-    ).one_or_none()
+    ).first()
     latest_sales_person = latest_company.sales_person_id if latest_company else None
 
     # Choose next person
