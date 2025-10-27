@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends
 
 from app.core.database import DBSession, get_db
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person, PipedriveEvent
-from app.pipedrive.process import process_deal, process_organisation, process_person, process_pipeline, process_stage
+from app.pipedrive.process import (
+    OrganisationProcessor,
+    PDDealProcessor,
+    PDPipelineProcessor,
+    PDStageProcessor,
+    PersonProcessor,
+)
 
 logger = logging.getLogger('hermes.pipedrive')
 
@@ -31,42 +37,42 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
 
     try:
         webhook_event = PipedriveEvent(**event)
-        current_data = None
-        previous_data = None
+        new_data = None
+        old_data = None
         if entity == 'organization':
-            if webhook_event.current:
-                current_data = Organisation(**webhook_event.current)
+            if webhook_event.data:
+                new_data = Organisation(**webhook_event.data)
             if webhook_event.previous:
-                previous_data = Organisation(**webhook_event.previous)
-            await process_organisation(current_data, previous_data, db)
+                old_data = Organisation(**webhook_event.previous)
+            await OrganisationProcessor(db).process(old_data, new_data)
 
         elif entity == 'person':
-            if webhook_event.current:
-                current_data = Person(**webhook_event.current)
+            if webhook_event.data:
+                new_data = Person(**webhook_event.data)
             if webhook_event.previous:
-                previous_data = Person(**webhook_event.previous)
-            await process_person(current_data, previous_data, db)
+                old_data = Person(**webhook_event.previous)
+            await PersonProcessor(db).process(old_data, new_data)
 
         elif entity == 'deal':
-            if webhook_event.current:
-                current_data = PDDeal(**webhook_event.current)
+            if webhook_event.data:
+                new_data = PDDeal(**webhook_event.data)
             if webhook_event.previous:
-                previous_data = PDDeal(**webhook_event.previous)
-            await process_deal(current_data, previous_data, db)
+                old_data = PDDeal(**webhook_event.previous)
+            await PDDealProcessor(db).process(old_data, new_data)
 
         elif entity == 'pipeline':
-            if webhook_event.current:
-                current_data = PDPipeline(**webhook_event.current)
+            if webhook_event.data:
+                new_data = PDPipeline(**webhook_event.data)
             if webhook_event.previous:
-                previous_data = PDPipeline(**webhook_event.previous)
-            await process_pipeline(current_data, previous_data, db)
+                old_data = PDPipeline(**webhook_event.previous)
+            await PDPipelineProcessor(db).process(old_data, new_data)
 
         elif entity == 'stage':
-            if webhook_event.current:
-                current_data = PDStage(**webhook_event.current)
+            if webhook_event.data:
+                new_data = PDStage(**webhook_event.data)
             if webhook_event.previous:
-                previous_data = PDStage(**webhook_event.previous)
-            await process_stage(current_data, previous_data, db)
+                old_data = PDStage(**webhook_event.previous)
+            await PDStageProcessor(db).process(old_data, new_data)
 
         logger.info(f'Successfully processed {entity} webhook')
 

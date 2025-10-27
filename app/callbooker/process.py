@@ -24,11 +24,13 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     """Get or create contact from callbooker event data"""
     # Try to find existing contact by email or last name
     if event.email:
-        contact = db.exec(select(Contact).where(Contact.company_id == company.id, Contact.email == event.email)).first()
+        contact = db.exec(
+            select(Contact).where(Contact.company_id == company.id, Contact.email == event.email)
+        ).one_or_none()
     else:
         contact = db.exec(
             select(Contact).where(Contact.company_id == company.id, Contact.last_name.ilike(event.last_name))
-        ).first()
+        ).one_or_none()
 
     if not contact:
         # Create new contact
@@ -66,20 +68,20 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
     # Try to find contact by email or phone, then get their company
     if not company and event.email:
-        contact = db.exec(select(Contact).where(Contact.email == event.email)).first()
+        contact = db.exec(select(Contact).where(Contact.email == event.email)).one_or_none()
         if contact:
             logger.info(f'Found contact {contact.id} by email')
             company = db.get(Company, contact.company_id)
 
     if not company and event.phone:
-        contact = db.exec(select(Contact).where(Contact.phone == event.phone)).first()
+        contact = db.exec(select(Contact).where(Contact.phone == event.phone)).one_or_none()
         if contact:
             logger.info(f'Found contact {contact.id} by phone')
             company = db.get(Company, contact.company_id)
 
     # Try to find company by name
     if not company:
-        company = db.exec(select(Company).where(Company.name.ilike(event.company_name))).first()
+        company = db.exec(select(Company).where(Company.name.ilike(event.company_name))).one_or_none()
         if company:
             logger.info(f'Found company {company.id} by name')
 
@@ -106,11 +108,11 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
 async def get_or_create_deal(company: Company, contact: Contact, db: DBSession) -> Deal:
     """Get or create an Open deal for the company"""
-    deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).first()
+    deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).one_or_none()
 
     if not deal:
         # Get config - must exist
-        config = db.exec(select(Config)).first()
+        config = db.exec(select(Config)).one_or_none()
         if not config:
             raise MeetingBookingError('System configuration not found')
 
@@ -170,7 +172,7 @@ async def book_meeting(
             Meeting.start_time >= two_hours_before,
             Meeting.start_time <= two_hours_after,
         )
-    ).first()
+    ).one_or_none()
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
 

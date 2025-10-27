@@ -104,8 +104,7 @@ async def generate_support_link(
         return JSONResponse({'status': 'error', 'message': 'Unauthorized'}, status_code=403)
 
     # Get admin
-    statement = select(Admin).where(Admin.tc2_admin_id == tc2_admin_id)
-    admin = db.exec(statement).first()
+    admin = db.exec(select(Admin).where(Admin.tc2_admin_id == tc2_admin_id)).one_or_none()
     if not admin:
         return JSONResponse({'status': 'error', 'message': 'Admin not found'}, status_code=404)
 

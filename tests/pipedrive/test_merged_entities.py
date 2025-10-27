@@ -281,7 +281,29 @@ class TestPipedriveWebhookEdgeCases:
         assert test_company.card_saved_dt is not None
 
     async def test_org_webhook_with_support_and_bdr_person_ids(self, client, db, test_company):
-        """Test organization webhook updates support and BDR person IDs"""
+        """Test organization webhook updates support and BDR person IDs from PD owner IDs"""
+        from app.main_app.models import Admin
+
+        # Create admins with specific PD owner IDs
+        bdr_admin = db.create(
+            Admin(
+                first_name='BDR',
+                last_name='Admin',
+                username='bdr@example.com',
+                pd_owner_id=456,
+                is_bdr_person=True,
+            )
+        )
+        support_admin = db.create(
+            Admin(
+                first_name='Support',
+                last_name='Admin',
+                username='support@example.com',
+                pd_owner_id=123,
+                is_support_person=True,
+            )
+        )
+
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
@@ -292,8 +314,9 @@ class TestPipedriveWebhookEdgeCases:
                 'id': 999,
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Test Company',
-                COMPANY_PD_FIELD_MAP['support_person_id']: 123,
-                COMPANY_PD_FIELD_MAP['bdr_person_id']: 456,
+                # Send PD owner IDs, which will be converted to Hermes admin IDs
+                COMPANY_PD_FIELD_MAP['support_person_id']: support_admin.pd_owner_id,
+                COMPANY_PD_FIELD_MAP['bdr_person_id']: bdr_admin.pd_owner_id,
             },
             'previous': None,
         }
@@ -304,8 +327,47 @@ class TestPipedriveWebhookEdgeCases:
         assert r.json() == {'status': 'ok'}
 
         db.refresh(test_company)
-        assert test_company.support_person_id == 123
-        assert test_company.bdr_person_id == 456
+        # Verify Hermes admin IDs are stored
+        assert test_company.support_person_id == support_admin.id
+        assert test_company.bdr_person_id == bdr_admin.id
+
+    async def test_org_webhook_changes_sales_person(self, client, db, test_company):
+        """Test updating organization sales person"""
+        from app.main_app.models import Admin
+
+        # Create second admin
+        new_admin = db.create(
+            Admin(
+                first_name='New',
+                last_name='Admin',
+                username='newadmin@example.com',
+                pd_owner_id=777,
+                is_sales_person=True,
+            )
+        )
+
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Test Company',
+                'owner_id': new_admin.pd_owner_id,
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.sales_person_id == new_admin.id
 
     async def test_person_deletion_clears_pd_person_id(self, client, db, test_contact):
         """Test person deletion webhook clears pd_person_id"""

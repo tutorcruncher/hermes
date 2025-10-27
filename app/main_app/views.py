@@ -126,8 +126,11 @@ async def choose_sales_person(plan: str, country_code: str, db: DBSession = Depe
         regional_admins = [a for a in admins if a.sells_row]
 
     # Get latest company to determine round-robin position
-    stmt = select(Company).where(Company.price_plan == plan, Company.sales_person_id.isnot(None))
-    latest_company = db.exec(stmt.order_by(Company.created.desc())).first()
+    latest_company = db.exec(
+        select(Company)
+        .where(Company.price_plan == plan, Company.sales_person_id.isnot(None))
+        .order_by(Company.created.desc())
+    ).one_or_none()
     latest_sales_person = latest_company.sales_person_id if latest_company else None
 
     # Choose next person
@@ -163,8 +166,9 @@ async def choose_support_person(db: DBSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail='No support admins found')
 
     # Get latest company to determine round-robin position
-    stmt = select(Company).where(Company.support_person_id.isnot(None)).order_by(Company.created.desc())
-    latest_company = db.exec(stmt).first()
+    latest_company = db.exec(
+        select(Company).where(Company.support_person_id.isnot(None)).order_by(Company.created.desc())
+    ).one_or_none()
 
     if latest_company:
         latest_support_person = latest_company.support_person_id

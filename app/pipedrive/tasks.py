@@ -29,14 +29,12 @@ async def sync_company_to_pipedrive(company_id: int):
             await sync_organization(company, db)
 
             # Sync all contacts
-            statement = select(Contact).where(Contact.company_id == company_id)
-            contacts = db.exec(statement).all()
+            contacts = db.exec(select(Contact).where(Contact.company_id == company_id)).all()
             for contact in contacts:
                 await sync_person(contact, db)
 
             # Sync all deals
-            statement = select(Deal).where(Deal.company_id == company_id)
-            deals = db.exec(statement).all()
+            deals = db.exec(select(Deal).where(Deal.company_id == company_id)).all()
             for deal in deals:
                 await sync_deal(deal, db)
 

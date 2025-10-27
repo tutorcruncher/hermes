@@ -71,7 +71,15 @@ def db_fixture(session: DBSession):
 
 
 # Factory fixtures using FactoryBoy
-from tests.factories import AdminFactory, CompanyFactory, ContactFactory, PipelineFactory, StageFactory
+from tests.factories import (
+    AdminFactory,
+    CompanyFactory,
+    ContactFactory,
+    DealFactory,
+    MeetingFactory,
+    PipelineFactory,
+    StageFactory,
+)
 
 
 @pytest.fixture
@@ -102,6 +110,27 @@ def test_company(db: DBSession, test_admin):
 def test_contact(db: DBSession, test_company):
     """Create a test contact using factory"""
     return ContactFactory.create_with_db(db, company_id=test_company.id)
+
+
+@pytest.fixture
+def test_deal(db: DBSession, test_company, test_contact, test_admin, test_pipeline, test_stage):
+    """Create a test deal using factory"""
+    return DealFactory.create_with_db(
+        db,
+        company_id=test_company.id,
+        contact_id=test_contact.id,
+        admin_id=test_admin.id,
+        pipeline_id=test_pipeline.id,
+        stage_id=test_stage.id,
+    )
+
+
+@pytest.fixture
+def test_meeting(db: DBSession, test_company, test_contact, test_admin):
+    """Create a test meeting using factory"""
+    return MeetingFactory.create_with_db(
+        db, company_id=test_company.id, contact_id=test_contact.id, admin_id=test_admin.id
+    )
 
 
 @pytest.fixture

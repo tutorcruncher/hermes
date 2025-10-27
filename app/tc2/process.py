@@ -15,8 +15,7 @@ async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) ->
     Get or create a company from TC2 data.
     Fetches full client data from TC2 API.
     """
-    statement = select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)
-    company = db.exec(statement).first()
+    company = db.exec(select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)).one_or_none()
 
     if not company:
         # Fetch from TC2 API
@@ -42,8 +41,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         Created or updated Company
     """
     # Get or create company
-    statement = select(Company).where(Company.tc2_cligency_id == tc_client.id)
-    company = db.exec(statement).first()
+    company = db.exec(select(Company).where(Company.tc2_cligency_id == tc_client.id)).one_or_none()
 
     # Get admin relationships
     sales_person = None
@@ -55,16 +53,13 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     )
 
     if tc_client.sales_person_id:
-        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)
-        sales_person = db.exec(stmt).first()
+        sales_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)).one_or_none()
 
     if tc_client.associated_admin_id:
-        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.associated_admin_id)
-        support_person = db.exec(stmt).first()
+        support_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.associated_admin_id)).one_or_none()
 
     if tc_client.bdr_person_id:
-        stmt = select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)
-        bdr_person = db.exec(stmt).first()
+        bdr_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)).one_or_none()
         if not bdr_person:
             logger.warning(f'BDR person {tc_client.bdr_person_id} not found for client {tc_client.id}')
     else:
@@ -102,8 +97,9 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
 
         # Close open deals if company is NARC or terminated
         if company.narc or company.tc2_status == 'terminated':
-            statement = select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)
-            open_deals = db.exec(statement).all()
+            open_deals = db.exec(
+                select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)
+            ).all()
             for deal in open_deals:
                 deal.status = Deal.STATUS_LOST
                 db.add(deal)
@@ -186,8 +182,7 @@ async def process_tc_recipient(
     Returns:
         Created or updated Contact
     """
-    statement = select(Contact).where(Contact.tc2_sr_id == recipient.id)
-    contact = db.exec(statement).first()
+    contact = db.exec(select(Contact).where(Contact.tc2_sr_id == recipient.id)).one_or_none()
 
     # Use recipient email/phone if available, otherwise fallback to user email/phone
     contact_email = recipient.email or user_email

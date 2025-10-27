@@ -27,7 +27,7 @@ async def get_day_start_ends(start: datetime, end: datetime, admin_tz: str) -> A
     23rd Oct 09:00 - 16:00 UTC (10:00 - 17:00 GMT)
     """
     db = get_session()
-    config = db.exec(select(Config)).first()
+    config = db.exec(select(Config)).one_or_none()
     if not config:
         # Use defaults if no config exists
         config = Config()
@@ -69,7 +69,7 @@ async def get_admin_available_slots(
     We change everything into the admin's timezone and work with that.
     """
     db = get_session()
-    config = db.exec(select(Config)).first()
+    config = db.exec(select(Config)).one_or_none()
     if not config:
         config = Config()
     db.close()

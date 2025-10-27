@@ -250,6 +250,8 @@ def test_process_tc_client_creates_company(db, test_admin, sample_tc_client_data
 
 **Always use `@patch` decorator instead of inline `with patch()` blocks.**
 
+**For async functions, use `new_callable=AsyncMock` when patching.**
+
 **Use MockResponse object for consistent HTTP response mocking:**
 
 #### ✅ Good - Testing request functions with MockResponse
@@ -275,6 +277,17 @@ async def test_sync_company(mock_request, db, test_company):
     await sync_company_to_pipedrive(test_company.id)
 ```
 
+#### ✅ Good - Using AsyncMock for async functions
+```python
+from unittest.mock import AsyncMock
+
+@patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+async def test_sync_person(mock_get, db, test_contact):
+    """Test sync function with async mock"""
+    mock_get.return_value = {'data': {'id': 999}}
+    await sync_person_to_pipedrive(test_contact.id)
+```
+
 #### ❌ Bad - Patching entire client class
 ```python
 @patch('httpx.AsyncClient')  # ❌ Don't patch entire class
@@ -288,6 +301,14 @@ async def test_sync_company(db, test_company):
     with patch('app.pipedrive.api.pipedrive_request') as mock_api:  # ❌ Inline
         mock_api.return_value = {'data': {'id': 999}}
         await sync_company_to_pipedrive(test_company.id)
+```
+
+#### ❌ Bad - Inline with patch() even for async
+```python
+async def test_sync_person(db, test_contact):
+    with patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock) as mock_get:  # ❌ Inline
+        mock_get.return_value = {'data': {'id': 999}}
+        await sync_person_to_pipedrive(test_contact.id)
 ```
 
 ### 6. Coverage Requirements
@@ -898,7 +919,7 @@ make reset-db       # Reset database
 ### Never Use
 ❌ Hardcoded URLs in tests  
 ❌ `db.add()`, `db.commit()`, `db.refresh()` separately  
-❌ Inline `with patch()` blocks  
+❌ Inline `with patch()` blocks (use `@patch` decorator)  
 ❌ Checking only individual response keys  
 ❌ Inline comments (except for complex logic)  
 ❌ Explicit IDs when creating test objects  

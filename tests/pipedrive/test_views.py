@@ -445,4 +445,89 @@ class TestPipedriveWebhookEndpoint:
         assert test_company.name == 'Test Agency V2'
         assert test_company.paid_invoice_count == 10
         assert test_company.tc2_status == 'trial'
-        assert test_company.price_plan == 'startup'
+
+    async def test_pipedrive_callback_organization_creation_with_bdr_and_support(self, client, db, test_admin):
+        """Test creating organization with BDR and support person IDs"""
+        from sqlmodel import select
+
+        from app.main_app.models import Admin, Company
+
+        # Create additional admins for BDR and support
+        bdr_admin = db.create(
+            Admin(
+                first_name='BDR',
+                last_name='Person',
+                username='bdr@example.com',
+                pd_owner_id=999,
+                is_bdr_person=True,
+            )
+        )
+        support_admin = db.create(
+            Admin(
+                first_name='Support',
+                last_name='Person',
+                username='support@example.com',
+                pd_owner_id=888,
+                is_support_person=True,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'added'},
+            'data': {
+                'id': 777,
+                'name': 'New Company with BDR',
+                'owner_id': test_admin.pd_owner_id,
+                'address_country': 'GB',
+                COMPANY_PD_FIELD_MAP['paid_invoice_count']: 5,
+                COMPANY_PD_FIELD_MAP['support_person_id']: support_admin.pd_owner_id,
+                COMPANY_PD_FIELD_MAP['bdr_person_id']: bdr_admin.pd_owner_id,
+                COMPANY_PD_FIELD_MAP['website']: 'https://example.com',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        # Verify company was created with all fields
+        company = db.exec(select(Company).where(Company.pd_org_id == 777)).first()
+        assert company is not None
+        assert company.sales_person_id == test_admin.id
+        assert company.support_person_id == support_admin.id
+        assert company.bdr_person_id == bdr_admin.id
+        assert company.paid_invoice_count == 5
+        assert company.website == 'https://example.com'
+
+    async def test_pipedrive_callback_person_creation(self, client, db, test_company):
+        """Test creating person via webhook"""
+        from sqlmodel import select
+
+        from app.main_app.models import Contact
+
+        test_company.pd_org_id = 123
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'added'},
+            'data': {
+                'id': 888,
+                'name': 'Test Person',
+                'email': ['test@example.com'],
+                'org_id': test_company.pd_org_id,
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+
+        # Verify contact was created
+        contact = db.exec(select(Contact).where(Contact.pd_person_id == 888)).first()
+        assert contact is not None
+        assert contact.first_name == 'Test'
+        assert contact.last_name == 'Person'

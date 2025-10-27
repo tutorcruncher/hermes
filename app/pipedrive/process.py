@@ -1,389 +1,310 @@
 import logging
+from functools import cached_property
 
 from sqlmodel import select
 
 from app.core.database import DBSession
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person
 
 logger = logging.getLogger('hermes.pipedrive')
 
 
-async def process_organisation(org_data: Organisation | None, previous_org: Organisation | None, db: DBSession):
-    """
-    Process Pipedrive organization webhook.
-    Updates Hermes Company from Pipedrive data.
-    Does NOT sync back to TC2 (one-way: Pipedrive → Hermes only).
-    """
-    if not org_data:
-        # Deletion event
-        if previous_org and previous_org.hermes_id:
-            statement = select(Company).where(Company.id == previous_org.hermes_id)
-            company = db.exec(statement).first()
-            if company:
-                company.pd_org_id = None
-                db.add(company)
-                db.commit()
-                logger.info(f'Cleared pd_org_id for company {company.id} (org deleted in Pipedrive)')
+class PipedriveObjProcessor:
+    hermes_model = NotImplemented
+    pd_model = NotImplemented
+    pd_id_field = NotImplemented
+
+    def __init__(self, db: DBSession):
+        self.db = db
+
+    @cached_property
+    def hermes_admin_ids(self) -> dict[int, int]:
+        return {admin.pd_owner_id: admin.id for admin in self.db.exec(select(Admin)).all()}
+
+    async def save_obj(
+        self, obj: Company | Contact | Deal, new_pd_obj: Organisation | Person | PDDeal, action: str
+    ) -> Company | Contact | Deal:
+        self.db.add(obj)
+        self.db.commit()
+        self.db.refresh(obj)
+        logger.info(
+            '%s %s:%s from Pipedrive %s:%s with data %r',
+            action,
+            self.hermes_model,
+            obj.id,
+            self.pd_model,
+            new_pd_obj.id,
+            new_pd_obj.model_dump(mode='json'),
+        )
+        return obj
+
+    async def delete_obj(self, pd_obj: Organisation | Person | PDDeal):
+        # For deletions, we just clear the pd_*_id field to indicate the object no longer exists in Pipedrive
+        # We don't delete from Hermes because the data may still be useful
+        hermes_obj = self.db.exec(
+            select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == pd_obj.id)
+        ).one_or_none()
+        if hermes_obj:
+            if self.hermes_model == Deal:
+                hermes_obj.status = Deal.STATUS_DELETED
+            setattr(hermes_obj, self.pd_id_field, None)
+            self.db.add(hermes_obj)
+            self.db.commit()
+            logger.info(
+                'Cleared %s from %s:%s (marked as deleted in Pipedrive)',
+                self.pd_id_field,
+                self.hermes_model.__name__,
+                hermes_obj.id,
+            )
         return None
 
-    # Get or create company by hermes_id
-    # Handle merged entities (Pipedrive sends comma-separated IDs like "123, 456")
-    hermes_id = org_data.hermes_id
-    if hermes_id and isinstance(hermes_id, str) and ',' in str(hermes_id):
-        # Take the first ID from comma-separated list (primary entity after merge)
-        hermes_id = int(str(hermes_id).split(',')[0].strip())
-        logger.info(f'Detected merged organization, using first hermes_id: {hermes_id}')
+    async def _update_obj(
+        self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal
+    ) -> Company | Contact | Deal:
+        raise NotImplementedError
 
-    if hermes_id:
-        statement = select(Company).where(Company.id == hermes_id)
-        company = db.exec(statement).first()
-    elif org_data.id:
-        statement = select(Company).where(Company.pd_org_id == org_data.id)
-        company = db.exec(statement).first()
-    else:
-        logger.warning('Organization webhook has no hermes_id or id, cannot process')
-        return None
+    async def _add_obj(self, new_pd_obj: Organisation | Person | PDDeal) -> Company | Contact | Deal:
+        raise NotImplementedError
 
-    if not company:
-        logger.warning(f'Company with hermes_id {hermes_id} not found, cannot update from Pipedrive')
-        return None
-
-    # Update company from Pipedrive data
-    company.name = (org_data.name or company.name)[:255] if org_data.name else company.name
-    company.pd_org_id = org_data.id
-    company.country = org_data.address_country or company.country
-
-    # Update owner if changed
-    if org_data.owner_id:
-        statement = select(Admin).where(Admin.pd_owner_id == org_data.owner_id)
-        admin = db.exec(statement).first()
-        if admin:
-            company.sales_person_id = admin.id
-
-    # Update custom fields from Pipedrive
-    if org_data.paid_invoice_count is not None:
-        company.paid_invoice_count = org_data.paid_invoice_count
-    if org_data.tc2_status:
-        company.tc2_status = org_data.tc2_status
-    if org_data.website:
-        company.website = org_data.website
-    if org_data.price_plan:
-        company.price_plan = org_data.price_plan
-    if org_data.estimated_income:
-        company.estimated_income = org_data.estimated_income
-    if org_data.utm_source:
-        company.utm_source = org_data.utm_source
-    if org_data.utm_campaign:
-        company.utm_campaign = org_data.utm_campaign
-    if org_data.gclid:
-        company.gclid = org_data.gclid
-    if org_data.pay0_dt:
-        company.pay0_dt = org_data.pay0_dt
-    if org_data.pay1_dt:
-        company.pay1_dt = org_data.pay1_dt
-    if org_data.pay3_dt:
-        company.pay3_dt = org_data.pay3_dt
-    if org_data.gclid_expiry_dt:
-        company.gclid_expiry_dt = org_data.gclid_expiry_dt
-    if org_data.email_confirmed_dt:
-        company.email_confirmed_dt = org_data.email_confirmed_dt
-    if org_data.card_saved_dt:
-        company.card_saved_dt = org_data.card_saved_dt
-
-    # Update support/BDR persons if provided
-    if org_data.support_person_id:
-        company.support_person_id = org_data.support_person_id
-    if org_data.bdr_person_id:
-        company.bdr_person_id = org_data.bdr_person_id
-
-    db.add(company)
-    db.commit()
-    db.refresh(company)
-
-    logger.info(f'Updated company {company.id} from Pipedrive organization {org_data.id}')
-    return company
-
-
-async def process_person(person_data: Person | None, previous_person: Person | None, db: DBSession):
-    """
-    Process Pipedrive person webhook.
-    Updates Hermes Contact from Pipedrive data.
-    """
-    if not person_data:
-        # Deletion event
-        if previous_person and previous_person.hermes_id:
-            statement = select(Contact).where(Contact.id == previous_person.hermes_id)
-            contact = db.exec(statement).first()
-            if contact:
-                contact.pd_person_id = None
-                db.add(contact)
-                db.commit()
-                logger.info(f'Cleared pd_person_id for contact {contact.id} (person deleted in Pipedrive)')
-        return None
-
-    # Get contact by hermes_id or pd_person_id
-    # Handle merged entities (Pipedrive sends comma-separated IDs like "123, 456")
-    hermes_id = person_data.hermes_id
-    if hermes_id and isinstance(hermes_id, str) and ',' in str(hermes_id):
-        # Take the first ID from comma-separated list (primary entity after merge)
-        hermes_id = int(str(hermes_id).split(',')[0].strip())
-        logger.info(f'Detected merged person, using first hermes_id: {hermes_id}')
-
-    if hermes_id:
-        statement = select(Contact).where(Contact.id == hermes_id)
-        contact = db.exec(statement).first()
-    elif person_data.id:
-        statement = select(Contact).where(Contact.pd_person_id == person_data.id)
-        contact = db.exec(statement).first()
-    else:
-        logger.warning('Person webhook has no hermes_id or id, cannot process')
-        return None
-
-    if not contact:
-        logger.warning(f'Contact with hermes_id {hermes_id} not found, cannot update from Pipedrive')
-        return None
-
-    # Update contact from Pipedrive data
-    if person_data.name:
-        # Parse name into first/last (truncate to 255 chars)
-        name_parts = person_data.name[:255].split(' ', 1)
-        if len(name_parts) > 1:
-            contact.first_name = name_parts[0][:255]
-            contact.last_name = name_parts[1][:255]
+    async def process(
+        self, old_pd_obj: Organisation | Person | PDDeal | None, new_pd_obj: Organisation | Person | PDDeal | None
+    ):
+        if not new_pd_obj:
+            # The object has been deleted
+            await self.delete_obj(old_pd_obj)
         else:
-            contact.last_name = name_parts[0][:255]
+            if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
+                if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
+                    # Take the first ID from comma-separated list (primary entity after merge)
+                    new_pd_obj.hermes_id = int(str(new_pd_obj.hermes_id).split(',')[0].strip())
+                    logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
 
-    contact.pd_person_id = person_data.id
-
-    # Handle email (Pipedrive sends as list)
-    if person_data.email and len(person_data.email) > 0:
-        contact.email = person_data.email[0]
-
-    if person_data.phone:
-        contact.phone = person_data.phone
-
-    # Update organization link
-    # Handle org_id (if person has multiple orgs in Pipedrive, use the first one)
-    if person_data.org_id:
-        org_id = person_data.org_id
-        if isinstance(org_id, list) and len(org_id) > 0:
-            org_id = org_id[0]
-        statement = select(Company).where(Company.pd_org_id == org_id)
-        company = db.exec(statement).first()
-        if company:
-            contact.company_id = company.id
-
-    db.add(contact)
-    db.commit()
-    db.refresh(contact)
-
-    logger.info(f'Updated contact {contact.id} from Pipedrive person {person_data.id}')
-    return contact
+                hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
+                if hermes_obj:
+                    # The obj exists in Hermes and therefore needs updated
+                    updated_obj = await self._update_obj(hermes_obj=hermes_obj, pd_obj=new_pd_obj)
+                    await self.save_obj(updated_obj, new_pd_obj, 'Updated')
+                else:
+                    # Somehow the object has been deleted in Hermes? Don't think this can happen
+                    logger.error(
+                        f'Object exists in Pipedrive with hermes_id {new_pd_obj.hermes_id} but not found in Hermes'
+                    )
+            else:
+                hermes_obj = self.db.exec(
+                    select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == new_pd_obj.id)
+                ).one_or_none()
+                if hermes_obj:
+                    # The object exists in Hermes already, but the PD object doesn't have the hermes_id. It should
+                    # be updated in Hermes
+                    updated_obj = await self._update_obj(hermes_obj=hermes_obj, pd_obj=new_pd_obj)
+                    await self.save_obj(updated_obj, new_pd_obj, 'Updated')
+                else:
+                    # The object is brand new
+                    new_obj = await self._add_obj(new_pd_obj)
+                    await self.save_obj(new_obj, new_pd_obj, 'Created')
 
 
-async def process_deal(deal_data: PDDeal | None, previous_deal: PDDeal | None, db: DBSession):
-    """
-    Process Pipedrive deal webhook.
-    Updates Hermes Deal from Pipedrive data.
-    """
-    if not deal_data:
-        # Deletion event
-        if previous_deal and previous_deal.hermes_id:
-            statement = select(Deal).where(Deal.id == previous_deal.hermes_id)
-            deal = db.exec(statement).first()
-            if deal:
-                deal.pd_deal_id = None
-                deal.status = Deal.STATUS_DELETED
-                db.add(deal)
-                db.commit()
-                logger.info(f'Marked deal {deal.id} as deleted (deleted in Pipedrive)')
-        return None
+class OrganisationProcessor(PipedriveObjProcessor):
+    hermes_model = Company
+    pd_model = Organisation
+    pd_id_field = 'pd_org_id'
 
-    # Get deal by hermes_id or pd_deal_id
-    # Handle merged entities (Pipedrive sends comma-separated IDs like "123, 456")
-    hermes_id = deal_data.hermes_id
-    if hermes_id and isinstance(hermes_id, str) and ',' in str(hermes_id):
-        # Take the first ID from comma-separated list (primary entity after merge)
-        hermes_id = int(str(hermes_id).split(',')[0].strip())
-        logger.info(f'Detected merged deal, using first hermes_id: {hermes_id}')
+    @property
+    def custom_field_names(self):
+        return [
+            f for f in list(COMPANY_PD_FIELD_MAP.keys()) if f not in ['hermes_id', 'bdr_person_id', 'support_person_id']
+        ]
 
-    if hermes_id:
-        statement = select(Deal).where(Deal.id == hermes_id)
-        deal = db.exec(statement).first()
-    elif deal_data.id:
-        statement = select(Deal).where(Deal.pd_deal_id == deal_data.id)
-        deal = db.exec(statement).first()
-    else:
-        logger.warning('Deal webhook has no hermes_id or id, cannot process')
-        return None
+    async def _add_obj(self, pd_obj: Organisation) -> Company:
+        kwargs = {
+            'name': pd_obj.name[:255],
+            'country': pd_obj.address_country,
+            'pd_org_id': pd_obj.id,
+            'sales_person_id': self.hermes_admin_ids[pd_obj.owner_id],
+        }
+        kwargs.update({f: getattr(pd_obj, f) for f in self.custom_field_names})
+        if pd_obj.bdr_person_id and pd_obj.bdr_person_id in self.hermes_admin_ids:
+            kwargs['bdr_person_id'] = self.hermes_admin_ids[pd_obj.bdr_person_id]
+        if pd_obj.support_person_id and pd_obj.support_person_id in self.hermes_admin_ids:
+            kwargs['support_person_id'] = self.hermes_admin_ids[pd_obj.support_person_id]
+        return Company(**kwargs)
 
-    if not deal:
-        # Deal doesn't exist in Hermes - create it if we have all required fields
-        logger.info(f'Deal not found in Hermes, attempting to create from Pipedrive deal {deal_data.id}')
+    async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
+        if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
+            hermes_obj.name = pd_obj.name[:255]
+        if pd_obj.address_country and hermes_obj.country != pd_obj.address_country:
+            hermes_obj.country = pd_obj.address_country
 
-        # Look up required foreign keys
-        admin = None
-        if deal_data.user_id:
-            statement = select(Admin).where(Admin.pd_owner_id == deal_data.user_id)
-            admin = db.exec(statement).first()
+        if pd_obj.owner_id and pd_obj.owner_id in self.hermes_admin_ids:
+            new_sales_person_id = self.hermes_admin_ids[pd_obj.owner_id]
+            if hermes_obj.sales_person_id != new_sales_person_id:
+                hermes_obj.sales_person_id = new_sales_person_id
 
-        company = None
-        if deal_data.org_id:
-            statement = select(Company).where(Company.pd_org_id == deal_data.org_id)
-            company = db.exec(statement).first()
+        if pd_obj.bdr_person_id and pd_obj.bdr_person_id in self.hermes_admin_ids:
+            new_bdr_id = self.hermes_admin_ids[pd_obj.bdr_person_id]
+            if hermes_obj.bdr_person_id != new_bdr_id:
+                hermes_obj.bdr_person_id = new_bdr_id
 
-        pipeline = None
-        if deal_data.pipeline_id:
-            statement = select(Pipeline).where(Pipeline.pd_pipeline_id == deal_data.pipeline_id)
-            pipeline = db.exec(statement).first()
+        if pd_obj.support_person_id and pd_obj.support_person_id in self.hermes_admin_ids:
+            new_support_id = self.hermes_admin_ids[pd_obj.support_person_id]
+            if hermes_obj.support_person_id != new_support_id:
+                hermes_obj.support_person_id = new_support_id
 
-        stage = None
-        if deal_data.stage_id:
-            statement = select(Stage).where(Stage.pd_stage_id == deal_data.stage_id)
-            stage = db.exec(statement).first()
+        for f in self.custom_field_names:
+            pd_val = getattr(pd_obj, f)
+            if pd_val is not None and pd_val != getattr(hermes_obj, f):
+                setattr(hermes_obj, f, pd_val)
+        return hermes_obj
 
-        # Check all required fields are present
-        if not admin:
-            logger.warning(f'Cannot create deal: no admin found for user_id {deal_data.user_id}')
-            return None
-        if not company:
-            logger.warning(f'Cannot create deal: no company found for org_id {deal_data.org_id}')
-            return None
-        if not pipeline:
-            logger.warning(f'Cannot create deal: no pipeline found for pipeline_id {deal_data.pipeline_id}')
-            return None
-        if not stage:
-            logger.warning(f'Cannot create deal: no stage found for stage_id {deal_data.stage_id}')
-            return None
 
-        # Look up optional contact
-        contact = None
-        if deal_data.person_id:
-            statement = select(Contact).where(Contact.pd_person_id == deal_data.person_id)
-            contact = db.exec(statement).first()
+class PersonProcessor(PipedriveObjProcessor):
+    hermes_model = Contact
+    pd_model = Person
+    pd_id_field = 'pd_person_id'
 
-        # Create the deal
-        deal = Deal(
-            pd_deal_id=deal_data.id,
-            name=deal_data.title[:255] if deal_data.title else 'Untitled Deal',
-            status=deal_data.status or Deal.STATUS_OPEN,
-            admin_id=admin.id,
+    @property
+    def custom_field_names(self):
+        return [f for f in list(CONTACT_PD_FIELD_MAP.keys()) if f != 'hermes_id']
+
+    async def _add_obj(self, pd_obj: Person) -> Contact:
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+        return Contact(
+            pd_person_id=pd_obj.id,
             company_id=company.id,
-            pipeline_id=pipeline.id,
-            stage_id=stage.id,
-            contact_id=contact.id if contact else None,
-            support_person_id=deal_data.support_person_id,
-            bdr_person_id=deal_data.bdr_person_id,
-            paid_invoice_count=deal_data.paid_invoice_count or 0,
-            tc2_status=deal_data.tc2_status,
-            website=deal_data.website,
-            price_plan=deal_data.price_plan,
-            estimated_income=deal_data.estimated_income,
-            signup_questionnaire=deal_data.signup_questionnaire,
-            utm_campaign=deal_data.utm_campaign,
-            utm_source=deal_data.utm_source,
+            first_name=pd_obj.first_name,
+            last_name=pd_obj.last_name,
+            email=pd_obj.email,
+            phone=pd_obj.phone,
         )
 
-        db.add(deal)
-        db.commit()
-        db.refresh(deal)
+    async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
+        if pd_obj.first_name and pd_obj.first_name[:255] != hermes_obj.first_name:
+            hermes_obj.first_name = pd_obj.first_name[:255]
+        if pd_obj.last_name and pd_obj.last_name[:255] != hermes_obj.last_name:
+            hermes_obj.last_name = pd_obj.last_name[:255]
+        if pd_obj.phone and pd_obj.phone != hermes_obj.phone:
+            hermes_obj.phone = pd_obj.phone
+        if pd_obj.email and pd_obj.email != hermes_obj.email:
+            hermes_obj.email = pd_obj.email
 
-        logger.info(f'Created new deal {deal.id} from Pipedrive deal {deal_data.id}')
-        return deal
+        if pd_obj.org_id:
+            org_id = pd_obj.org_id
+            if isinstance(org_id, list) and len(org_id) > 0:
+                # For merges, get the first one.
+                org_id = org_id[0]
 
-    # Deal exists - update it from Pipedrive data
-    deal.name = (deal_data.title or deal.name)[:255] if deal_data.title else deal.name
-    deal.pd_deal_id = deal_data.id
-    deal.status = deal_data.status or deal.status
+            company = self.db.exec(select(Company).where(Company.pd_org_id == org_id)).one_or_none()
+            if company and company.id != hermes_obj.company_id:
+                hermes_obj.company_id = company.id
+        return hermes_obj
 
-    # Update relationships
-    if deal_data.user_id:
-        statement = select(Admin).where(Admin.pd_owner_id == deal_data.user_id)
-        admin = db.exec(statement).first()
-        if admin:
-            deal.admin_id = admin.id
 
-    if deal_data.org_id:
-        statement = select(Company).where(Company.pd_org_id == deal_data.org_id)
-        company = db.exec(statement).first()
-        if company:
-            deal.company_id = company.id
+class PDDealProcessor(PipedriveObjProcessor):
+    hermes_model = Deal
+    pd_model = PDDeal
+    pd_id_field = 'pd_deal_id'
 
-    if deal_data.person_id:
-        statement = select(Contact).where(Contact.pd_person_id == deal_data.person_id)
-        contact = db.exec(statement).first()
+    @property
+    def custom_field_names(self):
+        return [f for f in list(DEAL_PD_FIELD_MAP.keys()) if f != 'hermes_id']
+
+    async def _add_obj(self, pd_obj: PDDeal) -> Deal:
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+        pipeline = self.db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == pd_obj.pipeline_id)).one()
+        stage = self.db.exec(select(Stage).where(Stage.pd_stage_id == pd_obj.stage_id)).one()
+
+        kwargs = {
+            'pd_deal_id': pd_obj.id,
+            'name': pd_obj.title[:255],
+            'status': pd_obj.status,
+            'admin_id': self.hermes_admin_ids[pd_obj.user_id],
+            'company_id': company.id,
+            'pipeline_id': pipeline.id,
+            'stage_id': stage.id,
+        }
+
+        contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
         if contact:
-            deal.contact_id = contact.id
+            kwargs['contact_id'] = contact.id
+        kwargs.update({f: getattr(pd_obj, f) for f in self.custom_field_names})
+        return Deal(**kwargs)
 
-    if deal_data.pipeline_id:
-        statement = select(Pipeline).where(Pipeline.pd_pipeline_id == deal_data.pipeline_id)
-        pipeline = db.exec(statement).first()
-        if pipeline:
-            deal.pipeline_id = pipeline.id
+    async def _update_obj(self, hermes_obj: Deal, pd_obj: PDDeal) -> Deal:
+        if pd_obj.title and pd_obj.title[:255] != hermes_obj.name:
+            hermes_obj.name = pd_obj.title[:255]
+        if pd_obj.status and pd_obj.status != hermes_obj.status:
+            hermes_obj.status = pd_obj.status
 
-    if deal_data.stage_id:
-        statement = select(Stage).where(Stage.pd_stage_id == deal_data.stage_id)
-        stage = db.exec(statement).first()
-        if stage:
-            deal.stage_id = stage.id
+        if pd_obj.user_id:
+            new_admin_id = self.hermes_admin_ids[pd_obj.user_id]
+            if hermes_obj.admin_id != new_admin_id:
+                hermes_obj.admin_id = new_admin_id
 
-    db.add(deal)
-    db.commit()
-    db.refresh(deal)
+        if pd_obj.pipeline_id:
+            pipeline = self.db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == pd_obj.pipeline_id)).one_or_none()
+            if pipeline and pipeline.id != hermes_obj.pipeline_id:
+                hermes_obj.pipeline_id = pipeline.id
 
-    logger.info(f'Updated deal {deal.id} from Pipedrive deal {deal_data.id}')
-    return deal
+        if pd_obj.stage_id:
+            stage = self.db.exec(select(Stage).where(Stage.pd_stage_id == pd_obj.stage_id)).one_or_none()
+            if stage and stage.id != hermes_obj.stage_id:
+                hermes_obj.stage_id = stage.id
+
+        if pd_obj.org_id:
+            company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+            if company.id != hermes_obj.company_id:
+                hermes_obj.company_id = company.id
+
+        if pd_obj.person_id:
+            contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
+            if contact and contact.id != hermes_obj.contact_id:
+                hermes_obj.contact_id = contact.id
+
+        for f in self.custom_field_names:
+            pd_val = getattr(pd_obj, f)
+            if pd_val is not None and pd_val != getattr(hermes_obj, f):
+                setattr(hermes_obj, f, pd_val)
+
+        return hermes_obj
 
 
-async def process_pipeline(pipeline_data: PDPipeline | None, previous_pipeline: PDPipeline | None, db: DBSession):
-    """Process Pipedrive pipeline webhook - create/update Pipeline"""
-    if not pipeline_data or not pipeline_data.active:
-        # Ignore inactive or deleted pipelines
+class PDPipelineProcessor(PipedriveObjProcessor):
+    hermes_model = Pipeline
+    pd_model = PDPipeline
+    pd_id_field = 'pd_pipeline_id'
+
+    async def delete_obj(self, pd_obj: PDPipeline):
+        # Pipelines shouldn't be deleted from Hermes, just ignore deletion events
+        logger.info(f'Ignoring deletion of pipeline {pd_obj.id} - pipelines are not deleted from Hermes')
         return None
 
-    statement = select(Pipeline).where(Pipeline.pd_pipeline_id == pipeline_data.id)
-    pipeline = db.exec(statement).first()
+    async def _add_obj(self, pd_obj: PDPipeline) -> Pipeline:
+        # It's a new pipeline, we create it with the first stage we have.
+        stage = self.db.exec(select(Stage)).first()
+        return Pipeline(pd_pipeline_id=pd_obj.id, name=pd_obj.name, dft_entry_stage_id=stage.id)
 
-    if pipeline:
-        pipeline.name = pipeline_data.name or pipeline.name
-        db.add(pipeline)
-        db.commit()
-        logger.info(f'Updated pipeline {pipeline.id}')
-    else:
-        # Get or create a default stage for this pipeline
-        stage = db.exec(select(Stage).limit(1)).first()
-        if not stage:
-            logger.warning(f'Cannot create pipeline {pipeline_data.id} - no stages available')
-            return None
-
-        pipeline = Pipeline(pd_pipeline_id=pipeline_data.id, name=pipeline_data.name, dft_entry_stage_id=stage.id)
-        db.add(pipeline)
-        db.commit()
-        db.refresh(pipeline)
-        logger.info(f'Created pipeline {pipeline.id} from Pipedrive')
-
-    return pipeline
+    async def _update_obj(self, hermes_obj: Pipeline, pd_obj: PDPipeline) -> Pipeline:
+        if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
+            hermes_obj.name = pd_obj.name[:255]
+        return hermes_obj
 
 
-async def process_stage(stage_data: PDStage | None, previous_stage: PDStage | None, db: DBSession):
-    """Process Pipedrive stage webhook - create/update Stage"""
-    if not stage_data:
+class PDStageProcessor(PipedriveObjProcessor):
+    hermes_model = Stage
+    pd_model = PDStage
+    pd_id_field = 'pd_stage_id'
+
+    async def delete_obj(self, pd_obj: PDStage):
+        # Stages shouldn't be deleted from Hermes, just ignore deletion events
+        logger.info(f'Ignoring deletion of stage {pd_obj.id} - stages are not deleted from Hermes')
         return None
 
-    statement = select(Stage).where(Stage.pd_stage_id == stage_data.id)
-    stage = db.exec(statement).first()
+    async def _add_obj(self, pd_obj: PDStage) -> Stage:
+        return Stage(pd_stage_id=pd_obj.id, name=pd_obj.name)
 
-    if stage:
-        stage.name = stage_data.name or stage.name
-        db.add(stage)
-        db.commit()
-        logger.info(f'Updated stage {stage.id}')
-    else:
-        stage = Stage(pd_stage_id=stage_data.id, name=stage_data.name)
-        db.add(stage)
-        db.commit()
-        db.refresh(stage)
-        logger.info(f'Created stage {stage.id} from Pipedrive')
-
-    return stage
+    async def _update_obj(self, hermes_obj: Stage, pd_obj: PDStage) -> Stage:
+        if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
+            hermes_obj.name = pd_obj.name[:255]
+        return hermes_obj

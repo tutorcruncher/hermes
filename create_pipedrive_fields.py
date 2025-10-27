@@ -1,6 +1,7 @@
 """
 Script to create custom fields in Pipedrive via API.
 """
+
 import asyncio
 import httpx
 from app.core.config import settings
@@ -77,21 +78,21 @@ async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: 
 
         if result.get('success'):
             field_id = result['data']['key']
-            print(f"✓ Created {entity_type} field: {field_data['name']} (ID: {field_id})")
+            print(f'✓ Created {entity_type} field: {field_data["name"]} (ID: {field_id})')
         else:
-            print(f"✗ Failed to create {entity_type} field: {field_data['name']} - {result}")
+            print(f'✗ Failed to create {entity_type} field: {field_data["name"]} - {result}')
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 400:
             error_data = e.response.json()
             if 'already exists' in str(error_data).lower():
-                print(f"- {entity_type} field already exists: {field_data['name']}")
+                print(f'- {entity_type} field already exists: {field_data["name"]}')
             else:
-                print(f"✗ Error creating {entity_type} field {field_data['name']}: {error_data}")
+                print(f'✗ Error creating {entity_type} field {field_data["name"]}: {error_data}')
         else:
-            print(f"✗ HTTP error creating {entity_type} field {field_data['name']}: {e}")
+            print(f'✗ HTTP error creating {entity_type} field {field_data["name"]}: {e}')
     except Exception as e:
-        print(f"✗ Error creating {entity_type} field {field_data['name']}: {e}")
+        print(f'✗ Error creating {entity_type} field {field_data["name"]}: {e}')
 
     # Add delay to avoid rate limiting
     await asyncio.sleep(0.5)
@@ -99,23 +100,23 @@ async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: 
 
 async def main():
     """Create all custom fields in Pipedrive."""
-    print(f"Creating custom fields in Pipedrive...\n")
+    print(f'Creating custom fields in Pipedrive...\n')
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Create organization fields
-        print("=== Organization Fields ===")
+        print('=== Organization Fields ===')
         for field in ORGANIZATION_FIELDS:
             await create_field(client, 'organization', field)
 
-        print("\n=== Person Fields ===")
+        print('\n=== Person Fields ===')
         for field in PERSON_FIELDS:
             await create_field(client, 'person', field)
 
-        print("\n=== Deal Fields ===")
+        print('\n=== Deal Fields ===')
         for field in DEAL_FIELDS:
             await create_field(client, 'deal', field)
 
-    print("\n✓ Done! Now run: make setup-fields")
+    print('\n✓ Done! Now run: make setup-fields')
 
 
 if __name__ == '__main__':
