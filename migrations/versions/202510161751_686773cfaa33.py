@@ -176,6 +176,7 @@ def upgrade() -> None:
         sa.Column('bdr_person_id', sa.Integer(), nullable=True),
         sa.Column('paid_invoice_count', sa.Integer(), nullable=True),
         sa.Column('tc2_status', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column('tc2_cligency_url', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True),
         sa.Column('website', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column('price_plan', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column('estimated_income', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
