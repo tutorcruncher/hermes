@@ -721,23 +721,23 @@ class TestTC2DealCreation:
         sample_tc_client_data['meta_agency']['website'] = 'https://original.com'
         sample_tc_client_data['meta_agency']['gclid'] = 'ORIGINAL_GCLID'
         sample_tc_client_data['meta_agency']['pay0_dt'] = '2024-01-15T00:00:00Z'
-        
+
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
-        
+
         assert company.website == 'https://original.com'
         assert company.gclid == 'ORIGINAL_GCLID'
         assert company.pay0_dt is not None
-        
+
         # TC2 sends update without optional fields (they are None)
         sample_tc_client_data['meta_agency']['website'] = None
         sample_tc_client_data['meta_agency']['gclid'] = None
         sample_tc_client_data['meta_agency']['pay0_dt'] = None
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10  # Some actual update
-        
+
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
-        
+
         # Original values should be preserved
         assert updated_company.website == 'https://original.com'
         assert updated_company.gclid == 'ORIGINAL_GCLID'
