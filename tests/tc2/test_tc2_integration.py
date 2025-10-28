@@ -715,66 +715,6 @@ class TestTC2DealCreation:
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 1
 
-    async def test_update_company_does_not_overwrite_with_null_values(self, db, test_admin, sample_tc_client_data):
-        """Test that TC2 updates don't overwrite existing values with None"""
-        # Create company with optional fields set
-        sample_tc_client_data['meta_agency']['website'] = 'https://original.com'
-        sample_tc_client_data['meta_agency']['gclid'] = 'ORIGINAL_GCLID'
-        sample_tc_client_data['meta_agency']['pay0_dt'] = '2024-01-15T00:00:00Z'
-
-        tc_client = TCClient(**sample_tc_client_data)
-        company = await process_tc_client(tc_client, db)
-
-        assert company.website == 'https://original.com'
-        assert company.gclid == 'ORIGINAL_GCLID'
-        assert company.pay0_dt is not None
-
-        # TC2 sends update without optional fields (they are None)
-        sample_tc_client_data['meta_agency']['website'] = None
-        sample_tc_client_data['meta_agency']['gclid'] = None
-        sample_tc_client_data['meta_agency']['pay0_dt'] = None
-        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10  # Some actual update
-
-        tc_client = TCClient(**sample_tc_client_data)
-        updated_company = await process_tc_client(tc_client, db)
-
-        # Original values should be preserved
-        assert updated_company.website == 'https://original.com'
-        assert updated_company.gclid == 'ORIGINAL_GCLID'
-        assert updated_company.pay0_dt is not None
-        # But the actual update should apply
-        assert updated_company.paid_invoice_count == 10
-
-    async def test_update_company_extra_attrs_does_not_overwrite_with_null(self, db, test_admin, sample_tc_client_data):
-        """Test that extra_attrs with None/null don't overwrite existing values"""
-        # Create company with extra_attrs fields set
-        sample_tc_client_data['extra_attrs'] = [
-            {'machine_name': 'utm_source', 'value': 'google'},
-            {'machine_name': 'utm_campaign', 'value': 'summer2024'},
-            {'machine_name': 'estimated_monthly_income', 'value': '5000'},
-        ]
-
-        tc_client = TCClient(**sample_tc_client_data)
-        company = await process_tc_client(tc_client, db)
-
-        assert company.utm_source == 'google'
-        assert company.utm_campaign == 'summer2024'
-        assert company.estimated_income == '5000'
-
-        # TC2 sends update WITHOUT extra_attrs (they're not in the dict)
-        sample_tc_client_data['extra_attrs'] = []
-        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 15  # Some actual update
-
-        tc_client = TCClient(**sample_tc_client_data)
-        updated_company = await process_tc_client(tc_client, db)
-
-        # Original values should be preserved (not overwritten because key not in dict)
-        assert updated_company.utm_source == 'google'
-        assert updated_company.utm_campaign == 'summer2024'
-        assert updated_company.estimated_income == '5000'
-        # But the actual update should apply
-        assert updated_company.paid_invoice_count == 15
-
     async def test_update_company_extra_attrs_can_be_set_initially(self, db, test_admin, sample_tc_client_data):
         """Test that extra_attrs fields ARE set when they have values on first update"""
         # Create company without extra_attrs
@@ -802,51 +742,6 @@ class TestTC2DealCreation:
         assert updated_company.utm_source == 'facebook'
         assert updated_company.utm_campaign == 'winter2024'
         assert updated_company.estimated_income == '10000'
-
-    async def test_update_company_does_not_overwrite_bdr_and_support_person(self, db, sample_tc_client_data):
-        """Test that bdr_person_id and support_person_id are NEVER updated once set (manual assignments preserved)"""
-        # Create admins
-        sales_admin = db.create(
-            Admin(first_name='Sales', last_name='Admin', username='sales@example.com', tc2_admin_id=100)
-        )
-        support_admin = db.create(
-            Admin(first_name='Support', last_name='Admin', username='support@example.com', tc2_admin_id=101)
-        )
-        bdr_admin = db.create(Admin(first_name='BDR', last_name='Admin', username='bdr@example.com', tc2_admin_id=102))
-
-        # Create NEW admins that TC2 will try to assign
-        db.create(
-            Admin(first_name='NewSupport', last_name='Admin', username='newsupport@example.com', tc2_admin_id=201)
-        )
-        db.create(Admin(first_name='NewBDR', last_name='Admin', username='newbdr@example.com', tc2_admin_id=202))
-
-        # Create company with all admins set
-        sample_tc_client_data['sales_person'] = {'id': 100}
-        sample_tc_client_data['associated_admin'] = {'id': 101}
-        sample_tc_client_data['bdr_person'] = {'id': 102}
-
-        tc_client = TCClient(**sample_tc_client_data)
-        company = await process_tc_client(tc_client, db)
-
-        assert company.sales_person_id == sales_admin.id
-        assert company.support_person_id == support_admin.id
-        assert company.bdr_person_id == bdr_admin.id
-
-        # TC2 sends update with DIFFERENT support_person and bdr_person (trying to reassign)
-        sample_tc_client_data['associated_admin'] = {'id': 201}  # Different support person
-        sample_tc_client_data['bdr_person'] = {'id': 202}  # Different BDR
-        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 20
-
-        tc_client = TCClient(**sample_tc_client_data)
-        updated_company = await process_tc_client(tc_client, db)
-
-        # sales_person should be updated (it's required)
-        assert updated_company.sales_person_id == sales_admin.id
-        # But support_person and bdr_person should NOT change (manual assignment preserved)
-        assert updated_company.support_person_id == support_admin.id  # Still original
-        assert updated_company.bdr_person_id == bdr_admin.id  # Still original
-        # And the actual update should apply
-        assert updated_company.paid_invoice_count == 20
 
     async def test_update_company_support_bdr_stay_none_if_never_set(self, db, sample_tc_client_data):
         """Test that support_person_id and bdr_person_id stay None if never provided"""

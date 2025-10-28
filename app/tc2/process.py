@@ -83,27 +83,19 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         company.tc2_agency_id = tc_client.meta_agency.id
         company.tc2_status = tc_client.meta_agency.status
         company.country = tc_client.meta_agency.country
+        company.website = tc_client.meta_agency.website
         company.paid_invoice_count = tc_client.meta_agency.paid_invoice_count
         company.price_plan = tc_client.meta_agency.price_plan
         company.narc = tc_client.meta_agency.narc or False
+        company.pay0_dt = tc_client.meta_agency.pay0_dt
+        company.pay1_dt = tc_client.meta_agency.pay1_dt
+        company.pay3_dt = tc_client.meta_agency.pay3_dt
+        company.card_saved_dt = tc_client.meta_agency.card_saved_dt
+        company.email_confirmed_dt = tc_client.meta_agency.email_confirmed_dt
+        company.gclid = tc_client.meta_agency.gclid
+        company.gclid_expiry_dt = tc_client.meta_agency.gclid_expiry_dt
         company.created = tc_client.meta_agency.created
-
-        # Only update optional fields if they have values (prevent null overwrites)
-        optional_fields = [
-            'website',
-            'pay0_dt',
-            'pay1_dt',
-            'pay3_dt',
-            'card_saved_dt',
-            'email_confirmed_dt',
-            'gclid',
-            'gclid_expiry_dt',
-            'signup_questionnaire',
-        ]
-        for field in optional_fields:
-            value = getattr(tc_client.meta_agency, field, None)
-            if value is not None:
-                setattr(company, field, value)
+        company.created = tc_client.meta_agency.created
 
         # Close open deals if company is NARC or terminated
         if company.narc or company.tc2_status == 'terminated':
@@ -119,24 +111,18 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
                     f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
                 )
 
-        # Update relationships - only if not already set (don't overwrite manual assignments)
-        # sales_person is required, so always update
+        # Update relationships
         company.sales_person_id = sales_person.id
-        # support_person and bdr_person: NEVER update if already set (manual assignments take precedence)
-        if not company.support_person_id and support_person:
-            company.support_person_id = support_person.id
-        if not company.bdr_person_id and bdr_person:
-            company.bdr_person_id = bdr_person.id
+        company.support_person_id = support_person.id if support_person else None
+        company.bdr_person_id = bdr_person.id if bdr_person else None
 
-        # Update extra attributes (these override meta_agency values if present)
-        # Only update if the value is not None
-        if 'utm_source' in extra_attrs_dict and extra_attrs_dict['utm_source'] is not None:
+        if 'utm_source' in extra_attrs_dict:
             company.utm_source = extra_attrs_dict['utm_source']
-        if 'utm_campaign' in extra_attrs_dict and extra_attrs_dict['utm_campaign'] is not None:
+        if 'utm_campaign' in extra_attrs_dict:
             company.utm_campaign = extra_attrs_dict['utm_campaign']
-        if 'signup_questionnaire' in extra_attrs_dict and extra_attrs_dict['signup_questionnaire'] is not None:
+        if 'signup_questionnaire' in extra_attrs_dict:
             company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
-        if 'estimated_monthly_income' in extra_attrs_dict and extra_attrs_dict['estimated_monthly_income'] is not None:
+        if 'estimated_monthly_income' in extra_attrs_dict:
             company.estimated_income = extra_attrs_dict['estimated_monthly_income']
 
         db.add(company)
