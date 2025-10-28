@@ -250,7 +250,8 @@ class v2Tov3Migrator:
             SELECT id, name, tc2_agency_id, tc2_cligency_id, pd_org_id,
                    created AT TIME ZONE 'UTC' as created,
                    price_plan, country, website, currency, estimated_income,
-                   utm_campaign, utm_source, gclid, has_booked_call, has_signed_up, narc,
+                   utm_campaign, utm_source, gclid, signup_questionnaire,
+                   has_booked_call, has_signed_up, narc,
                    paid_invoice_count, tc2_status,
                    pay0_dt AT TIME ZONE 'UTC' as pay0_dt,
                    pay1_dt AT TIME ZONE 'UTC' as pay1_dt,
@@ -264,12 +265,8 @@ class v2Tov3Migrator:
         logger.info(f'Found {len(v2_companies)} companies in v2')
 
         for v2_company in v2_companies:
-            # Get custom field values
-            custom_fields = await self.get_custom_field_values('company', v2_company['id'])
-
-            # Extract fields that should be in v3 direct fields (not in v2 model but in CustomFields)
-            # These were stored in CustomFieldValue in v2, but are now direct fields in v3
-            signup_questionnaire = custom_fields.get('signup_questionnaire')
+            # signup_questionnaire is already a direct column in v2, no need to fetch from custom fields
+            signup_questionnaire = v2_company['signup_questionnaire']
 
             # Convert sales_person_id
             sales_person_id = self.admin_id_map.get(v2_company['sales_person_id'])
