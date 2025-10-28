@@ -799,3 +799,44 @@ class TestPipedriveWebhookEdgeCases:
         db.refresh(deal)
         # tc2_cligency_url should be set on Deal (it's a regular field, not a property)
         assert deal.tc2_cligency_url == 'https://secure.tutorcruncher.com/clients/12345/'
+
+    async def test_deal_created_with_null_tc2_cligency_url(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that deals can be created with NULL tc2_cligency_url and it gets populated by webhook"""
+        # Create a deal with NULL tc2_cligency_url (like migration does)
+        deal = Deal(
+            name='Test Deal',
+            pd_deal_id=999,
+            admin_id=test_admin.id,
+            company_id=test_company.id,
+            pipeline_id=test_pipeline.id,
+            stage_id=test_stage.id,
+            tc2_cligency_url=None,  # NULL initially
+        )
+        db.add(deal)
+        db.commit()
+
+        assert deal.tc2_cligency_url is None
+
+        # Now Pipedrive sends webhook to update it
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
+                'title': 'Test Deal',
+                'status': 'open',
+                DEAL_PD_FIELD_MAP['tc2_cligency_url']: 'https://secure.tutorcruncher.com/clients/99999/',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        # tc2_cligency_url should now be populated by Pipedrive
+        assert deal.tc2_cligency_url == 'https://secure.tutorcruncher.com/clients/99999/'
