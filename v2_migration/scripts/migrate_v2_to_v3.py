@@ -398,9 +398,10 @@ class v2Tov3Migrator:
                 int(custom_fields['paid_invoice_count']) if custom_fields.get('paid_invoice_count') else 0
             )
             tc2_status = custom_fields.get('tc2_status')
+            tc2_cligency_url = custom_fields.get('tc2_cligency_url')
             website = custom_fields.get('website')
             price_plan = custom_fields.get('price_plan')
-            estimated_income = custom_fields.get('estimated_income')
+            estimated_income = custom_fields.get('estimated_monthly_income')
             signup_questionnaire = custom_fields.get('signup_questionnaire')
             utm_campaign = custom_fields.get('utm_campaign')
             utm_source = custom_fields.get('utm_source')
@@ -426,7 +427,7 @@ class v2Tov3Migrator:
                 bdr_person_id,
                 paid_invoice_count,
                 tc2_status,
-                v2_deal['tc2_cligency_url'],
+                tc2_cligency_url,
                 website,
                 price_plan,
                 estimated_income,
