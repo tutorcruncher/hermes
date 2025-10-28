@@ -714,3 +714,33 @@ class TestTC2DealCreation:
         # Verify only one deal exists
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 1
+
+    async def test_update_company_does_not_overwrite_with_null_values(self, db, test_admin, sample_tc_client_data):
+        """Test that TC2 updates don't overwrite existing values with None"""
+        # Create company with optional fields set
+        sample_tc_client_data['meta_agency']['website'] = 'https://original.com'
+        sample_tc_client_data['meta_agency']['gclid'] = 'ORIGINAL_GCLID'
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2024-01-15T00:00:00Z'
+        
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db)
+        
+        assert company.website == 'https://original.com'
+        assert company.gclid == 'ORIGINAL_GCLID'
+        assert company.pay0_dt is not None
+        
+        # TC2 sends update without optional fields (they are None)
+        sample_tc_client_data['meta_agency']['website'] = None
+        sample_tc_client_data['meta_agency']['gclid'] = None
+        sample_tc_client_data['meta_agency']['pay0_dt'] = None
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10  # Some actual update
+        
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+        
+        # Original values should be preserved
+        assert updated_company.website == 'https://original.com'
+        assert updated_company.gclid == 'ORIGINAL_GCLID'
+        assert updated_company.pay0_dt is not None
+        # But the actual update should apply
+        assert updated_company.paid_invoice_count == 10
