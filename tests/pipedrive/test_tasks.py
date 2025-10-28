@@ -235,6 +235,106 @@ class TestSyncDeal:
         assert test_deal.pd_deal_id == 4444
 
 
+class TestDealToPDData:
+    """Test _deal_to_pd_data conversion function"""
+
+    def test_deal_to_pd_data_uses_owner_id_not_user_id(self, db, test_deal):
+        """Test that deal data uses 'owner_id' field, not 'user_id' for Pipedrive v2 API"""
+        # Ensure admin has pd_owner_id set
+        test_deal.admin.pd_owner_id = 12345
+        db.add(test_deal.admin)
+        db.commit()
+
+        result = _deal_to_pd_data(test_deal, db)
+
+        # Should use 'owner_id', not 'user_id'
+        assert 'owner_id' in result
+        assert result['owner_id'] == 12345
+        assert 'user_id' not in result
+
+    def test_deal_to_pd_data_includes_all_required_fields(self, db, test_deal):
+        """Test that deal data includes all required fields for Pipedrive"""
+        result = _deal_to_pd_data(test_deal, db)
+
+        # Basic fields
+        assert 'title' in result
+        assert result['title'] == test_deal.name
+        assert 'status' in result
+        assert result['status'] == test_deal.status
+
+        # Foreign key references
+        assert 'org_id' in result
+        assert 'person_id' in result
+        assert 'pipeline_id' in result
+        assert 'stage_id' in result
+        assert 'owner_id' in result
+
+        # Custom fields
+        assert 'custom_fields' in result
+
+    def test_deal_to_pd_data_handles_missing_contact(self, db, test_deal):
+        """Test that deal data handles deals without a contact"""
+        test_deal.contact_id = None
+        db.add(test_deal)
+        db.commit()
+
+        result = _deal_to_pd_data(test_deal, db)
+
+        assert 'person_id' in result
+        assert result['person_id'] is None
+
+    def test_deal_to_pd_data_maps_custom_fields(self, db, test_deal):
+        """Test that deal custom fields are correctly mapped to Pipedrive field IDs"""
+        # Set some custom fields on the deal
+        test_deal.website = 'https://example.com'
+        test_deal.utm_source = 'google'
+        test_deal.utm_campaign = 'summer2024'
+        test_deal.paid_invoice_count = 5
+        db.add(test_deal)
+        db.commit()
+
+        result = _deal_to_pd_data(test_deal, db)
+
+        assert 'custom_fields' in result
+        custom_fields = result['custom_fields']
+
+        # Verify custom fields are present (exact field IDs depend on DEAL_PD_FIELD_MAP)
+        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
+
+        # Check non-None fields are included
+        assert DEAL_PD_FIELD_MAP['website'] in custom_fields
+        assert custom_fields[DEAL_PD_FIELD_MAP['website']] == 'https://example.com'
+        assert DEAL_PD_FIELD_MAP['utm_source'] in custom_fields
+        assert custom_fields[DEAL_PD_FIELD_MAP['utm_source']] == 'google'
+        assert DEAL_PD_FIELD_MAP['utm_campaign'] in custom_fields
+        assert custom_fields[DEAL_PD_FIELD_MAP['utm_campaign']] == 'summer2024'
+        assert DEAL_PD_FIELD_MAP['paid_invoice_count'] in custom_fields
+        assert custom_fields[DEAL_PD_FIELD_MAP['paid_invoice_count']] == 5
+
+    def test_deal_to_pd_data_excludes_none_and_empty_custom_fields(self, db, test_deal):
+        """Test that None and empty string custom fields are not included in Pipedrive data"""
+        # Set some fields to None and empty string
+        test_deal.website = None
+        test_deal.utm_source = ''
+        test_deal.utm_campaign = 'valid_value'
+        db.add(test_deal)
+        db.commit()
+
+        result = _deal_to_pd_data(test_deal, db)
+
+        assert 'custom_fields' in result
+        custom_fields = result['custom_fields']
+
+        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
+
+        # None and empty string fields should not be in custom_fields
+        assert DEAL_PD_FIELD_MAP['website'] not in custom_fields
+        assert DEAL_PD_FIELD_MAP['utm_source'] not in custom_fields
+
+        # Valid value should be included
+        assert DEAL_PD_FIELD_MAP['utm_campaign'] in custom_fields
+
+
 class TestSyncMeetingToPipedrive:
     """Test sync_meeting_to_pipedrive task"""
 
@@ -282,7 +382,7 @@ class TestDataConversionHelpers:
 
         assert 'title' in result
         assert 'org_id' in result
-        assert 'user_id' in result
+        assert 'owner_id' in result
         assert 'pipeline_id' in result
         assert 'stage_id' in result
         assert 'status' in result
