@@ -802,3 +802,78 @@ class TestTC2DealCreation:
         assert updated_company.utm_source == 'facebook'
         assert updated_company.utm_campaign == 'winter2024'
         assert updated_company.estimated_income == '10000'
+
+    async def test_update_company_does_not_overwrite_bdr_and_support_person(self, db, sample_tc_client_data):
+        """Test that bdr_person_id and support_person_id are NEVER updated once set (manual assignments preserved)"""
+        # Create admins
+        sales_admin = db.create(
+            Admin(first_name='Sales', last_name='Admin', username='sales@example.com', tc2_admin_id=100)
+        )
+        support_admin = db.create(
+            Admin(first_name='Support', last_name='Admin', username='support@example.com', tc2_admin_id=101)
+        )
+        bdr_admin = db.create(Admin(first_name='BDR', last_name='Admin', username='bdr@example.com', tc2_admin_id=102))
+
+        # Create NEW admins that TC2 will try to assign
+        db.create(
+            Admin(first_name='NewSupport', last_name='Admin', username='newsupport@example.com', tc2_admin_id=201)
+        )
+        db.create(Admin(first_name='NewBDR', last_name='Admin', username='newbdr@example.com', tc2_admin_id=202))
+
+        # Create company with all admins set
+        sample_tc_client_data['sales_person'] = {'id': 100}
+        sample_tc_client_data['associated_admin'] = {'id': 101}
+        sample_tc_client_data['bdr_person'] = {'id': 102}
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db)
+
+        assert company.sales_person_id == sales_admin.id
+        assert company.support_person_id == support_admin.id
+        assert company.bdr_person_id == bdr_admin.id
+
+        # TC2 sends update with DIFFERENT support_person and bdr_person (trying to reassign)
+        sample_tc_client_data['associated_admin'] = {'id': 201}  # Different support person
+        sample_tc_client_data['bdr_person'] = {'id': 202}  # Different BDR
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 20
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        # sales_person should be updated (it's required)
+        assert updated_company.sales_person_id == sales_admin.id
+        # But support_person and bdr_person should NOT change (manual assignment preserved)
+        assert updated_company.support_person_id == support_admin.id  # Still original
+        assert updated_company.bdr_person_id == bdr_admin.id  # Still original
+        # And the actual update should apply
+        assert updated_company.paid_invoice_count == 20
+
+    async def test_update_company_support_bdr_stay_none_if_never_set(self, db, sample_tc_client_data):
+        """Test that support_person_id and bdr_person_id stay None if never provided"""
+        # Create only sales admin
+        sales_admin = db.create(
+            Admin(first_name='Sales', last_name='Admin', username='sales@example.com', tc2_admin_id=100)
+        )
+
+        # Create company WITHOUT support_person and bdr_person
+        sample_tc_client_data['sales_person'] = {'id': 100}
+        sample_tc_client_data.pop('associated_admin', None)
+        sample_tc_client_data.pop('bdr_person', None)
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db)
+
+        assert company.sales_person_id == sales_admin.id
+        assert company.support_person_id is None
+        assert company.bdr_person_id is None
+
+        # TC2 sends another update still WITHOUT support_person and bdr_person
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        # They should still be None (not set to anything)
+        assert updated_company.support_person_id is None
+        assert updated_company.bdr_person_id is None
+        assert updated_company.paid_invoice_count == 5

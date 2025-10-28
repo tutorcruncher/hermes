@@ -119,10 +119,14 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
                     f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
                 )
 
-        # Update relationships
+        # Update relationships - only if not already set (don't overwrite manual assignments)
+        # sales_person is required, so always update
         company.sales_person_id = sales_person.id
-        company.support_person_id = support_person.id if support_person else None
-        company.bdr_person_id = bdr_person.id if bdr_person else None
+        # support_person and bdr_person: NEVER update if already set (manual assignments take precedence)
+        if not company.support_person_id and support_person:
+            company.support_person_id = support_person.id
+        if not company.bdr_person_id and bdr_person:
+            company.bdr_person_id = bdr_person.id
 
         # Update extra attributes (these override meta_agency values if present)
         # Only update if the value is not None
