@@ -168,7 +168,7 @@ async def choose_support_person(db: DBSession = Depends(get_db)):
     # Get latest company to determine round-robin position
     latest_company = db.exec(
         select(Company).where(Company.support_person_id.isnot(None)).order_by(Company.created.desc())
-    ).one_or_none()
+    ).first()
 
     if latest_company:
         latest_support_person = latest_company.support_person_id

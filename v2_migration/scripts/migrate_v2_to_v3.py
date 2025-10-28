@@ -177,6 +177,30 @@ class v2Tov3Migrator:
 
         logger.info(f'Migrated {len(self.stage_id_map)} stages')
 
+    async def update_pipeline_dft_entry_stages(self):
+        """Update pipeline dft_entry_stage_id after stages are migrated"""
+        logger.info('Updating pipeline default entry stages...')
+
+        v2_pipelines = await self.v2_conn.fetch('SELECT id, dft_entry_stage_id FROM pipeline ORDER BY id')
+
+        updated_count = 0
+        for v2_pipeline in v2_pipelines:
+            if v2_pipeline['dft_entry_stage_id']:
+                v3_pipeline_id = self.pipeline_id_map.get(v2_pipeline['id'])
+                v3_stage_id = self.stage_id_map.get(v2_pipeline['dft_entry_stage_id'])
+
+                if v3_pipeline_id and v3_stage_id:
+                    await self.v3_conn.execute(
+                        """
+                        UPDATE pipeline SET dft_entry_stage_id = $1 WHERE id = $2
+                        """,
+                        v3_stage_id,
+                        v3_pipeline_id,
+                    )
+                    updated_count += 1
+
+        logger.info(f'Updated {updated_count} pipeline default entry stages')
+
     async def migrate_config(self):
         """Migrate Config record from v2 to v3"""
         logger.info('Migrating Config...')
@@ -385,9 +409,9 @@ class v2Tov3Migrator:
                 """
                 INSERT INTO deal (
                     pd_deal_id, name, status, admin_id, pipeline_id, stage_id, company_id, contact_id,
-                    support_person_id, bdr_person_id, paid_invoice_count, tc2_status, website,
+                    support_person_id, bdr_person_id, paid_invoice_count, tc2_status, tc2_cligency_url, website,
                     price_plan, estimated_income, signup_questionnaire, utm_campaign, utm_source
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 RETURNING id
                 """,
                 v2_deal['pd_deal_id'],
@@ -402,6 +426,7 @@ class v2Tov3Migrator:
                 bdr_person_id,
                 paid_invoice_count,
                 tc2_status,
+                v2_deal['tc2_cligency_url'],
                 website,
                 price_plan,
                 estimated_income,
@@ -496,6 +521,7 @@ class v2Tov3Migrator:
             await self.migrate_admins()
             await self.migrate_pipelines()
             await self.migrate_stages()
+            await self.update_pipeline_dft_entry_stages()  # Update pipelines after stages exist
             await self.migrate_config()
             await self.migrate_companies()
             await self.migrate_contacts()
