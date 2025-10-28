@@ -42,7 +42,7 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
 _DEFAULT_DEAL_PD_FIELD_MAP = {
     'hermes_id': '5be1188db52a8c7f0ea49331eb391ae54aeabafc',
     'support_person_id': '6911e0b7f9c56a40931381aa0485f705794f6c9f',
-    'tc2_cligency_url': '0dce4a9cac0177a95c0233756b8cd045bf7e28f2',
+    'tc2_cligency_url': '14256b4f62c1dabb53f3e9516c6cc6e23d3aa0af',
     'signup_questionnaire': '1c68afb8974133b7f9d0c30fdbf1d39de2255399',
     'utm_campaign': '268c0a64eb380daf58f15db7e33ead84d06becfe',
     'utm_source': 'b0cf54987b07634053a9e0910fa5ed3d7431d2bf',
