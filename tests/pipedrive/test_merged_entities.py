@@ -731,3 +731,71 @@ class TestPipedriveWebhookEdgeCases:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
+
+    async def test_org_webhook_with_tc2_cligency_url_in_field_map(self, client, db, test_company):
+        """Test that tc2_cligency_url in field map doesn't cause setter error"""
+        test_company.pd_org_id = 999
+        test_company.tc2_cligency_id = 12345
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Test Company',
+                COMPANY_PD_FIELD_MAP['tc2_cligency_url']: 'https://secure.tutorcruncher.com/clients/12345/',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        # tc2_cligency_url is a computed property, so it shouldn't be set
+        # It should still be computed from tc2_cligency_id
+        assert test_company.tc2_cligency_url == 'https://secure.tutorcruncher.com/clients/12345/'
+
+    async def test_deal_webhook_with_tc2_cligency_url_in_field_map(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that tc2_cligency_url in deal field map doesn't cause setter error"""
+        test_company.tc2_cligency_id = 12345
+        db.add(test_company)
+        db.commit()
+
+        deal = db.create(
+            Deal(
+                name='Test Deal',
+                pd_deal_id=888,
+                admin_id=test_admin.id,
+                company_id=test_company.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'updated'},
+            'data': {
+                'id': 888,
+                DEAL_PD_FIELD_MAP['hermes_id']: deal.id,
+                'title': 'Updated Deal',
+                'status': 'open',
+                DEAL_PD_FIELD_MAP['tc2_cligency_url']: 'https://secure.tutorcruncher.com/clients/12345/',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        # tc2_cligency_url should be set on Deal (it's a regular field, not a property)
+        assert deal.tc2_cligency_url == 'https://secure.tutorcruncher.com/clients/12345/'

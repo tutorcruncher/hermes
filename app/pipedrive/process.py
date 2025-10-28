@@ -114,7 +114,9 @@ class OrganisationProcessor(PipedriveObjProcessor):
     @property
     def custom_field_names(self):
         return [
-            f for f in list(COMPANY_PD_FIELD_MAP.keys()) if f not in ['hermes_id', 'bdr_person_id', 'support_person_id']
+            f
+            for f in list(COMPANY_PD_FIELD_MAP.keys())
+            if f not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url']
         ]
 
     async def _add_obj(self, pd_obj: Organisation) -> Company:
