@@ -98,6 +98,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             'email_confirmed_dt',
             'gclid',
             'gclid_expiry_dt',
+            'signup_questionnaire',
         ]
         for field in optional_fields:
             value = getattr(tc_client.meta_agency, field, None)
@@ -123,14 +124,15 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         company.support_person_id = support_person.id if support_person else None
         company.bdr_person_id = bdr_person.id if bdr_person else None
 
-        # Update extra attributes
-        if 'utm_source' in extra_attrs_dict:
+        # Update extra attributes (these override meta_agency values if present)
+        # Only update if the value is not None
+        if 'utm_source' in extra_attrs_dict and extra_attrs_dict['utm_source'] is not None:
             company.utm_source = extra_attrs_dict['utm_source']
-        if 'utm_campaign' in extra_attrs_dict:
+        if 'utm_campaign' in extra_attrs_dict and extra_attrs_dict['utm_campaign'] is not None:
             company.utm_campaign = extra_attrs_dict['utm_campaign']
-        if 'signup_questionnaire' in extra_attrs_dict:
+        if 'signup_questionnaire' in extra_attrs_dict and extra_attrs_dict['signup_questionnaire'] is not None:
             company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
-        if 'estimated_monthly_income' in extra_attrs_dict:
+        if 'estimated_monthly_income' in extra_attrs_dict and extra_attrs_dict['estimated_monthly_income'] is not None:
             company.estimated_income = extra_attrs_dict['estimated_monthly_income']
 
         db.add(company)

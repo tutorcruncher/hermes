@@ -744,3 +744,61 @@ class TestTC2DealCreation:
         assert updated_company.pay0_dt is not None
         # But the actual update should apply
         assert updated_company.paid_invoice_count == 10
+
+    async def test_update_company_extra_attrs_does_not_overwrite_with_null(self, db, test_admin, sample_tc_client_data):
+        """Test that extra_attrs with None/null don't overwrite existing values"""
+        # Create company with extra_attrs fields set
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'google'},
+            {'machine_name': 'utm_campaign', 'value': 'summer2024'},
+            {'machine_name': 'estimated_monthly_income', 'value': '5000'},
+        ]
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db)
+
+        assert company.utm_source == 'google'
+        assert company.utm_campaign == 'summer2024'
+        assert company.estimated_income == '5000'
+
+        # TC2 sends update WITHOUT extra_attrs (they're not in the dict)
+        sample_tc_client_data['extra_attrs'] = []
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 15  # Some actual update
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        # Original values should be preserved (not overwritten because key not in dict)
+        assert updated_company.utm_source == 'google'
+        assert updated_company.utm_campaign == 'summer2024'
+        assert updated_company.estimated_income == '5000'
+        # But the actual update should apply
+        assert updated_company.paid_invoice_count == 15
+
+    async def test_update_company_extra_attrs_can_be_set_initially(self, db, test_admin, sample_tc_client_data):
+        """Test that extra_attrs fields ARE set when they have values on first update"""
+        # Create company without extra_attrs
+        sample_tc_client_data['extra_attrs'] = []
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db)
+
+        # Fields should be None
+        assert company.utm_source is None
+        assert company.utm_campaign is None
+        assert company.estimated_income is None
+
+        # Now TC2 sends update WITH extra_attrs
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'facebook'},
+            {'machine_name': 'utm_campaign', 'value': 'winter2024'},
+            {'machine_name': 'estimated_monthly_income', 'value': '10000'},
+        ]
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        # Values should NOW be set
+        assert updated_company.utm_source == 'facebook'
+        assert updated_company.utm_campaign == 'winter2024'
+        assert updated_company.estimated_income == '10000'
