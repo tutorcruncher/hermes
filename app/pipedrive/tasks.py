@@ -263,7 +263,7 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         'title': deal.name,
         'org_id': company.pd_org_id if company else None,
         'person_id': contact.pd_person_id if contact else None,
-        'user_id': deal.admin.pd_owner_id if deal.admin else None,
+        'owner_id': deal.admin.pd_owner_id if deal.admin else None,
         'pipeline_id': deal.pipeline.pd_pipeline_id if deal.pipeline else None,
         'stage_id': deal.stage.pd_stage_id if deal.stage else None,
         'status': deal.status,

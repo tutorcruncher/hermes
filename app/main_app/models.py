@@ -286,6 +286,7 @@ class Deal(SQLModel, table=True):
     bdr_person_id: Optional[int] = Field(default=None)
     paid_invoice_count: Optional[int] = Field(default=0)
     tc2_status: Optional[str] = Field(default=None)
+    tc2_cligency_url: Optional[str] = Field(default=None, max_length=255)
     website: Optional[str] = Field(default=None)
     price_plan: Optional[str] = Field(default=None)
     estimated_income: Optional[str] = Field(default=None)
