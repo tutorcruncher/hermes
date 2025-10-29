@@ -210,9 +210,15 @@ async def book_meeting(
                 company_country=company.country,
                 crm_url=company.pd_org_url or '',
             )
+        # Use same title format as Meeting.name property
+        if isinstance(event, CBSalesCall):
+            summary = f'TutorCruncher demo with {admin.first_name} {admin.last_name}'.strip()
+        else:
+            summary = f'TutorCruncher support meeting with {admin.first_name} {admin.last_name}'.strip()
+
         g_cal.create_cal_event(
             description=meeting_template.format(**meeting_templ_vars),
-            summary=f'Sales Call - {contact.first_name or ""} {contact.last_name}'.strip(),
+            summary=summary,
             contact_email=contact.email,
             start=meeting_start,
             end=meeting_end,
