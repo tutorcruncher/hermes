@@ -298,10 +298,16 @@ def _meeting_to_activity_data(meeting: Meeting, db) -> dict:
         'due_date': meeting.start_time.strftime('%Y-%m-%d') if meeting.start_time else None,
         'due_time': meeting.start_time.strftime('%H:%M') if meeting.start_time else None,
         'subject': meeting.name,
-        'user_id': meeting.admin.pd_owner_id if meeting.admin else None,
-        'person_id': contact.pd_person_id if contact else None,
-        'org_id': company.pd_org_id if company else None,
+        'owner_id': meeting.admin.pd_owner_id if meeting.admin else None,
     }
+
+    # Add participant
+    if contact and contact.pd_person_id:
+        data['participants'] = [{'person_id': contact.pd_person_id, 'primary': True}]
+
+    # Add org_id if available
+    if company and company.pd_org_id:
+        data['org_id'] = company.pd_org_id
 
     if meeting.deal_id:
         deal = db.get(Deal, meeting.deal_id)

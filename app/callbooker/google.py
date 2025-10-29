@@ -44,8 +44,8 @@ class AdminGoogleCalendar:
         event = {
             'summary': summary,
             'description': description,
-            'start': {'dateTime': start.isoformat()},
-            'end': {'dateTime': end.isoformat()},
+            'start': {'dateTime': start.isoformat(), 'timeZone': 'UTC'},
+            'end': {'dateTime': end.isoformat(), 'timeZone': 'UTC'},
             'attendees': [{'email': self.admin_email}, {'email': contact_email}],
             'reminders': {'useDefault': True},
             'conferenceData': {

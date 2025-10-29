@@ -712,3 +712,102 @@ class TestCallbookerValidation:
         # Verify meeting was created
         meeting = db.exec(select(Meeting)).first()
         assert meeting is not None
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_rollback_on_google_calendar_failure(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that meeting is NOT persisted if Google Calendar event creation fails"""
+        from unittest.mock import Mock
+
+        from googleapiclient.errors import HttpError
+
+        # Mock Google Calendar to raise an error when creating event
+        mock_resource = mock_gcal_builder.return_value
+        mock_resource.freebusy.return_value.query.return_value.execute.return_value = {
+            'calendars': {'test@example.com': {'busy': []}}
+        }
+        # Simulate Google Calendar API error during event creation
+        mock_resp = Mock()
+        mock_resp.status = 403
+        mock_resp.reason = 'Forbidden'
+        mock_resource.events.return_value.insert.return_value.execute.side_effect = HttpError(
+            resp=mock_resp, content=b'Forbidden'
+        )
+
+        admin = db.create(Admin(first_name='Test', last_name='Admin', username='test@example.com'))
+
+        future_dt = datetime.now(utc) + timedelta(days=1)
+        meeting_data = {
+            'admin_id': admin.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': future_dt.isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+
+        # Should return error
+        assert r.status_code == 400
+        assert r.json()['status'] == 'error'
+        assert 'calendar event' in r.json()['message'].lower()
+
+        # CRITICAL: Meeting should NOT be persisted in database
+        meetings = db.exec(select(Meeting)).all()
+        assert len(meetings) == 0, 'Meeting was persisted despite Google Calendar failure - transaction not rolled back'
+
+        # Company and contact should still be created (they're committed earlier in the flow)
+        company = db.exec(select(Company)).first()
+        assert company is not None  # Company creation happened before meeting
+
+        # Verify we can book again at the same time (no phantom meeting blocking)
+        mock_resource.events.return_value.insert.return_value.execute.side_effect = None  # Clear error
+        mock_resource.events.return_value.insert.return_value.execute.return_value = {'id': 'event123'}
+
+        r2 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r2.status_code == 200, 'Second booking should succeed - no phantom meeting should block it'
+
+        # Now meeting should exist
+        meetings = db.exec(select(Meeting)).all()
+        assert len(meetings) == 1
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_admin_busy_check_via_google_calendar(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that admin busy check via Google Calendar freebusy API prevents booking"""
+        # Mock admin as busy at the requested time
+        requested_time = datetime(2026, 7, 3, 10, 0, tzinfo=utc)
+        mock_gcal_builder.side_effect = fake_gcal_builder(start_dt=requested_time, meeting_dur_mins=30)
+
+        admin = db.create(Admin(first_name='Test', last_name='Admin', username='climan@example.com'))
+
+        meeting_data = {
+            'admin_id': admin.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': requested_time.isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+
+        # Should fail because admin is busy in Google Calendar
+        assert r.status_code == 400
+        assert r.json()['status'] == 'error'
+        assert 'not free' in r.json()['message'].lower()
+
+        # Meeting should not be created
+        meetings = db.exec(select(Meeting)).all()
+        assert len(meetings) == 0
