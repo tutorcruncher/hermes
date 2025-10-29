@@ -188,47 +188,6 @@ async def book_meeting(
     if not await check_gcal_open_slots(meeting_start, meeting_end, admin.email):
         raise MeetingBookingError('Admin is not free at this time.')
 
-    # create calender event first
-    # If fails, we dont create the meeting in the database
-    try:
-        g_cal = AdminGoogleCalendar(admin_email=admin.email)
-        meeting_template = MEETING_CONTENT_TEMPLATES[
-            Meeting.TYPE_SALES if isinstance(event, CBSalesCall) else Meeting.TYPE_SUPPORT
-        ]
-        meeting_templ_vars = {
-            'contact_first_name': contact.first_name or 'there',
-            'company_name': company.name,
-            'admin_name': admin.first_name,
-            'tc2_cligency_id': company.tc2_cligency_id or '',
-            'tc2_cligency_url': company.tc2_cligency_url or '',
-        }
-        if isinstance(event, CBSalesCall):
-            meeting_templ_vars.update(
-                contact_email=contact.email,
-                contact_phone=contact.phone,
-                company_estimated_monthly_revenue=company.estimated_income,
-                company_country=company.country,
-                crm_url=company.pd_org_url or '',
-            )
-        # Use same title format as Meeting.name property
-        if isinstance(event, CBSalesCall):
-            summary = f'TutorCruncher demo with {admin.first_name} {admin.last_name}'.strip()
-        else:
-            summary = f'TutorCruncher support meeting with {admin.first_name} {admin.last_name}'.strip()
-
-        g_cal.create_cal_event(
-            description=meeting_template.format(**meeting_templ_vars),
-            summary=summary,
-            contact_email=contact.email,
-            start=meeting_start,
-            end=meeting_end,
-        )
-        logger.info(f'Created Google Calendar event for {contact.email}')
-    except Exception as e:
-        logger.error(f'Failed to create Google Calendar event: {e}', exc_info=True)
-        raise MeetingBookingError('Failed to create calendar event')
-
-    # Create meeting record AFTER Google Calendar succeeds
     meeting = Meeting(
         company_id=company.id,
         contact_id=contact.id,
@@ -238,9 +197,13 @@ async def book_meeting(
         admin_id=admin.id,
     )
     db.add(meeting)
-    # flush tells db to stage the trasnactions, its not commited yet. We flush to get a meeting_id
-    # Let the calling function commit
     db.flush()
+    try:
+        await create_meeting_gcal_event(meeting, db)
+    except Exception as e:
+        db.rollback()
+        logger.error(f'Failed to create Google Calendar event: {e}', exc_info=True)
+        raise MeetingBookingError('Failed to create calendar event')
     db.refresh(meeting)
     return meeting
 

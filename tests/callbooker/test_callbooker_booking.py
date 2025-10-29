@@ -770,9 +770,10 @@ class TestCallbookerValidation:
         mock_resource.events.return_value.insert.return_value.execute.side_effect = None  # Clear error
         mock_resource.events.return_value.insert.return_value.execute.return_value = {'id': 'event123'}
 
+        admins = db.exec(select(Admin)).all()
+        assert len(admins) == 1
         r2 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
         assert r2.status_code == 200, 'Second booking should succeed - no phantom meeting should block it'
-
         # Now meeting should exist
         meetings = db.exec(select(Meeting)).all()
         assert len(meetings) == 1
