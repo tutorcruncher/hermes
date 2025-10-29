@@ -66,6 +66,8 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
 
     try:
         meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
+        db.add(meeting)
+        db.commit()
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 

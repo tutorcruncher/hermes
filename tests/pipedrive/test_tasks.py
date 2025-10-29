@@ -388,16 +388,25 @@ class TestDataConversionHelpers:
         assert 'status' in result
         assert 'custom_fields' in result
 
-    def test_meeting_to_activity_data(self, db, test_meeting):
+    def test_meeting_to_activity_data(self, db, test_meeting, test_contact, test_company):
         """Test converting Meeting to Pipedrive activity data"""
+        # Set Pipedrive IDs to test participants and org_id
+        test_contact.pd_person_id = 123
+        test_company.pd_org_id = 456
+        db.add(test_contact)
+        db.add(test_company)
+        db.commit()
+
         result = _meeting_to_activity_data(test_meeting, db)
 
         assert 'due_date' in result
         assert 'due_time' in result
         assert 'subject' in result
-        assert 'user_id' in result
-        assert 'person_id' in result
+        assert 'owner_id' in result  # Changed from user_id in API v2
+        assert 'participants' in result  # Changed from person_id in API v2, array format
+        assert result['participants'] == [{'person_id': 123, 'primary': True}]
         assert 'org_id' in result
+        assert result['org_id'] == 456
 
     def test_meeting_to_activity_data_with_deal(self, db, test_meeting, test_deal):
         """Test converting Meeting with deal_id includes deal_id in activity"""

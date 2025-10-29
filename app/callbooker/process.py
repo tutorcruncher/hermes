@@ -232,11 +232,10 @@ async def book_meeting(
         admin_id=admin.id,
     )
     db.add(meeting)
-    db.flush()  # Flush to get meeting.id, but don't commit yet
+    # flush tells db to stage the trasnactions, its not commited yet. We flush to get a meeting_id
+    # Let the calling function commit
+    db.flush()
     db.refresh(meeting)
-
-    # Don't commit here - let the caller (view) handle the commit
-    # Since Google Calendar already succeeded, any subsequent commit will persist the meeting
     return meeting
 
 
