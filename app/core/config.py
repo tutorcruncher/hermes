@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     g_client_x509_cert_url: str = (
         'https://www.googleapis.com/robot/v1/metadata/x509/tc-hubspot%40tc-hubspot-314214.iam.gserviceaccount.com'
     )
+
+    @field_validator('database_url', mode='before')
+    @classmethod
+    def fix_heroku_postgres_url(cls, v) -> str:
+        if isinstance(v, str) and v.startswith('postgres://'):
+            return v.replace('postgres://', 'postgresql://', 1)
+        return v
 
     @property
     def google_credentials(self):
