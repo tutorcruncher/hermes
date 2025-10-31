@@ -18,31 +18,40 @@ async def sync_company_to_pipedrive(company_id: int):
     This is called after TC2 or Callbooker updates.
     """
     with logfire.span('sync_company_to_pipedrive'):
-        db = get_session()
         try:
-            company = db.get(Company, company_id)
-            if not company:
-                logger.warning(f'Company {company_id} not found, skipping sync')
-                return
+            # Fetch company and related IDs with short-lived connection
+            with get_session() as db:
+                company = db.get(Company, company_id)
+                if not company:
+                    logger.warning(f'Company {company_id} not found, skipping sync')
+                    return
+                
+                # Get IDs of related entities while we have the session
+                contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+                deal_ids = [d.id for d in db.exec(select(Deal).where(Deal.company_id == company_id)).all()]
 
-            # Sync organization
-            await sync_organization(company, db)
+            # Sync organization with a fresh connection
+            with get_session() as db:
+                company = db.get(Company, company_id)
+                await sync_organization(company, db)
 
-            # Sync all contacts
-            contacts = db.exec(select(Contact).where(Contact.company_id == company_id)).all()
-            for contact in contacts:
-                await sync_person(contact, db)
+            # Sync each contact with its own connection
+            for contact_id in contact_ids:
+                with get_session() as db:
+                    contact = db.get(Contact, contact_id)
+                    if contact:
+                        await sync_person(contact, db)
 
-            # Sync all deals
-            deals = db.exec(select(Deal).where(Deal.company_id == company_id)).all()
-            for deal in deals:
-                await sync_deal(deal, db)
+            # Sync each deal with its own connection
+            for deal_id in deal_ids:
+                with get_session() as db:
+                    deal = db.get(Deal, deal_id)
+                    if deal:
+                        await sync_deal(deal, db)
 
             logger.info(f'Successfully synced company {company_id} to Pipedrive')
         except Exception as e:
             logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
-        finally:
-            db.close()
 
 
 async def sync_organization(company: Company, db):
@@ -158,44 +167,44 @@ async def sync_deal(deal: Deal, db):
 async def sync_meeting_to_pipedrive(meeting_id: int):
     """Sync a meeting as an activity to Pipedrive"""
     with logfire.span('sync_meeting_to_pipedrive'):
-        db = get_session()
         try:
-            meeting = db.get(Meeting, meeting_id)
-            if not meeting:
-                logger.warning(f'Meeting {meeting_id} not found, skipping sync')
-                return
-
-            activity_data = _meeting_to_activity_data(meeting, db)
+            # Fetch meeting data with short-lived connection
+            with get_session() as db:
+                meeting = db.get(Meeting, meeting_id)
+                if not meeting:
+                    logger.warning(f'Meeting {meeting_id} not found, skipping sync')
+                    return
+                activity_data = _meeting_to_activity_data(meeting, db)
+            
+            # Make API call without holding database connection
             result = await api.create_activity(activity_data)
             logger.info(f'Created activity {result["data"]["id"]} for meeting {meeting_id}')
         except Exception as e:
             logger.error(f'Error syncing meeting {meeting_id}: {e}', exc_info=True)
-        finally:
-            db.close()
 
 
 async def purge_company_from_pipedrive(company_id: int):
     """Delete a company and all related data from Pipedrive (for NARC companies)"""
     with logfire.span('purge_company_from_pipedrive'):
-        db = get_session()
         try:
-            company = db.get(Company, company_id)
-            if not company:
-                return
+            # Fetch company data with short-lived connection
+            with get_session() as db:
+                company = db.get(Company, company_id)
+                if not company:
+                    return
+                pd_org_id = company.pd_org_id
 
-            # Delete organization
-            if company.pd_org_id:
+            # Delete organization from Pipedrive (without holding DB connection)
+            if pd_org_id:
                 try:
-                    await api.delete_organisation(company.pd_org_id)
-                    logger.info(f'Deleted organization {company.pd_org_id}')
+                    await api.delete_organisation(pd_org_id)
+                    logger.info(f'Deleted organization {pd_org_id}')
                 except Exception as e:
-                    logger.error(f'Error deleting organization {company.pd_org_id}: {e}')
+                    logger.error(f'Error deleting organization {pd_org_id}: {e}')
 
             logger.info(f'Purged company {company_id} from Pipedrive')
         except Exception as e:
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
-        finally:
-            db.close()
 
 
 def _company_to_org_data(company: Company) -> dict:
