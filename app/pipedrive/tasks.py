@@ -243,14 +243,12 @@ def _company_to_org_data(company: Company) -> dict:
 
 def _contact_to_person_data(contact: Contact, db) -> dict:
     """Convert Contact model to Pipedrive person data"""
-
-    assert contact.email or contact.phone
     company = db.get(Company, contact.company_id)
 
     data = {
         'name': contact.name,
         'emails': [{'value': contact.email, 'label': 'work', 'primary': True}],
-        'phones': [{'value': contact.phone or '0', 'label': 'work', 'primary': True}],
+        'phones': [{'value': contact.phone, 'label': 'work', 'primary': True}],
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
