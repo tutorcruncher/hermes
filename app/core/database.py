@@ -20,7 +20,13 @@ class DBSession(Session):
         return instance
 
 
-engine = create_engine(str(settings.database_url))
+engine = create_engine(
+    str(settings.database_url),
+    pool_size=20,
+    max_overflow=15,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 SessionLocal = sessionmaker(class_=DBSession, autocommit=False, autoflush=False, bind=engine)
 
 SessionCls = SessionLocal  # So that we can override in tests
