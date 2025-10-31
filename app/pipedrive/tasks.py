@@ -187,14 +187,12 @@ async def purge_company_from_pipedrive(company_id: int):
     """Delete a company and all related data from Pipedrive (for NARC companies)"""
     with logfire.span('purge_company_from_pipedrive'):
         try:
-            # Fetch company data with short-lived connection
             with get_session() as db:
                 company = db.get(Company, company_id)
                 if not company:
                     return
                 pd_org_id = company.pd_org_id
 
-            # Delete organization from Pipedrive (without holding DB connection)
             if pd_org_id:
                 try:
                     await api.delete_organisation(pd_org_id)
