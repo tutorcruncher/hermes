@@ -1,388 +1,479 @@
-# TC - Hermes  
-  
+# Hermes
+
 ![hermes_v2_favicon (1)](https://github.com/tutorcruncher/hermes/assets/70067036/2019e4cf-056e-4e85-9694-5fa0b76dd2a4)
 
-  
-Hermes is our sales system that manages the connection between TutorCruncher (the system), the callbooker on our   
-website, and Pipedrive (our current sales CRM).  
-  
-This system is built using TortoiseORM and FastAPI.
-  
+Sales integration system connecting TutorCruncher (TC2), Pipedrive CRM, and the Website Callbooker.
+
+## Overview
+
+Hermes synchronizes customer data between three systems:
+- **TutorCruncher (TC2)** - Internal business management system
+- **Pipedrive** - CRM for sales pipeline management  
+- **Website Callbooker** - Customer-facing meeting booking system
+
+**Data Flow:**
+- TC2 → Hermes → Pipedrive
+- Callbooker → Hermes → Pipedrive
+- Pipedrive → Hermes (updates Hermes only, doesn't sync back to TC2)
+
 ## Glossary  
   
-Objects are named different things depending on which system you use:  
+Objects are named differently depending on the system:  
   
 | Hermes   | TutorCruncher | Pipedrive    | Description                                                       |  
 |----------|---------------|--------------|-------------------------------------------------------------------|  
-| Company  | Cligency      | Organisation | A business that is a potential/current customer of TutorCruncher. |  
-| Contact  | SR            | Person       | Someone who works for the Company.                                |  
-| Pipeline |               | Pipeline     | The sales pipelines                                               |  
-| Stage    |               | Stage        | The stages of the pipelines                                       |  
-| Deal     |               | Deal         | A potential sale with a Company.                                  |  
-| Meeting  |               | Activity     | A meeting with a Contact.                                         |
+| Company  | Cligency      | Organisation | A business that is a potential/current customer of TutorCruncher |  
+| Contact  | SR            | Person       | Someone who works for the Company                                |  
+| Deal     |               | Deal         | A potential sale with a Company                                  |  
+| Meeting  |               | Activity     | A meeting with a Contact                                         |
+| Pipeline |               | Pipeline     | The sales pipelines in Pipedrive                                 |  
+| Stage    |               | Stage        | The stages within each pipeline                                  |  
 
-  
-## Project structure  
-  
-This project consists of 4 apps:  
-- `admin`: Used as an admin interface to deal with configuration  
-- `callbooker`: Deals with callbacks and availability from the callbooker on the website  
-- `pipedrive`: Deals with callbacks and data sync to Pipedrive  
-- `tc2`: Deals with callbacks and data sync to Pipedrive
-- `hermes` : Deals with data to do with the entire Hermes system
+## Tech Stack
 
-## Running locally  
+- **Language**: Python 3.12+
+- **Framework**: FastAPI
+- **Database**: PostgreSQL
+- **ORM**: SQLModel (async SQLAlchemy + Pydantic)
+- **Validation**: Pydantic
+- **Migrations**: Alembic
+- **Observability**: Logfire
+- **Error Tracking**: Sentry
+- **External APIs**: TC2, Pipedrive, Google Calendar
 
-Since Hermes works with tutorcruncher.com, the TC2 system and Pipedrive, there is quite a lot to set up to get the system working:
+## Project Structure
 
-### TC2:  - Set this up first
-  
-Run TC2 locally on port 5000. `python manage.py runserver 5000`
-  
-#### TC2 Environment Variables
-```  
-# Hermes
-HERMES_URL = 'https://${your ngrok domain}'  
-HERMES_API_KEY = ${tc2 api integration private key} # same as tc2_api_key in hermes env vars
-```  
-
-#### Create Meta Admins:  
-Create 5 Admins in TC2, for each of the following:
-- payg / startup sales
-- enterprise sales
-- support 1
-- support 2
-- bdr
-  
-#### Meta Client Custom Fields:
-Navigate to System > Settings > Custom Fields > Add Custom Field
 ```
-estimated_monthly_income: str (Short Textbox)     # estimated monthly income of the Cligency
-utm_source: str (Short Textbox)                  # utm source of the Cligency
-utm_campaign: str (Short Textbox)                # utm campaign of the Cligency
-currency: str (Short Textbox)                    # currency of the Cligency
-referer: str (Short Textbox)                     # referer of the Cligency
-```
-  
-#### Add API Integration to META:  
-
-Navigate to ... > Settings > API Integrations > Create API Integration
-
-- Name: `Hermes`  
-- URL: `http://localhost:8000/tc2/callback/`  
-
-this will create a private key, copy this and set it as `tc2_api_key` in hermes env vars and `HERMES_API_KEY` in tc2 env vars.
-
-### Pipedrive:
-
-Pipedrive is our current sales CRM. We use it to manage our sales pipelines and deals.
-
-Create a pipedrive sandbox account.  
-Navigate to Profile > Tools and apps > Webhooks > Create 7 new webhooks:
-- Event action: `*`
-- Event object: `deal`, `organization`, `pipeline`, `person`, `product`, `stage`, `user`
-- Endpoint URL: `https://${your ngrok domain}/pipedrive/callback/`
-- HTTP Auth: `None`  
-  
-#### Setting the Data Fields:  
-Navigate to Company Settings > Data Fields
-
-###### Organization Default Custom Fields:
-
-Hint: Look at Extra Tips (at the bottom of README) for a more detailed guide on how to add a new custom field to Pipedrive
-
-```  
-
-[//]: # (has_booked_call  )
-[//]: # (has_signed_up  )
-tc2_status: Large text  
-tc2_cligency_url: Large text
-hermes_id: Numerical
-bdr_person_id: Numerical
-utm_campaign: Large text
-utm_source: Large text
-estimated_monthly_income: Large text
-currency: Large text
-support_person_id: Numerical
-signup_questionnaire: Large text
-website: Large text
-paid_invoice_count: Numerical
-price_plan: Large text
-```  
-###### Person Default Custom Fields:
-```
-hermes_id
-```
-###### Deal Default Custom Fields:
-```
-hermes_id
+hermes/
+├── app/
+│   ├── main_app/           # Core Hermes models and views
+│   │   ├── models.py       # Database models (Company, Contact, Deal, etc.)
+│   │   └── views.py        # Core API endpoints
+│   ├── pipedrive/          # Pipedrive CRM integration
+│   │   ├── models.py       # Pydantic models for webhooks
+│   │   ├── field_mappings.py  # Field ID mappings
+│   │   ├── api.py          # Pipedrive API client
+│   │   ├── tasks.py        # Background sync tasks
+│   │   ├── process.py      # Webhook processing logic
+│   │   └── views.py        # Webhook endpoints
+│   ├── tc2/                # TutorCruncher integration
+│   │   ├── models.py       # TC2 webhook schemas
+│   │   ├── api.py          # TC2 API client
+│   │   ├── process.py      # TC2 data processing
+│   │   └── views.py        # TC2 webhook endpoints
+│   ├── callbooker/         # Website callbooker integration
+│   │   ├── models.py       # Booking request schemas
+│   │   ├── views.py        # Booking endpoints
+│   │   ├── process.py      # Booking logic
+│   │   ├── availability.py # Slot calculation
+│   │   └── google.py       # Google Calendar integration
+│   ├── core/               # Core infrastructure
+│   │   ├── config.py       # Settings and configuration
+│   │   ├── database.py     # Database setup
+│   │   └── logging.py      # Logging configuration
+│   └── main.py             # FastAPI application entry point
+├── tests/                  # Test suite
+├── migrations/             # Alembic database migrations
+├── system_setup.py         # Automated setup script
+└── pyproject.toml          # Dependencies and configuration
 ```
 
-#### Setup Pipedrive Users:
+## Getting Started
 
--> Navigate to Company settings > Manage users > Add User
+### Prerequisites
 
-Now we should setup a couple of users in Pipedrive:
-- `payg / startup sales`
-- `enterprise sales`
-- `bdr`
+- Python 3.12+
+- PostgreSQL
+- Access to:
+  - TutorCruncher (TC2) instance
+  - Pipedrive account
+  - Google Cloud project (for calendar integration)
 
-You can use your email address for each user, i.e sebastian+pdbdrperson@tutorcruncher.com
+### Installation
 
-
-Get your Pipedrive Owner ID for your Hermes Admins:  
-- Navigate to ... -> Navigate to Company settings > Manage users > select your user  
-- Copy the number at the end of the URL
-
-  
-
-### Hermes:
-
-Install the dependencies with `make install`.   
-You may need to create the database with `make reset-db`.  
-  
-Then run the server with `python -m uvicorn app.main:app --reload`  
-  
-You'll be able to view the admin interface at http://localhost:8000/.   
-
-To first create an admin, go to `/init` to create an admin user.
-Then go to `/login` to log in.
-  
-#### Hermes Environment Variables
-```  
-# TC2  
-tc2_api_key={tc2 api integration private key}          # can be found in tc2 meta > settings > api
-tc2_base_url='http://localhost:5000'                    # url of your tc2 instance
-  
-# Pipedrive  
-pd_api_key={pipedrive api key}                         # can be found in pipedrive > settings > personal preferences > api  
-pd_base_url='https://seb-sandbox2.pipedrive.com'        # your pipedrive sandbox url
+1. **Clone and install dependencies:**
+```bash
+git clone https://github.com/tutorcruncher/hermes.git
+cd hermes
+make install-dev
 ```
 
-#### Create a Hermes Admins:
-Create 5 Admins in Hermes, for each of the following:
-- payg / startup sales
-- enterprise sales
-- support 1
-- support 2
-- bdr
-
-When creating the admin, ensure that the `email` matches their Google account email address, and that the `tc2_admin_id` matches the id of the admin in TC2. and that the `pd_owner_id` matches the id of the user in Pipedrive.
-
-for support admins, set the `pd_owner_id` to 0
-
-
-### Custom Fields:
-Custom fields are used to transfer additional data between TC2 and Pipedrive.
-'Custom Fields' are referred to as 'Data Fields' in Pipedrive
-
-The hermes Custom Field object:
-```
-machine_name - str: the name of the field in snake_case
-name - str: the name of the field
-field_type - str: the type of the field (str, int, bool, fk_field)
-hermes_field_name - str: the name of the field in the hermes object
-tc2_machine_name - str: the name of the field in the tc2 object
-pd_field_id - str: the id of the field in pipedrive
-linked_object_type - str: the type of object the field is linked to (Company, Contact, Deal, Meeting)
+2. **Create database:**
+```bash
+make reset-db
 ```
 
+3. **Configure environment:**
+Create a `.env` file in the project root:
 
-`hermes_field_name` and `tc2_machine_name` are used to determine where the data is coming from, 
-
-if `hermes_field_name` is set, then the data is coming from hermes, these will be attribute names on hermes objects, i.e `paid_invoice_count`
-if `tc2_machine_name` is set, then the data is coming from TC2 extra attrs
-
-if we want to get and modify a field on a TC2 Object which is not in extra attrs, we need to manually code it into hermes, then use `hermes_field_name` to get the data from hermes.
-
-
-`pd_field_id`: inside the objects returned from Pipedrive, the Data fields key is a uuid that is unique to the field, so we need to get the key from the Pipedrive API.
-Data fields > Choose the object tab (Lead/deal, Person, Organization, Product), and select the field you want to get the key for, then select the ... and select `Copy API key` (this will copy the key to your clipboard
-
-
-#### Template Custom Field setup:  
-
-| ID | machine_name | name | field_type | hermes_field_name | tc2_machine_name         | pd_field_id | linked_object_type |
-|---|-------------|------|------------|-------------------|--------------------------|-------------|--------------------|
-| 1 | website | Website | str        | website           | website                  | xxxxxxxxxxx | Company            |
-| 2 | paid_invoice_count | Paid Invoice Count | int        | paid_invoice_count |                          | xxxxxxxxxxx | Company            |
-| 3 | tc2_status | TC2 Status | str        | tc2_status        |                          | xxxxxxxxxxx | Company            |
-| 4 | tc2_cligency_url | TC2 Cligency URL | str        | tc2_cligency_url  |                          | xxxxxxxxxxx | Company            |
-| 5 | utm_source | UTM Source | str        | utm_source        | utm_source               | xxxxxxxxxxx | Company            |
-| 6 | utm_campaign | UTM Campaign | str        | utm_campaign      | utm_campaign             | xxxxxxxxxxx | Company            |
-| 7 | estimated_monthly_income | Estimated Monthly Income | str        | estimated_income | estimated_monthly_income | xxxxxxxxxxx | Company            |
-| 8 | currency | Currency | str        | currency          | currency                 | xxxxxxxxxxx | Company            |
-| 8 | support_person_id | Support Person ID | fk_field   | support_person    |                          | xxxxxxxxxxx | Company            |
-| 9 | bdr_person_id | BDR Person ID | fk_field   | bdr_person        |                          | xxxxxxxxxxx | Company            |
-| 10 | signup_questionnaire | Signup Questionnaire | str        | signup_questionnaire | signup_questionnaire     | xxxxxxxxxxx | Company            |
-| 11 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Company            |
-| 12 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Contact            |
-| 13 | hermes_id | Hermes ID | fk_field   | id                |                          | xxxxxxxxxxx | Deal               |
-
-
-- replace `xxxxxxxxxxx` with the `pd_field_id` from pipedrive, you can get this by selecting the field in pipedrive and selecting the ... then `Copy API key`
-
-
-
-### Ngrok:  
-We use ngrok to expose our local hermes server to the internet, so that we can receive webhooks from Pipedrive.
- 
-run ngrok on port 8000  
-  
-`ngrok http --${your ngrok domain} 8000`  
-  
-set the `HERMES_URL` env var to the ngrok url provided.
-
-HINT: if you create a account with ngrok, it will give you a static url that you can use for the webhooks, that will never expire ;)
-
-
-### Back in Pipedrive lets setup the pipelines and stages:
-- navigate to Deals tab, then in the top right it will have a button 'Pipeline' with a pencil icon, click on that
-- now you can rename the default pipeline to `PAYG`
-- Also edit the stage names, be sure to include the pipeline name in the stage name, i.e `PAYG - Contacted`
-
-then to create a new pipeline click the 'PAYG' dropdown and select 'Add new pipeline'
-
-### Return to Hermes for the next steps:
-
-
-#### Stages Tab
-
-you should now see all the stages from pipedrive, with their associated `pd_stage_id`
-
-- hint: if the stage is not there, go back to pipedrive and edit the name to trigger a webhook to update hermes
-
-
-#### Pipelines Tab
-  
-You should now have 3 pipelines:
-- `PAYG`  
-- `STARTUP`  
-- `ENTERPRISE`
-
-Now edit each pipeline and set the `dft_entry_pipeline_stage` to the stage that the deal should be set to when it is first created in pipedrive. (warning, dropdown is not filtered by pipeline)  
-  
-
-#### Config Tab  
-
-- Edit existing config and set the pipline stages to their associated Hermes Stage IDs
-
-
-#### Setup Callbooker:  
-  
-in order for the callbooker to work on tutorcruncher.com, you need to set the following env vars:  
-- set `DEV_MODE=True` in `.env`  
-- set `G_PRIVATE_KEY` in `.env` to the private key of the google service account  
-- set `G_PRIVATE_KEY_ID` in `.env` to the private key id of the google service account  
-  
-Ensure admin has a matching email address to the one in the sales or support team (i.e fionn@tutorcruncher.com)  
-  
-##### Edit in tutorcruncher.com
-- `sales_reps.yml` and `support_reps.yml`, `hermes_admin_id` to match the sales and support admins ids in hermes.
-- set `HERMES_URL` = `http://localhost:8000`
-
-## Extra Tips
-### How to add a new custom field to Pipedrive:
-
-For example we have a new field on the TC2 Cligency called `signup_questionnaire` that we want to add to the Organization in Pipedrive.
-
-1. Create the field in Pipedrive: [here](https://tutorcruncher.pipedrive.com/settings/fields?type=ORGANIZATION)
-   1. Be sure the name you set is lowercase and snake_case (with underscrolls) (i.e `signup_questionnaire`)
-   2. Set the field type to `Large text` (or whatever type you need)
-2. get the field key from the Pipedrive API by selecting the ... on the field and selecting `Copy API key`
-3. Now in hermes, navigate to the Custom Fields tab:
-   1. Create a new Custom Field
-   2. set the machine_name to the same snake_case name as the field in pipedrive (i.e `signup_questionnaire`)
-   3. set the Name to the name of the field in pipedrive (i.e `Signup Questionnaire`)
-   4. set the field_type to the type of the field in pipedrive (i.e `str`)
-   5. next set the value of either `hermes_field_name` or `tc2_machine_name` to that of the source data location i.e `signup_questionnaire` is coming from TC2 so set `tc2_machine_name` to `signup_questionnaire` and leave `hermes_field_name` blank.
-   6. set the `pd_field_id` to the field key you got from the pipedrive API (i.e `d4db234b06f753a951c0de94456740f270e0f2ed`)
-   7. set the `Linked Object Type` to the hermes object type that the field is linked to (i.e `Company`) 
-
-
-### if in doubt, restart the server
-- When updating and saving anything in the hermes admin, you should restart the server to ensure the changes are picked up. :exploading_head:
-
-
-### Basic setup dumps
-
-- I have created a couple basic setup dumps that you can use to get started with the basic setup of the system, you can find them [here](https://drive.google.com/drive/folders/1b-ldYBI5gyUQiC62zNLgglmux0_n4U-y?usp=drive_link)
-
-## Testing  
-
-Unittests can be run with `make test`. You will need to install the test dependencies with `make install-dev` first.
-
-
-- be sure to login to meta with one of ur newly created admins and NOT `testing@tutorcruncher.com`, as superadmins dont trigger actions and webhooks to be sent :exploding_head:
-- you can set the password of one of your newly created admins like this:
-```
-Administrator.objects.get(id=68).user
-user = _
-user.set_password('testing')
-user.save(update_fields=['password'])
-```
-### Example testing workflows:
-
-#### Company Signup:
-- in TC2 signup form (`/start/1`), fill in the details and submit
-- This will create the Cligency in TC2
-- This will trigger a webhook to create a Company in Hermes
-- Hermes will create the Organization in Pipedrive
-
-
-
-### Testing with live data
-
-to test with live data, run `make restore-from-live` to download and restore the live database to your local machine.
-
-also add your `{your ngork url}/pipedrive/callback` to TutorCruncher Pipedrive webhooks,
-
-then you should see all the webhooks and responses in both your local nrork site and any changes you make in pipedrive will be reflected in your local database.
-
-## Migrations
-
-We use `aerich` to create and run migrations.
-
-If you have changed a model then you can create migrations with `aerich migrate`. A new file will be created in the `migrations/models` directory. If you need to run any migrations, use `aerich upgrade`.
-
-If you mess up your migrations, you can reset the database with `make reset-db`. Delete the migrations folder and run `aerich init-db` to recreate the migrations folder and create the initial migration.
-
-More details can be found in the aerich docs.
-
-## Deploying to Heroku  
-Create Meta Admins for the sales and support teams in TC2, and heremes, ensuring their tc2_admin_id matches the one in hermes. 
-
-
-## Writing a Patch
-
-- In the patch.py file, create a new function that will be your patch.
-- The function needs to be made between the # Start of patch commands and # End of patch commands.
-- The function needs to have the @command decorator.
-
-#### Running a Patch
-```
-python patch.py <patch_name>
+```bash
+PD_API_KEY=your_pipedrive_api_key
+TC2_API_KEY=your_tc2_api_key
+G_PRIVATE_KEY_ID=your-key-id
+G_PRIVATE_KEY=your-private-key
+LOGFIRE_TOKEN=your-logfire-token
 ```
 
-## Shell
+## Configuration
 
-tortoise-orm has a shell command that can be used to interact with the database.
+### 1. TutorCruncher Setup
 
-first install [tortoise-cli](https://github.com/tortoise/tortoise-cli)
+#### Configure TC2 to send webhooks:
+1. In TC2, navigate to Settings > API Integrations
+2. Create a new integration named "Hermes"
+3. Set URL to `http://localhost:8000/tc2/callback/` (or your ngrok URL)
+4. Copy the generated API key and set it as `TC2_API_KEY` in your `.env`
 
-to run the shell, use the following command inside your hermes virtual environment:
+#### Create TC2 Admin users:
+Create admin users for different roles:
+- PAYG/Startup sales person
+- Enterprise sales person  
+- BDR (Business Development Representative)
+- Support staff (1-2 people)
+
+Note their TC2 admin IDs - you'll need them when creating Hermes Admin records.
+
+### 2. Pipedrive Setup
+
+#### Get API Key:
+1. In Pipedrive, go to Settings > Personal Preferences > API
+2. Copy your API key and set it as `PD_API_KEY` in your `.env`
+
+#### Create Webhooks:
+1. Navigate to Settings > Tools and Apps > Webhooks
+2. Create a new webhook:
+   - Event action: `*` (all)
+   - Event object: `*` (all)
+   - Endpoint URL: `http://localhost:8000/pipedrive/callback/` (or your ngrok URL)
+   - HTTP Auth: None
+
+#### Create Pipedrive Users:
+Create users for each role:
+- PAYG/Startup sales
+- Enterprise sales
+- BDR
+- Support (optional)
+
+To get each user's Pipedrive Owner ID:
+1. Go to Settings > Manage users
+2. Click on a user
+3. Copy the number from the end of the URL (e.g., `123456789`)
+
+### 3. Automated Configuration
+
+#### Configure Pipelines and Stages:
+```bash
+make setup
 ```
-tortoise-cli shell
+
+This interactive command will:
+- Fetch all pipelines and stages from your Pipedrive account
+- Let you select the default entry stage for each pipeline
+- Configure which pipelines to use for PAYG, Startup, and Enterprise clients
+- Store the configuration in the database
+
+#### Configure Field Mappings:
+```bash
+make setup-fields
 ```
 
-hint1: you will need to import the models you want to use in the shell, i.e `from app.models import *`
-hint2: you can use the `await` keyword to run async functions in the shell, i.e `await Company.all()`
+This command will:
+- Fetch all custom fields from your Pipedrive account
+- Show which fields exist and which need to be created
+- Generate a `field_mappings_override.py` file with your field IDs
 
+#### Create Custom Fields in Pipedrive:
 
-#### Inherited Custom Field setup:
-'Inherited Custom Fields' are custom fields that are inherited from the Company model to the Deal model.
+If `make setup-fields` shows missing fields, create them in Pipedrive:
 
-- To create the inherited custom fields, like before, create the data field for the item in pipedrive, then create the custom field
-in Hermes, ensuring the `machine_name` is the same as the parent field connected to the company model.
-- Inherited custom fields do not need a `tc2_machine_name` or `hermes_field_name` as they are always coming from the Company Custom Field.
-- Inherited custom field, field types should be the same as the parent field, except for `fk_field` which should be `int`
+**Organization Fields:**
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| hermes_id | Numerical | Internal Hermes ID |
+| tc2_status | Large text | TC2 status |
+| tc2_cligency_url | Large text | Link to TC2 client |
+| paid_invoice_count | Numerical | Number of paid invoices |
+| website | Large text | Company website |
+| price_plan | Large text | Plan: payg/startup/enterprise |
+| estimated_income | Large text | Estimated monthly income |
+| support_person_id | Numerical | Support person PD ID |
+| bdr_person_id | Numerical | BDR person PD ID |
+| signup_questionnaire | Large text | Signup responses |
+| utm_source | Large text | UTM source |
+| utm_campaign | Large text | UTM campaign |
+| created | Date | Date created |
+| pay0_dt | Date | First payment date |
+| pay1_dt | Date | Second payment date |
+| pay3_dt | Date | Third payment date |
+| gclid | Large text | Google Click ID |
+| gclid_expiry_dt | Date | GCLID expiry date |
+| email_confirmed_dt | Date | Email confirmation date |
+| card_saved_dt | Date | Card saved date |
+
+**Person Fields:**
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| hermes_id | Numerical | Internal Hermes ID |
+
+**Deal Fields:**
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| hermes_id | Numerical | Internal Hermes ID |
+| All Company fields | Same as above | Deal inherits company fields |
+
+After creating fields, run `make setup-fields` again to update your field mappings.
+
+### 4. Create Admin Records
+
+Use the automated setup command to create admin records from your Pipedrive users:
+
+```bash
+make setup-admins
+```
+
+This command will:
+- Fetch all users from your Pipedrive account
+- Show existing admin records
+- Display available Pipedrive users to create admins for
+- Let you select users (by index or "all")
+- For each selected user, ask for their TC2 Admin ID
+- Automatically configure them as:
+  - Sales and support persons
+  - Selling all plans (PAYG, Startup, Enterprise)
+  - Selling to all regions (GB, US, AU, CA, EU, ROW)
+
+**Example session:**
+```
+Existing Admins:
+┌────┬────────────────┬──────────────────────┬────────┬──────────┐
+│ ID │ Name           │ Email                │ TC2 ID │ PD ID    │
+└────┴────────────────┴──────────────────────┴────────┴──────────┘
+
+Fetching users from Pipedrive...
+
+Pipedrive Users:
+┌───────┬──────────────┬───────────────────┬──────────┬────────┐
+│ Index │ Name         │ Email             │ PD ID    │ Active │
+├───────┼──────────────┼───────────────────┼──────────┼────────┤
+│ 1     │ John Smith   │ john@company.com  │ 12345678 │ ✓      │
+│ 2     │ Jane Doe     │ jane@company.com  │ 87654321 │ ✓      │
+└───────┴──────────────┴───────────────────┴──────────┴────────┘
+
+Select users to create admin records for:
+Enter indices separated by commas (e.g., 1,3,5) or "all" for all users
+Selection: 1,2
+
+Creating admin for: John Smith
+TC2 Admin ID (leave empty to skip): 1
+✓ Created admin: John Smith (ID: 1)
+
+Creating admin for: Jane Doe
+TC2 Admin ID (leave empty to skip): 2
+✓ Created admin: Jane Doe (ID: 2)
+
+✓ Admin setup complete!
+```
+
+### 5. Run Hermes
+
+Start the development server:
+```bash
+make run
+```
+
+The server will start on `http://localhost:8000` with auto-reload enabled.
+
+For production, use:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### 6. Local Development with Webhooks
+
+Since TC2 and Pipedrive need to send webhooks to Hermes, expose your local server:
+
+```bash
+ngrok http 8000
+```
+
+Then update your webhook URLs in TC2 and Pipedrive to use the ngrok URL.
+
+## Adding Custom Fields
+
+When you need to add a new custom field:
+
+1. **Create in Pipedrive:**
+   - Navigate to Settings > Data Fields
+   - Create field with snake_case name (e.g., `new_field`)
+   - Copy the field ID (API key)
+
+2. **Add to Hermes models:**
+   - Add to `app/main_app/models.py` in relevant model (Company, Contact, Deal):
+     ```python
+     new_field: Optional[str] = Field(default=None)
+     ```
+
+3. **Update field mappings:**
+   - Edit `field_mappings_override.py`:
+     ```python
+     COMPANY_PD_FIELD_MAP = {
+         # ... existing fields ...
+         'new_field': 'your-field-id-from-pipedrive',
+     }
+     ```
+
+4. **Update Pydantic models:**
+   - Add to `app/pipedrive/models.py`:
+     ```python
+     new_field: Optional[str] = Field(
+         default=None,
+         validation_alias=COMPANY_PD_FIELD_MAP['new_field']
+     )
+     ```
+
+5. **Create migration:**
+   ```bash
+   make migrate-create msg="Add new_field"
+   make migrate
+   ```
+
+6. **Restart** the application
+
+## Testing
+
+Run the test suite:
+```bash
+make test
+```
+
+Run with coverage:
+```bash
+make test-cov
+```
+
+Tests are organized by module:
+- `tests/main_app/` - Core functionality tests
+- `tests/pipedrive/` - Pipedrive integration tests
+- `tests/tc2/` - TC2 integration tests  
+- `tests/callbooker/` - Callbooker tests
+
+**Coverage Target:** 95%+
+
+## Troubleshooting
+
+### Field mapping errors on startup
+
+Run `make setup-fields` to check which fields are missing in Pipedrive. Create any missing fields and update `field_mappings_override.py`.
+
+### Webhooks not being received
+
+1. Check ngrok is running and URL is correct
+2. Verify webhook configuration in Pipedrive/TC2
+3. Check Hermes logs for errors
+4. Test webhook with curl:
+   ```bash
+   curl -X POST http://localhost:8000/pipedrive/callback/ \
+     -H "Content-Type: application/json" \
+     -d '{"event":"added","current":{}}'
+   ```
+
+### Admin not found errors
+
+Ensure Admin records exist with correct TC2/Pipedrive IDs. Check `pd_owner_id` matches actual Pipedrive user IDs.
+
+### Pipeline/Stage errors
+
+1. Run `make setup` to sync pipelines from Pipedrive
+2. Ensure at least one pipeline exists in Pipedrive
+3. Check Config record has valid pipeline assignments
+
+### Database migration issues
+
+If migrations fail:
+```bash
+make reset-db  # Drops and recreates database
+make setup     # Reconfigure pipelines
+```
+
+## Architecture
+
+### Data Models
+
+**Core Models:**
+- `Admin` - Sales/support personnel linked to TC2 and Pipedrive
+- `Company` - Organizations (customers/prospects)
+- `Contact` - Individual contacts within companies
+- `Deal` - Sales opportunities
+- `Meeting` - Scheduled calls/meetings
+- `Pipeline` - Sales pipelines from Pipedrive
+- `Stage` - Pipeline stages
+- `Config` - Application configuration
+
+**Key Features:**
+- All dates are timezone-aware (UTC)
+- Foreign key relationships between models
+- Unique constraints on external IDs
+- Field mappings for Pipedrive custom fields
+
+### Field Mapping System
+
+Hermes uses a centralized field mapping system instead of database tables for custom fields:
+
+1. **Default mappings** are defined in `app/pipedrive/field_mappings.py`
+2. **Local overrides** can be added in `field_mappings_override.py` (gitignored)
+3. **Pydantic models** use `validation_alias` to map incoming webhook data
+4. **Sync tasks** use the mappings to send data to Pipedrive
+
+This approach:
+- Single source of truth for field IDs
+- Type-safe at compile time
+- Easy to update for new Pipedrive accounts
+- No database queries for field lookups
+
+### Sync Flow
+
+**TC2 → Hermes → Pipedrive:**
+1. TC2 sends webhook when client/SR changes
+2. Hermes processes webhook and updates database
+3. Background task syncs changes to Pipedrive
+
+**Callbooker → Hermes → Pipedrive:**
+1. Website sends booking request
+2. Hermes creates/updates Company, Contact, Deal
+3. Meeting is created in Google Calendar
+4. Changes sync to Pipedrive
+
+**Pipedrive → Hermes:**
+1. Pipedrive sends webhook on changes
+2. Hermes updates local database
+3. Does NOT sync back to TC2 (one-way)
+
+## Contributing
+
+### Code Style
+
+- Use single quotes for strings
+- Modern type hints: `str | None` instead of `Optional[str]`
+- Line length: 120 characters
+- Format with ruff: `make format`
+- Lint with ruff: `make lint`
+
+### Testing
+
+- Write tests for all new features
+- Maintain 95%+ code coverage
+- Use test fixtures from `tests/conftest.py`
+- Follow existing test patterns (see `AGENTS.md`)
+
+### Commits
+
+- Use clear, descriptive commit messages
+- Reference issue numbers where applicable
+- Keep commits focused and atomic
+
+## License
+
+Proprietary - TutorCruncher Ltd

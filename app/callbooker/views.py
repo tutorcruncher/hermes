@@ -1,93 +1,121 @@
+import logging
 from datetime import datetime, timedelta
 from hmac import compare_digest
 from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Header, HTTPException
-from starlette.background import BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, Header
+from sqlmodel import select
 from starlette.responses import JSONResponse
-from tortoise.exceptions import DoesNotExist
 
-from app.callbooker._availability import get_admin_available_slots
-from app.callbooker._process import (
+from app.callbooker.availability import get_admin_available_slots
+from app.callbooker.models import CBSalesCall, CBSupportCall
+from app.callbooker.process import (
     MeetingBookingError,
     book_meeting,
     get_or_create_contact,
     get_or_create_contact_company,
     get_or_create_deal,
 )
-from app.callbooker._schema import CBSalesCall, CBSupportCall
-from app.models import Admin, Company
-from app.pipedrive.tasks import pd_post_process_sales_call, pd_post_process_support_call
-from app.tc2.api import get_or_create_company
-from app.utils import get_bearer, settings, sign_args
+from app.common.utils import get_bearer, sign_args
+from app.core.config import settings
+from app.core.database import DBSession, get_db
+from app.main_app.models import Admin, Company
+from app.pipedrive.tasks import sync_company_to_pipedrive, sync_meeting_to_pipedrive
+from app.tc2.process import get_or_create_company_from_tc2
 
-cb_router = APIRouter()
+logger = logging.getLogger('hermes.callbooker')
+
+router = APIRouter(prefix='/callbooker', tags=['callbooker'])
 
 
-@cb_router.post('/sales/book/')
-async def sales_call(event: CBSalesCall, tasks: BackgroundTasks):
+@router.post('/sales/book/', name='book-sales-call')
+async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     """
-    Endpoint for someone booking a Sales call from the website.
-    We can't do standard auth as this comes from the website. We use a CORS policy instead.
+    Endpoint for booking a Sales call from the website.
+    Callbooker → Hermes → Pipedrive sync.
     """
-    await event.a_validate()
-    company, contact = await get_or_create_contact_company(event)
-    deal = await get_or_create_deal(company, contact)
     try:
-        meeting = await book_meeting(company=company, contact=contact, event=event)
+        company, contact = await get_or_create_contact_company(event, db)
+        deal = await get_or_create_deal(company, contact, db)
+        meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
+        meeting.deal_id = deal.id
+        db.add(meeting)
+        db.commit()
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
-    else:
-        meeting.deal = deal
-        await meeting.save()
-        tasks.add_task(pd_post_process_sales_call, company=company, contact=contact, deal=deal, meeting=meeting)
-        return {'status': 'ok'}
+
+    # Queue background tasks to sync to Pipedrive
+    background_tasks.add_task(sync_company_to_pipedrive, company.id)
+    background_tasks.add_task(sync_meeting_to_pipedrive, meeting.id)
+
+    return {'status': 'ok'}
 
 
-@cb_router.post('/support/book/')
-async def support_call(event: CBSupportCall, tasks: BackgroundTasks):
+@router.post('/support/book/', name='book-support-call')
+async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     """
-    Endpoint for someone booking a Support call from the website.
-    We can't do standard auth as this comes from the website. We use a CORS policy instead.
+    Endpoint for booking a Support call from the website.
+    Callbooker → Hermes → Pipedrive sync.
     """
-    await event.a_validate()
-    company = await event.company
-    contact = await get_or_create_contact(company, event)
+    company = db.get(Company, event.company_id)
+    if not company:
+        return JSONResponse({'status': 'error', 'message': 'Company not found'}, status_code=404)
+
+    contact = await get_or_create_contact(company, event, db)
+
     try:
-        meeting = await book_meeting(company=company, contact=contact, event=event)
+        meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
+        db.add(meeting)
+        db.commit()
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
-    else:
-        await meeting.save()
-        tasks.add_task(pd_post_process_support_call, contact=contact, meeting=meeting)
-        return {'status': 'ok'}
+
+    # Queue background tasks to sync to Pipedrive
+    background_tasks.add_task(sync_company_to_pipedrive, company.id)
+    background_tasks.add_task(sync_meeting_to_pipedrive, meeting.id)
+
+    return {'status': 'ok'}
 
 
-@cb_router.get('/availability/')
-async def availability(admin_id: int, start_dt: datetime, end_dt: datetime):
+@router.get('/availability/', name='get-availability')
+async def availability(admin_id: int, start_dt: datetime, end_dt: datetime, db: DBSession = Depends(get_db)):
     """
-    Endpoint to return timeslots that an admin is available between 2 datetimes.
+    Get available time slots for an admin between two datetimes.
     """
-    admin = await Admin.get(id=admin_id)
+    admin = db.get(Admin, admin_id)
+    if not admin:
+        return JSONResponse({'status': 'error', 'message': 'Admin not found'}, status_code=404)
+
     slots = get_admin_available_slots(start_dt, end_dt, admin)
     return {'status': 'ok', 'slots': [slot async for slot in slots]}
 
 
-@cb_router.get('/support-link/generate/tc2/')
-async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authorization: Optional[str] = Header(None)):
+@router.get('/support-link/generate/tc2/', name='generate-support-link')
+async def generate_support_link(
+    tc2_admin_id: int,
+    tc2_cligency_id: int,
+    authorization: Optional[str] = Header(None),
+    db: DBSession = Depends(get_db),
+):
     """
-    Endpoint to generate a support link for a company from within TC2
+    Generate a support link for a company from within TC2.
+    This link allows support staff to book meetings.
     """
-    if get_bearer(Authorization) != settings.tc2_api_key:
-        raise HTTPException(status_code=403, detail='Unauthorized key')
+    if get_bearer(authorization) != settings.tc2_api_key:
+        return JSONResponse({'status': 'error', 'message': 'Unauthorized'}, status_code=403)
 
-    try:
-        admin = await Admin.get(tc2_admin_id=tc2_admin_id)
-        company = await get_or_create_company(tc2_cligency_id=tc2_cligency_id)
-    except DoesNotExist:
-        return JSONResponse({'status': 'error', 'message': 'Admin or Company not found'}, status_code=404)
+    # Get admin
+    admin = db.exec(select(Admin).where(Admin.tc2_admin_id == tc2_admin_id)).one_or_none()
+    if not admin:
+        return JSONResponse({'status': 'error', 'message': 'Admin not found'}, status_code=404)
 
+    # Get or create company
+    company = await get_or_create_company_from_tc2(tc2_cligency_id, db)
+    if not company:  # pragma: no cover
+        return JSONResponse({'status': 'error', 'message': 'Company not found'}, status_code=404)
+
+    # Generate signed link
     expiry = datetime.now() + timedelta(days=settings.support_ttl_days)
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': int(expiry.timestamp())}
     sig = await sign_args(*kwargs.values())
@@ -95,17 +123,24 @@ async def generate_support_link(tc2_admin_id: int, tc2_cligency_id: int, Authori
     return {'link': f'{admin.call_booker_url}?{urlencode({"s": sig, **kwargs})}'}
 
 
-@cb_router.get('/support-link/validate/')
-async def validate_support_link(admin_id: int, company_id: int, e: int, s: str):
+@router.get('/support-link/validate/', name='validate-support-link')
+async def validate_support_link(admin_id: int, company_id: int, e: int, s: str, db: DBSession = Depends(get_db)):
     """
-    Endpoint to validate a support link for a company from the website
+    Validate a support link for a company from the website.
+    Checks signature and expiry.
     """
-    admin = await Admin.get(id=admin_id)
-    company = await Company.get(id=company_id)
+    admin = db.get(Admin, admin_id)
+    company = db.get(Company, company_id)
+
+    if not admin or not company:
+        return JSONResponse({'status': 'error', 'message': 'Admin or Company not found'}, status_code=404)
+
     kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': e}
     sig = await sign_args(*kwargs.values())
+
     if not compare_digest(sig, s):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
     elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)
+
     return {'status': 'ok', 'company_name': company.name}

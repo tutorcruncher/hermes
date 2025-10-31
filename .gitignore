@@ -1,5 +1,6 @@
 env/
 .env
+field_mappings_override.py
 
 # PyCharm files
 .pytest_cache
@@ -20,3 +21,4 @@ __pycache__
 *.rdb
 
 /.logfire/
+*.egg-info
