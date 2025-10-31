@@ -40,7 +40,9 @@ class Organisation(_HermesModel):
     # Custom fields - reference the centralized mapping
     # hermes_id can be string when Pipedrive merges entities (e.g., "123, 456")
     hermes_id: Optional[int | str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['hermes_id'])
-    paid_invoice_count: Optional[int] = Field(default=0, validation_alias=COMPANY_PD_FIELD_MAP['paid_invoice_count'])
+    paid_invoice_count: Optional[int | str] = Field(
+        default=0, validation_alias=COMPANY_PD_FIELD_MAP['paid_invoice_count']
+    )
     tc2_cligency_url: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['tc2_cligency_url'])
     tc2_status: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['tc2_status'])
     website: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['website'])
@@ -163,7 +165,7 @@ class PDDeal(_HermesModel):
     utm_campaign: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['utm_campaign'])
     utm_source: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['utm_source'])
     bdr_person_id: Optional[int] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['bdr_person_id'])
-    paid_invoice_count: Optional[int] = Field(default=0, validation_alias=DEAL_PD_FIELD_MAP['paid_invoice_count'])
+    paid_invoice_count: Optional[int | str] = Field(default=0, validation_alias=DEAL_PD_FIELD_MAP['paid_invoice_count'])
     tc2_status: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['tc2_status'])
     website: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['website'])
     price_plan: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['price_plan'])
