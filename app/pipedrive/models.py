@@ -68,6 +68,13 @@ class Organisation(_HermesModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @field_validator('paid_invoice_count', mode='before')
+    @classmethod
+    def convert_to_int(cls, v):
+        if isinstance(v, str):
+            return int(v) if v.strip() else 0
+        return v
+
 
 class Person(_HermesModel):
     """Pipedrive Person schema - uses centralized field mapping"""
@@ -172,6 +179,13 @@ class PDDeal(_HermesModel):
     estimated_income: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['estimated_income'])
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator('paid_invoice_count', mode='before')
+    @classmethod
+    def convert_to_int(cls, v):
+        if isinstance(v, str):
+            return int(v) if v.strip() else 0
+        return v
 
 
 class Activity(_HermesModel):
