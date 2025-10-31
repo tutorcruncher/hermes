@@ -25,7 +25,7 @@ async def sync_company_to_pipedrive(company_id: int):
                 if not company:
                     logger.warning(f'Company {company_id} not found, skipping sync')
                     return
-                
+
                 # Get IDs of related entities while we have the session
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
                 deal_ids = [d.id for d in db.exec(select(Deal).where(Deal.company_id == company_id)).all()]
@@ -175,7 +175,7 @@ async def sync_meeting_to_pipedrive(meeting_id: int):
                     logger.warning(f'Meeting {meeting_id} not found, skipping sync')
                     return
                 activity_data = _meeting_to_activity_data(meeting, db)
-            
+
             # Make API call without holding database connection
             result = await api.create_activity(activity_data)
             logger.info(f'Created activity {result["data"]["id"]} for meeting {meeting_id}')
