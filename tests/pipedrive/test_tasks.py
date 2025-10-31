@@ -17,6 +17,17 @@ from app.pipedrive.tasks import (
 )
 
 
+class SessionMock:
+    def __init__(self, db):
+        self.db = db
+
+    def __enter__(self):
+        return self.db
+
+    def __exit__(self, *args):
+        return None
+
+
 class TestSyncCompanyToPipedrive:
     """Test sync_company_to_pipedrive task"""
 
@@ -35,42 +46,79 @@ class TestSyncCompanyToPipedrive:
 class TestSyncOrganization:
     """Test sync_organization function"""
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_raises_on_create_failure(self, mock_create, db, test_company):
+    async def test_sync_organization_does_not_hold_session_during_api_call(
+        self, mock_create, mock_get_session, db, test_company
+    ):
+        """Test that sync_organization closes DB session before making API calls"""
+
+        session_open = []
+
+        class SessionTracker:
+            def __enter__(self):
+                session_open.append(True)
+                return db
+
+            def __exit__(self, *args):
+                session_open.pop()
+                return False
+
+        def check_session_during_api_call(*args, **kwargs):
+            assert len(session_open) == 0, 'API call was made while database session was still open'
+            return {'data': {'id': 888}}
+
+        mock_get_session.return_value = SessionTracker()
+        mock_create.side_effect = check_session_during_api_call
+
+        await sync_organization(test_company.id)
+
+        assert len(session_open) == 0
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_raises_on_create_failure(self, mock_create, mock_get_session, db, test_company):
         """Test that sync_organization raises exception when organization creation fails"""
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('Pipedrive API error: validation failed')
 
         with pytest.raises(Exception, match='Pipedrive API error: validation failed'):
-            await sync_organization(test_company, db)
+            await sync_organization(test_company.id)
 
         mock_create.assert_called_once()
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_raises_on_update_failure_non_404(self, mock_get, db, test_company):
+    async def test_sync_organization_raises_on_update_failure_non_404(
+        self, mock_get, mock_get_session, db, test_company
+    ):
         """Test that sync_organization raises exception when update fails with non-404 error"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('Pipedrive API error: 400 Bad Request')
 
         with pytest.raises(Exception, match='400 Bad Request'):
-            await sync_organization(test_company, db)
+            await sync_organization(test_company.id)
 
         mock_get.assert_called_once()
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_recreates_on_404(self, mock_get, mock_create, db, test_company):
+    async def test_sync_organization_recreates_on_404(self, mock_get, mock_create, mock_get_session, db, test_company):
         """Test that sync_organization recreates organization when getting 404 on update"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 1000}}
 
-        await sync_organization(test_company, db)
+        await sync_organization(test_company.id)
 
         mock_get.assert_called_once()
         mock_create.assert_called_once()
@@ -78,26 +126,31 @@ class TestSyncOrganization:
         db.refresh(test_company)
         assert test_company.pd_org_id == 1000
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_success_create(self, mock_create, db, test_company):
+    async def test_sync_organization_success_create(self, mock_create, mock_get_session, db, test_company):
         """Test successful organization creation"""
+
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 888}}
 
-        await sync_organization(test_company, db)
+        await sync_organization(test_company.id)
 
         mock_create.assert_called_once()
         db.refresh(test_company)
         assert test_company.pd_org_id == 888
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_success_update(self, mock_get, mock_update, db, test_company):
+    async def test_sync_organization_success_update(self, mock_get, mock_update, mock_get_session, db, test_company):
         """Test successful organization update"""
         test_company.pd_org_id = 999
         test_company.name = 'Old Name'
         db.add(test_company)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name'}}
         mock_update.return_value = {'data': {'id': 999, 'name': 'New Name'}}
 
@@ -105,7 +158,7 @@ class TestSyncOrganization:
         db.add(test_company)
         db.commit()
 
-        await sync_organization(test_company, db)
+        await sync_organization(test_company.id)
 
         mock_get.assert_called_once_with(999)
         mock_update.assert_called_once()
@@ -114,60 +167,68 @@ class TestSyncOrganization:
 class TestSyncPerson:
     """Test sync_person function"""
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
-    async def test_sync_person_update_404_then_create(self, mock_get, mock_create, db, test_contact):
+    async def test_sync_person_update_404_then_create(self, mock_get, mock_create, mock_get_session, db, test_contact):
         """Test person update getting 404 then creates new"""
         test_contact.pd_person_id = 999
         db.add(test_contact)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 1111}}
 
-        await sync_person(test_contact, db)
+        await sync_person(test_contact.id)
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 1111
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
-    async def test_sync_person_update_non_404_error(self, mock_get, db, test_contact):
+    async def test_sync_person_update_non_404_error(self, mock_get, mock_get_session, db, test_contact):
         """Test person update with non-404 error logs but doesn't clear ID"""
         test_contact.pd_person_id = 999
         db.add(test_contact)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('500 Server Error')
 
-        await sync_person(test_contact, db)
+        await sync_person(test_contact.id)
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 999
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
-    async def test_sync_person_create_failure(self, mock_create, db, test_contact):
+    async def test_sync_person_create_failure(self, mock_create, mock_get_session, db, test_contact):
         """Test person creation failure logs error"""
         test_contact.pd_person_id = None
         db.add(test_contact)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('API Error')
 
-        await sync_person(test_contact, db)
+        await sync_person(test_contact.id)
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id is None
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
-    async def test_sync_person_create_success(self, mock_create, db, test_contact):
+    async def test_sync_person_create_success(self, mock_create, mock_get_session, db, test_contact):
         """Test creating new person"""
         test_contact.pd_person_id = None
         db.add(test_contact)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 2222}}
 
-        await sync_person(test_contact, db)
+        await sync_person(test_contact.id)
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 2222
@@ -176,60 +237,68 @@ class TestSyncPerson:
 class TestSyncDeal:
     """Test sync_deal function"""
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_sync_deal_update_404_then_create(self, mock_get, mock_create, db, test_deal):
+    async def test_sync_deal_update_404_then_create(self, mock_get, mock_create, mock_get_session, db, test_deal):
         """Test deal update getting 404 then creates new"""
         test_deal.pd_deal_id = 999
         db.add(test_deal)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 3333}}
 
-        await sync_deal(test_deal, db)
+        await sync_deal(test_deal.id)
 
         db.refresh(test_deal)
         assert test_deal.pd_deal_id == 3333
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_sync_deal_update_non_404_error(self, mock_get, db, test_deal):
+    async def test_sync_deal_update_non_404_error(self, mock_get, mock_get_session, db, test_deal):
         """Test deal update with non-404 error logs but doesn't clear ID"""
         test_deal.pd_deal_id = 999
         db.add(test_deal)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('500 Server Error')
 
-        await sync_deal(test_deal, db)
+        await sync_deal(test_deal.id)
 
         db.refresh(test_deal)
         assert test_deal.pd_deal_id == 999
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
-    async def test_sync_deal_create_failure(self, mock_create, db, test_deal):
+    async def test_sync_deal_create_failure(self, mock_create, mock_get_session, db, test_deal):
         """Test deal creation failure logs error"""
         test_deal.pd_deal_id = None
         db.add(test_deal)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('API Error')
 
-        await sync_deal(test_deal, db)
+        await sync_deal(test_deal.id)
 
         db.refresh(test_deal)
         assert test_deal.pd_deal_id is None
 
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
-    async def test_sync_deal_create_success(self, mock_create, db, test_deal):
+    async def test_sync_deal_create_success(self, mock_create, mock_get_session, db, test_deal):
         """Test creating new deal"""
         test_deal.pd_deal_id = None
         db.add(test_deal)
         db.commit()
 
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 4444}}
 
-        await sync_deal(test_deal, db)
+        await sync_deal(test_deal.id)
 
         db.refresh(test_deal)
         assert test_deal.pd_deal_id == 4444

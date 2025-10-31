@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     database_url: PostgresDsn = Field(
         'postgresql://postgres:postgres@localhost:5432/hermes', validation_alias='DATABASE_URL'
     )
+    db_pool_size: int = 20
+    db_max_overflow: int = 15
+    db_pool_pre_ping: bool = True
+    db_pool_recycle: int = 3600
 
     # Sentry
     sentry_dsn: Optional[str] = None
