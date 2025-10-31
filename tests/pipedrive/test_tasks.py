@@ -309,7 +309,7 @@ class TestDealToPDData:
         assert DEAL_PD_FIELD_MAP['utm_campaign'] in custom_fields
         assert custom_fields[DEAL_PD_FIELD_MAP['utm_campaign']] == 'summer2024'
         assert DEAL_PD_FIELD_MAP['paid_invoice_count'] in custom_fields
-        assert custom_fields[DEAL_PD_FIELD_MAP['paid_invoice_count']] == 5
+        assert custom_fields[DEAL_PD_FIELD_MAP['paid_invoice_count']] == '5'
 
     def test_deal_to_pd_data_excludes_none_and_empty_custom_fields(self, db, test_deal):
         """Test that None and empty string custom fields are not included in Pipedrive data"""

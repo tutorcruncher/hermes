@@ -24,13 +24,11 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     """Get or create contact from callbooker event data"""
     # Try to find existing contact by email or last name
     if event.email:
-        contact = db.exec(
-            select(Contact).where(Contact.company_id == company.id, Contact.email == event.email)
-        ).one_or_none()
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id, Contact.email == event.email)).first()
     else:
         contact = db.exec(
             select(Contact).where(Contact.company_id == company.id, Contact.last_name.ilike(event.last_name))
-        ).one_or_none()
+        ).first()
 
     if not contact:
         # Create new contact

@@ -258,7 +258,7 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
     custom_fields = {}
     for field_name, pd_field_id in CONTACT_PD_FIELD_MAP.items():
         if field_name == 'hermes_id':
-            custom_fields[pd_field_id] = contact.id
+            custom_fields[pd_field_id] = str(contact.id)
 
     data['custom_fields'] = custom_fields
     return data
@@ -293,6 +293,9 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
             value = getattr(deal, field_name, None)
 
         if value is not None and value != '':
+            # Convert integers to strings for hermes_id and paid_invoice_count (text fields in Pipedrive)
+            if field_name in ('hermes_id', 'paid_invoice_count') and isinstance(value, int):
+                value = str(value)
             custom_fields[pd_field_id] = value
 
     data['custom_fields'] = custom_fields
