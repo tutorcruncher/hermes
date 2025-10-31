@@ -17,6 +17,17 @@ from app.pipedrive.tasks import (
 )
 
 
+class SessionMock:
+    def __init__(self, db):
+        self.db = db
+
+    def __enter__(self):
+        return self.db
+
+    def __exit__(self, *args):
+        return None
+
+
 class TestSyncCompanyToPipedrive:
     """Test sync_company_to_pipedrive task"""
 
@@ -68,15 +79,7 @@ class TestSyncOrganization:
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_sync_organization_raises_on_create_failure(self, mock_create, mock_get_session, db, test_company):
         """Test that sync_organization raises exception when organization creation fails"""
-
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('Pipedrive API error: validation failed')
 
         with pytest.raises(Exception, match='Pipedrive API error: validation failed'):
@@ -94,14 +97,7 @@ class TestSyncOrganization:
         db.add(test_company)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('Pipedrive API error: 400 Bad Request')
 
         with pytest.raises(Exception, match='400 Bad Request'):
@@ -118,14 +114,7 @@ class TestSyncOrganization:
         db.add(test_company)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 1000}}
 
@@ -142,14 +131,7 @@ class TestSyncOrganization:
     async def test_sync_organization_success_create(self, mock_create, mock_get_session, db, test_company):
         """Test successful organization creation"""
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 888}}
 
         await sync_organization(test_company.id)
@@ -168,14 +150,7 @@ class TestSyncOrganization:
         db.add(test_company)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name'}}
         mock_update.return_value = {'data': {'id': 999, 'name': 'New Name'}}
 
@@ -201,14 +176,7 @@ class TestSyncPerson:
         db.add(test_contact)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 1111}}
 
@@ -225,14 +193,7 @@ class TestSyncPerson:
         db.add(test_contact)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('500 Server Error')
 
         await sync_person(test_contact.id)
@@ -248,14 +209,7 @@ class TestSyncPerson:
         db.add(test_contact)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('API Error')
 
         await sync_person(test_contact.id)
@@ -271,14 +225,7 @@ class TestSyncPerson:
         db.add(test_contact)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 2222}}
 
         await sync_person(test_contact.id)
@@ -299,14 +246,7 @@ class TestSyncDeal:
         db.add(test_deal)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
         mock_create.return_value = {'data': {'id': 3333}}
 
@@ -323,14 +263,7 @@ class TestSyncDeal:
         db.add(test_deal)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('500 Server Error')
 
         await sync_deal(test_deal.id)
@@ -346,14 +279,7 @@ class TestSyncDeal:
         db.add(test_deal)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.side_effect = Exception('API Error')
 
         await sync_deal(test_deal.id)
@@ -369,14 +295,7 @@ class TestSyncDeal:
         db.add(test_deal)
         db.commit()
 
-        class SessionMock:
-            def __enter__(self):
-                return db
-
-            def __exit__(self, *args):
-                return None
-
-        mock_get_session.return_value = SessionMock()
+        mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 4444}}
 
         await sync_deal(test_deal.id)
