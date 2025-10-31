@@ -19,149 +19,148 @@ async def sync_company_to_pipedrive(company_id: int):
     """
     with logfire.span('sync_company_to_pipedrive'):
         try:
-            # Fetch company and related IDs with short-lived connection
             with get_session() as db:
                 company = db.get(Company, company_id)
                 if not company:
                     logger.warning(f'Company {company_id} not found, skipping sync')
                     return
-
-                # Get IDs of related entities while we have the session
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
                 deal_ids = [d.id for d in db.exec(select(Deal).where(Deal.company_id == company_id)).all()]
 
-            # Sync organization with a fresh connection
-            with get_session() as db:
-                company = db.get(Company, company_id)
-                await sync_organization(company, db)
+            await sync_organization(company_id)
 
-            # Sync each contact with its own connection
             for contact_id in contact_ids:
-                with get_session() as db:
-                    contact = db.get(Contact, contact_id)
-                    if contact:
-                        await sync_person(contact, db)
+                await sync_person(contact_id)
 
-            # Sync each deal with its own connection
             for deal_id in deal_ids:
-                with get_session() as db:
-                    deal = db.get(Deal, deal_id)
-                    if deal:
-                        await sync_deal(deal, db)
+                await sync_deal(deal_id)
 
             logger.info(f'Successfully synced company {company_id} to Pipedrive')
         except Exception as e:
             logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
 
 
-async def sync_organization(company: Company, db):
+async def sync_organization(company_id: int):
     """Sync a single organization to Pipedrive"""
-    org_data = _company_to_org_data(company)
+    with get_session() as db:
+        company = db.get(Company, company_id)
+        if not company:
+            return
+        org_data = _company_to_org_data(company)
+        pd_org_id = company.pd_org_id
 
-    if company.pd_org_id:
-        # Update existing organization
+    if pd_org_id:
         try:
-            # Get current data from Pipedrive
-            pd_org = await api.get_organisation(company.pd_org_id)
+            pd_org = await api.get_organisation(pd_org_id)
             current_data = pd_org.get('data', {})
-
-            # Calculate changed fields
             changed_fields = api.get_changed_fields(current_data, org_data)
 
             if changed_fields:
-                await api.update_organisation(company.pd_org_id, changed_fields)
-                logger.info(f'Updated organization {company.pd_org_id} for company {company.id}')
+                await api.update_organisation(pd_org_id, changed_fields)
+                logger.info(f'Updated organization {pd_org_id} for company {company_id}')
         except Exception as e:
-            logger.error(f'Error updating organization {company.pd_org_id}: {e}')
-            # If organization doesn't exist in Pipedrive, create it
+            logger.error(f'Error updating organization {pd_org_id}: {e}')
             if '404' in str(e) or '410' in str(e):
-                company.pd_org_id = None
-                db.add(company)
-                db.commit()
+                pd_org_id = None
             else:
-                # Re-raise non-404/410 errors to prevent orphaned contacts
                 raise
 
-    if not company.pd_org_id:
-        # Create new organization
+    if not pd_org_id:
         try:
             result = await api.create_organisation(org_data)
-            company.pd_org_id = result['data']['id']
-            db.add(company)
-            db.commit()
-            logger.info(f'Created organization {company.pd_org_id} for company {company.id}')
+            new_pd_org_id = result['data']['id']
+
+            with get_session() as db:
+                company = db.get(Company, company_id)
+                if company:
+                    company.pd_org_id = new_pd_org_id
+                    db.add(company)
+                    db.commit()
+
+            logger.info(f'Created organization {new_pd_org_id} for company {company_id}')
         except Exception as e:
-            logger.error(f'Error creating organization for company {company.id}: {e}')
-            # Re-raise to prevent orphaned contacts/persons
+            logger.error(f'Error creating organization for company {company_id}: {e}')
             raise
 
 
-async def sync_person(contact: Contact, db):
+async def sync_person(contact_id: int):
     """Sync a single person to Pipedrive"""
-    person_data = _contact_to_person_data(contact, db)
+    with get_session() as db:
+        contact = db.get(Contact, contact_id)
+        if not contact:
+            return
+        person_data = _contact_to_person_data(contact, db)
+        pd_person_id = contact.pd_person_id
 
-    if contact.pd_person_id:
-        # Update existing person
+    if pd_person_id:
         try:
-            pd_person = await api.get_person(contact.pd_person_id)
+            pd_person = await api.get_person(pd_person_id)
             current_data = pd_person.get('data', {})
-
             changed_fields = api.get_changed_fields(current_data, person_data)
 
             if changed_fields:
-                await api.update_person(contact.pd_person_id, changed_fields)
-                logger.info(f'Updated person {contact.pd_person_id} for contact {contact.id}')
+                await api.update_person(pd_person_id, changed_fields)
+                logger.info(f'Updated person {pd_person_id} for contact {contact_id}')
         except Exception as e:
-            logger.error(f'Error updating person {contact.pd_person_id}: {e}')
+            logger.error(f'Error updating person {pd_person_id}: {e}')
             if '404' in str(e) or '410' in str(e):
-                contact.pd_person_id = None
-                db.add(contact)
-                db.commit()
+                pd_person_id = None
 
-    if not contact.pd_person_id:
-        # Create new person
+    if not pd_person_id:
         try:
             result = await api.create_person(person_data)
-            contact.pd_person_id = result['data']['id']
-            db.add(contact)
-            db.commit()
-            logger.info(f'Created person {contact.pd_person_id} for contact {contact.id}')
+            new_pd_person_id = result['data']['id']
+
+            with get_session() as db:
+                contact = db.get(Contact, contact_id)
+                if contact:
+                    contact.pd_person_id = new_pd_person_id
+                    db.add(contact)
+                    db.commit()
+
+            logger.info(f'Created person {new_pd_person_id} for contact {contact_id}')
         except Exception as e:
-            logger.error(f'Error creating person for contact {contact.id}: {e}')
+            logger.error(f'Error creating person for contact {contact_id}: {e}')
 
 
-async def sync_deal(deal: Deal, db):
+async def sync_deal(deal_id: int):
     """Sync a single deal to Pipedrive"""
-    deal_data = _deal_to_pd_data(deal, db)
+    with get_session() as db:
+        deal = db.get(Deal, deal_id)
+        if not deal:
+            return
+        deal_data = _deal_to_pd_data(deal, db)
+        pd_deal_id = deal.pd_deal_id
 
-    if deal.pd_deal_id:
-        # Update existing deal
+    if pd_deal_id:
         try:
-            pd_deal = await api.get_deal(deal.pd_deal_id)
+            pd_deal = await api.get_deal(pd_deal_id)
             current_data = pd_deal.get('data', {})
-
             changed_fields = api.get_changed_fields(current_data, deal_data)
 
             if changed_fields:
-                await api.update_deal(deal.pd_deal_id, changed_fields)
-                logger.info(f'Updated deal {deal.pd_deal_id} for deal {deal.id}')
+                await api.update_deal(pd_deal_id, changed_fields)
+                logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
-            logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
+            logger.error(f'Error updating deal {pd_deal_id}: {e}')
             if '404' in str(e) or '410' in str(e):
-                deal.pd_deal_id = None
-                db.add(deal)
-                db.commit()
+                pd_deal_id = None
 
-    if not deal.pd_deal_id:
-        # Create new deal
+    if not pd_deal_id:
         try:
             result = await api.create_deal(deal_data)
-            deal.pd_deal_id = result['data']['id']
-            db.add(deal)
-            db.commit()
-            logger.info(f'Created deal {deal.pd_deal_id} for deal {deal.id}')
+            new_pd_deal_id = result['data']['id']
+
+            with get_session() as db:
+                deal = db.get(Deal, deal_id)
+                if deal:
+                    deal.pd_deal_id = new_pd_deal_id
+                    db.add(deal)
+                    db.commit()
+
+            logger.info(f'Created deal {new_pd_deal_id} for deal {deal_id}')
         except Exception as e:
-            logger.error(f'Error creating deal for deal {deal.id}: {e}')
+            logger.error(f'Error creating deal for deal {deal_id}: {e}')
 
 
 async def sync_meeting_to_pipedrive(meeting_id: int):
@@ -244,12 +243,14 @@ def _company_to_org_data(company: Company) -> dict:
 
 def _contact_to_person_data(contact: Contact, db) -> dict:
     """Convert Contact model to Pipedrive person data"""
+
+    assert contact.email or contact.phone
     company = db.get(Company, contact.company_id)
 
     data = {
         'name': contact.name,
-        'emails': [{'value': contact.email, 'label': 'work', 'primary': True}] if contact.email else [],
-        'phones': [{'value': contact.phone, 'label': 'work', 'primary': True}] if contact.phone else [],
+        'emails': [{'value': contact.email, 'label': 'work', 'primary': True}],
+        'phones': [{'value': contact.phone or '0', 'label': 'work', 'primary': True}],
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
