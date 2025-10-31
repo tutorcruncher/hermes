@@ -233,6 +233,9 @@ def _company_to_org_data(company: Company) -> dict:
             # Convert datetime to ISO date string
             if isinstance(value, datetime):
                 value = value.date().isoformat()
+            # Convert integers to strings for hermes_id and paid_invoice_count (text fields in Pipedrive)
+            elif field_name in ('hermes_id', 'paid_invoice_count') and isinstance(value, int):
+                value = str(value)
             custom_fields[pd_field_id] = value
 
     data['custom_fields'] = custom_fields
