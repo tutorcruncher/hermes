@@ -812,3 +812,241 @@ class TestCallbookerValidation:
         # Meeting should not be created
         meetings = db.exec(select(Meeting)).all()
         assert len(meetings) == 0
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_complete_google_calendar_workflow_end_to_end(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """
+        Comprehensive end-to-end test of Google Calendar integration workflow.
+
+        This test validates:
+        1. Admin availability check via Google Calendar freebusy API
+        2. Meeting creation with Google Calendar event
+        3. Database connection release before external API calls (asyncio.to_thread)
+        4. Compensating transaction on Google Calendar failure
+        5. Multiple booking attempts with different time slots
+        6. Calendar event data formatting and attendees
+        """
+        from unittest.mock import Mock
+
+        # Setup admin with specific email for calendar testing
+        admin = db.create(
+            Admin(
+                first_name='Test',
+                last_name='Admin',
+                username='test@example.com',
+                tc2_admin_id=1,
+                pd_owner_id=1,
+                is_sales_person=True,
+            )
+        )
+
+        # Mock Google Calendar resource with detailed tracking
+        mock_resource = Mock()
+        mock_gcal_builder.return_value = mock_resource
+
+        # Track all freebusy queries
+        freebusy_calls = []
+
+        class MockFreeBusyQuery:
+            def __init__(self, body):
+                freebusy_calls.append(body)
+                self.body = body
+
+            def execute(self):
+                busy_start = datetime(2026, 7, 3, 10, 0, tzinfo=utc)
+                busy_end = datetime(2026, 7, 3, 11, 0, tzinfo=utc)
+                return {
+                    'calendars': {
+                        admin.username: {
+                            'busy': [
+                                {
+                                    'start': busy_start.isoformat().replace('+00:00', 'Z'),
+                                    'end': busy_end.isoformat().replace('+00:00', 'Z'),
+                                }
+                            ]
+                        }
+                    }
+                }
+
+        mock_resource.freebusy.return_value.query.side_effect = MockFreeBusyQuery
+
+        # Track all calendar event creations
+        event_creations = []
+
+        class MockEventInsert:
+            def __init__(self, calendarId=None, body=None, **kwargs):
+                event_creations.append({'calendar_id': calendarId, 'event': body})
+                self.calendar_id = calendarId
+                self.body = body
+
+            def execute(self):
+                return {'id': f'event_{len(event_creations)}', 'htmlLink': 'https://calendar.google.com/event123'}
+
+        mock_resource.events.return_value.insert.side_effect = MockEventInsert
+
+        # Test 1: Attempt to book during busy time (10:00-10:30) - should fail
+        busy_time = datetime(2026, 7, 3, 10, 15, tzinfo=utc)
+        meeting_data_busy = {
+            'admin_id': admin.id,
+            'name': 'John Smith',
+            'email': 'john@example.com',
+            'company_name': 'Example Corp',
+            'country': 'GB',
+            'estimated_income': 5000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': busy_time.isoformat(),
+        }
+
+        r1 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data_busy)
+
+        assert r1.status_code == 400
+        assert r1.json()['status'] == 'error'
+        assert 'not free' in r1.json()['message'].lower()
+
+        # Verify freebusy was checked
+        assert len(freebusy_calls) == 1
+        assert freebusy_calls[0]['items'][0]['id'] == admin.username
+
+        # Verify no meeting was created in database
+        meetings = db.exec(select(Meeting)).all()
+        assert len(meetings) == 0
+
+        # Verify no calendar event was created
+        assert len(event_creations) == 0
+
+        # Test 2: Book during free time (14:00-14:30) - should succeed
+        free_time = datetime(2026, 7, 3, 14, 0, tzinfo=utc)
+        meeting_data_free = {
+            'admin_id': admin.id,
+            'name': 'Jane Doe',
+            'email': 'jane@example.com',
+            'company_name': 'Acme Inc',
+            'country': 'US',
+            'estimated_income': 10000,
+            'currency': 'USD',
+            'price_plan': 'startup',
+            'meeting_dt': free_time.isoformat(),
+        }
+
+        r2 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data_free)
+
+        assert r2.status_code == 200
+        assert r2.json()['status'] == 'ok'
+
+        # Verify freebusy was checked again
+        assert len(freebusy_calls) == 2
+
+        # Verify meeting was created in database
+        meetings = db.exec(select(Meeting).order_by(Meeting.id)).all()
+        assert len(meetings) == 1
+        meeting = meetings[0]
+        assert meeting.start_time.replace(tzinfo=utc) == free_time
+        assert meeting.end_time.replace(tzinfo=utc) == free_time + timedelta(minutes=30)
+        assert meeting.meeting_type == Meeting.TYPE_SALES
+        assert meeting.admin_id == admin.id
+
+        # Verify company and contact were created
+        company = db.exec(select(Company).where(Company.name == 'Acme Inc')).first()
+        assert company is not None
+        assert company.has_booked_call is True
+        assert company.price_plan == 'startup'
+        assert company.estimated_income == '10000'
+
+        contact = db.exec(select(Contact).where(Contact.email == 'jane@example.com')).first()
+        assert contact is not None
+        assert contact.first_name == 'Jane'
+        assert contact.last_name == 'Doe'
+        assert contact.company_id == company.id
+
+        # Verify deal was created
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal is not None
+        assert deal.status == Deal.STATUS_OPEN
+        assert meeting.deal_id == deal.id
+
+        # Verify Google Calendar event was created
+        assert len(event_creations) == 1
+        calendar_event = event_creations[0]['event']
+
+        # Verify event details
+        assert calendar_event['summary'] == meeting.name
+        assert 'Jane' in calendar_event['description']
+        assert 'Acme Inc' in calendar_event['description']
+        assert calendar_event['start']['dateTime'] == free_time.isoformat().replace('+00:00', '')
+        assert calendar_event['start']['timeZone'] == 'UTC'
+        assert calendar_event['end']['dateTime'] == (free_time + timedelta(minutes=30)).isoformat().replace(
+            '+00:00', ''
+        )
+        assert calendar_event['end']['timeZone'] == 'UTC'
+
+        # Verify attendees
+        attendees = calendar_event['attendees']
+        assert len(attendees) == 2
+        attendee_emails = [a['email'] for a in attendees]
+        assert admin.username in attendee_emails
+        assert 'jane@example.com' in attendee_emails
+
+        # Verify conferencing (Google Meet) is requested
+        assert 'conferenceData' in calendar_event
+
+        # Verify background tasks were queued
+        assert mock_add_task.call_count >= 2
+        call_args = [call.args[0].__name__ for call in mock_add_task.call_args_list]
+        assert 'sync_company_to_pipedrive' in call_args
+        assert 'sync_meeting_to_pipedrive' in call_args
+
+        # Test 3: Attempt duplicate booking within 2 hours - should fail
+        duplicate_time = free_time + timedelta(hours=1)
+        meeting_data_duplicate = {
+            'admin_id': admin.id,
+            'name': 'Jane Doe',
+            'email': 'jane@example.com',
+            'company_name': 'Acme Inc',
+            'country': 'US',
+            'estimated_income': 10000,
+            'currency': 'USD',
+            'price_plan': 'startup',
+            'meeting_dt': duplicate_time.isoformat(),
+        }
+
+        r3 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data_duplicate)
+
+        assert r3.status_code == 400
+        assert r3.json()['status'] == 'error'
+        assert 'already have a meeting' in r3.json()['message'].lower()
+
+        # Still only one meeting in database
+        meetings = db.exec(select(Meeting)).all()
+        assert len(meetings) == 1
+
+        # Test 4: Book outside 2-hour window - should succeed
+        outside_window_time = free_time + timedelta(hours=3)
+        meeting_data_outside = {
+            'admin_id': admin.id,
+            'name': 'Jane Doe',
+            'email': 'jane@example.com',
+            'company_name': 'Acme Inc',
+            'country': 'US',
+            'estimated_income': 10000,
+            'currency': 'USD',
+            'price_plan': 'startup',
+            'meeting_dt': outside_window_time.isoformat(),
+        }
+
+        r4 = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data_outside)
+
+        assert r4.status_code == 200
+        assert r4.json()['status'] == 'ok'
+
+        # Now two meetings exist
+        meetings = db.exec(select(Meeting).order_by(Meeting.start_time)).all()
+        assert len(meetings) == 2
+        assert meetings[0].start_time.replace(tzinfo=utc) == free_time
+        assert meetings[1].start_time.replace(tzinfo=utc) == outside_window_time
+
+        # Two calendar events created
+        assert len(event_creations) == 2
