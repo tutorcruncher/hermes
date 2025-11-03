@@ -39,82 +39,78 @@ async def get_deals_by_org_id(org_id: int) -> list[dict]:
 
 
 @command
-async def fill_missing_pd_deal_ids(live, db):
+async def insert_admin_placeholders(live, db):
     """
-    Find deals in Hermes with pd_deal_id null and match them with existing deals in Pipedrive.
+    Swap Daniel and Tony's data, then duplicate Drew at ID 15.
+
+    Current: Daniel at ID 9, Tony at ID 8, Drew at ID 13
+    Target: Tony data at ID 9, Daniel data at ID 8, Drew data at ID 15
     """
-    print('Starting patch to fill missing pd_deal_id values')
+    from app.main_app.models import Admin
 
-    hermes_id_field = DEAL_PD_FIELD_MAP.get('hermes_id')
-    deals_missing_pd_id = db.exec(select(Deal).where(Deal.pd_deal_id.is_(None))).all()
-    print(f'Found {len(deals_missing_pd_id)} deals with missing pd_deal_id')
+    print('Starting patch to fix admin IDs')
 
-    matched_count = 0
-    unmatched_count = 0
-    error_count = 0
+    # Find Daniel, Tony, and Drew
+    daniel = db.exec(select(Admin).where(Admin.tc2_admin_id == 2068452)).first()
+    tony = db.exec(select(Admin).where(Admin.tc2_admin_id == 2947656)).first()
+    drew = db.exec(select(Admin).where(Admin.tc2_admin_id == 4253776)).first()
 
-    for deal in deals_missing_pd_id:
-        try:
-            company = deal.company
-            if not company or not company.pd_org_id:
-                print(f'Deal {deal.id} ({deal.name}) has no company or pd_org_id, skipping')
-                unmatched_count += 1
-                continue
+    print(f'Daniel currently at ID {daniel.id}')
+    print(f'Tony currently at ID {tony.id}')
+    print(f'Drew currently at ID {drew.id}')
 
-            hermes_deal_id = deal.id
-            company_name = company.name
-            pd_org_id = company.pd_org_id
+    # Swap Daniel and Tony's data (not their IDs!)
+    print('Swapping Daniel and Tony data...')
 
-            pd_deals = await get_deals_by_org_id(pd_org_id)
+    # Get all field names except 'id'
+    fields_to_swap = [field for field in Admin.model_fields.keys() if field != 'id']
 
-            # Try to match by hermes_id custom field
-            matched_pd_deal = None
-            for pd_deal in pd_deals:
-                custom_fields = pd_deal.get('custom_fields', {})
-                pd_hermes_id = custom_fields.get(hermes_id_field)
+    # Save the original values before clearing
+    tony_original = {field: getattr(tony, field) for field in fields_to_swap}
+    daniel_original = {field: getattr(daniel, field) for field in fields_to_swap}
 
-                # Convert to int if it's a string
-                if pd_hermes_id:
-                    try:
-                        pd_hermes_id = int(pd_hermes_id)
-                    except (ValueError, TypeError):
-                        pass
+    # Temporarily set tc2_admin_id to None to avoid unique constraint violation
+    tony.tc2_admin_id = None
+    daniel.tc2_admin_id = None
+    db.flush()
 
-                if pd_hermes_id == hermes_deal_id:
-                    matched_pd_deal = pd_deal
-                    break
+    # Swap the fields using saved values
+    for field in fields_to_swap:
+        setattr(tony, field, daniel_original[field])
+        setattr(daniel, field, tony_original[field])
 
-            if matched_pd_deal:
-                # Update deal directly
-                deal.pd_deal_id = matched_pd_deal['id']
-                db.add(deal)
-                print(f' Matched deal {hermes_deal_id} ({deal.name}) with Pipedrive deal {matched_pd_deal["id"]}')
-                matched_count += 1
-            else:
-                print(
-                    f' No Pipedrive deal found for Hermes deal {hermes_deal_id} ({deal.name}) '
-                    f'in org {pd_org_id} ({company_name})'
-                )
-                unmatched_count += 1
+    db.add(tony)
+    db.add(daniel)
+    db.flush()
 
-        except Exception as e:
-            print(f'Error processing deal {deal.id}: {e}')
-            error_count += 1
+    print(f'Swapped: Tony data now at ID 9, Daniel data now at ID 8')
 
-    # Commit if live
-    if matched_count > 0:
-        if live:
-            db.commit()
-            print(f'Updated {matched_count} deals with pd_deal_id')
-        else:
-            print('not live, not committing.')
+    # Duplicate Drew's record at ID 15 with real data, leave ID 13 as placeholder
+    print(f'Duplicating Drew from ID {drew.id} to ID 15...')
 
-    print('=' * 80)
-    print('Patch complete!')
-    print(f'Matched: {matched_count}')
-    print(f'Not matched: {unmatched_count}')
-    print(f'Errors: {error_count}')
-    print('=' * 80)
+    # Save Drew's data
+    drew_data = {field: getattr(drew, field) for field in Admin.model_fields.keys() if field != 'id'}
+    drew_data['id'] = 15
+
+    # Clear Drew's unique fields at ID 13 (make it a placeholder)
+    drew.tc2_admin_id = None
+    drew.pd_owner_id = None
+    db.add(drew)
+    db.flush()
+
+    # Create the duplicate at ID 15 with Drew's real data
+    drew_duplicate = Admin(**drew_data)
+    db.add(drew_duplicate)
+    db.flush()
+
+    print(f'Drew duplicated: placeholder at ID 13, real Drew at ID 15')
+
+    if live:
+        db.commit()
+        print('Committing changes')
+    else:
+        print('not committing changes')
+
 
 
 @click.command()
