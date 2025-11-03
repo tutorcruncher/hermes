@@ -186,6 +186,7 @@ async def book_meeting(
         raise e
     return meeting
 
+
 def _check_no_duplicate_meeting(contact_id: int, meeting_dt: datetime, db: DBSession) -> None:
     """Check that no meeting already exists within 2 hours of the requested time"""
     two_hours_before = meeting_dt - timedelta(hours=2)

@@ -237,6 +237,7 @@ class TestSyncPerson:
 class TestSyncDeal:
     """Test sync_deal function"""
 
+    @patch('app.pipedrive.tasks.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
@@ -287,6 +288,7 @@ class TestSyncDeal:
         db.refresh(test_deal)
         assert test_deal.pd_deal_id is None
 
+    @patch('app.pipedrive.tasks.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     async def test_sync_deal_create_success(self, mock_create, mock_get_session, db, test_deal):
