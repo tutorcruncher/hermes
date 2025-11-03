@@ -21,9 +21,11 @@ async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) ->
     if company:
         return company
 
+    # Fetch from TC2 API without holding DB session
     tc_client_data = await get_client(tc2_cligency_id)
     tc_client = TCClient(**tc_client_data)
 
+    # Now process with DB
     company = await process_tc_client(tc_client, db)
 
     return company
