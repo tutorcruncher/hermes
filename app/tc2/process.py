@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import select
 
-from app.core.database import DBSession, get_session
+from app.core.database import DBSession
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline
 from app.tc2.api import get_client
 from app.tc2.models import TCClient, TCRecipient
@@ -24,8 +24,7 @@ async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) ->
     tc_client_data = await get_client(tc2_cligency_id)
     tc_client = TCClient(**tc_client_data)
 
-    with get_session() as new_db:
-        company = await process_tc_client(tc_client, new_db)
+    company = await process_tc_client(tc_client, db)
 
     return company
 

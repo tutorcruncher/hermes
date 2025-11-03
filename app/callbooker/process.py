@@ -180,35 +180,83 @@ async def book_meeting(
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
 
-    # Get admin
+    # Get admin and extract needed data
     admin = db.get(Admin, event.admin_id)
     if not admin:
         raise MeetingBookingError('Admin not found.')
 
-    # Check admin is free (query Google Calendar)
+    admin_email = admin.email
+    admin_first_name = admin.first_name
+    contact_id = contact.id
+    contact_email = contact.email
+    contact_first_name = contact.first_name or 'there'
+    contact_phone = contact.phone
+    company_id = company.id
+    company_name = company.name
+    company_estimated_income = company.estimated_income
+    company_country = company.country
+    company_tc2_cligency_id = company.tc2_cligency_id or ''
+    company_tc2_cligency_url = company.tc2_cligency_url or ''
+    company_pd_org_url = company.pd_org_url or ''
+
     meeting_start = event.meeting_dt
     meeting_end = event.meeting_dt + timedelta(minutes=settings.meeting_dur_mins)
+    meeting_type = Meeting.TYPE_SALES if isinstance(event, CBSalesCall) else Meeting.TYPE_SUPPORT
 
-    if not await check_gcal_open_slots(meeting_start, meeting_end, admin.email):
+    # Check admin is free (query Google Calendar)
+    if not await check_gcal_open_slots(meeting_start, meeting_end, admin_email):
         raise MeetingBookingError('Admin is not free at this time.')
 
+    # Create meeting object in database
     meeting = Meeting(
-        company_id=company.id,
-        contact_id=contact.id,
-        meeting_type=Meeting.TYPE_SALES if isinstance(event, CBSalesCall) else Meeting.TYPE_SUPPORT,
+        company_id=company_id,
+        contact_id=contact_id,
+        meeting_type=meeting_type,
         start_time=meeting_start,
         end_time=meeting_end,
-        admin_id=admin.id,
+        admin_id=event.admin_id,
     )
     db.add(meeting)
     db.flush()
+    db.refresh(meeting)
+
+    meeting_id = meeting.id
+    meeting_name = meeting.name
+
+    meeting_templ_vars = {
+        'contact_first_name': contact_first_name,
+        'company_name': company_name,
+        'admin_name': admin_first_name,
+        'tc2_cligency_id': company_tc2_cligency_id,
+        'tc2_cligency_url': company_tc2_cligency_url,
+    }
+
+    if meeting_type == Meeting.TYPE_SALES:
+        meeting_templ_vars.update(
+            contact_email=contact_email,
+            contact_phone=contact_phone,
+            company_estimated_monthly_revenue=company_estimated_income,
+            company_country=company_country,
+            crm_url=company_pd_org_url,
+        )
+
+    meeting_template = MEETING_CONTENT_TEMPLATES[meeting_type]
+
     try:
-        await create_meeting_gcal_event(meeting, db)
+        g_cal = AdminGoogleCalendar(admin_email=admin_email)
+        g_cal.create_cal_event(
+            description=meeting_template.format(**meeting_templ_vars),
+            summary=meeting_name,
+            contact_email=contact_email,
+            start=meeting_start,
+            end=meeting_end,
+        )
+        logger.info(f'Created Google Calendar event for meeting {meeting_id}')
     except Exception as e:
         db.rollback()
         logger.error(f'Failed to create Google Calendar event: {e}', exc_info=True)
         raise MeetingBookingError('Failed to create calendar event')
-    db.refresh(meeting)
+
     return meeting
 
 
@@ -234,42 +282,3 @@ async def check_gcal_open_slots(meeting_start: datetime, meeting_end: datetime, 
             logger.info(f'Tried to book meeting with {admin_email} for slot {slot_start} - {slot_end}')
             return False
     return True
-
-
-async def create_meeting_gcal_event(meeting: Meeting, db: DBSession):
-    """
-    Create a meeting event in the admin and contact's Google Calendar.
-    Includes details from Pipedrive/TC2 if available.
-    """
-    contact = db.get(Contact, meeting.contact_id)
-    company = db.get(Company, meeting.company_id)
-    admin = db.get(Admin, meeting.admin_id)
-
-    meeting_templ_vars = {
-        'contact_first_name': contact.first_name or 'there',
-        'company_name': company.name,
-        'admin_name': admin.first_name,
-        'tc2_cligency_id': company.tc2_cligency_id or '',
-        'tc2_cligency_url': company.tc2_cligency_url or '',
-    }
-
-    meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
-
-    if meeting.meeting_type == Meeting.TYPE_SALES:
-        meeting_templ_vars.update(
-            contact_email=contact.email,
-            contact_phone=contact.phone,
-            company_estimated_monthly_revenue=company.estimated_income,
-            company_country=company.country,
-            crm_url=company.pd_org_url or '',
-        )
-
-    g_cal = AdminGoogleCalendar(admin_email=admin.email)
-    g_cal.create_cal_event(
-        description=meeting_template.format(**meeting_templ_vars),
-        summary=meeting.name,
-        contact_email=contact.email,
-        start=meeting.start_time,
-        end=meeting.end_time,
-    )
-    logger.info(f'Created Google Calendar event for meeting {meeting.id}')
