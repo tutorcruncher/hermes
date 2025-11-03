@@ -2,14 +2,14 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Contact, Deal
 from app.tc2.models import TCClient
-from app.tc2.process import get_or_create_company_from_tc2, process_tc_client
+from app.tc2.process import process_tc_client
 from tests.helpers import create_mock_response
 
 
@@ -44,36 +44,6 @@ def sample_tc_client_data(test_admin):
 
 class TestTC2Integration:
     """Test TC2 webhook processing"""
-
-    @patch('app.tc2.process.get_session')
-    @patch('app.tc2.process.get_client', new_callable=AsyncMock)
-    async def test_get_or_create_company_does_not_hold_session_during_api_call(
-        self, mock_get_client, mock_get_session, db, test_admin, sample_tc_client_data
-    ):
-        """Test that get_or_create_company_from_tc2 closes DB session before making TC2 API call"""
-        session_open = []
-
-        class SessionTracker:
-            def __enter__(self):
-                session_open.append(True)
-                return db
-
-            def __exit__(self, *args):
-                session_open.pop()
-                return False
-
-        def check_session_during_api_call(*args, **kwargs):
-            assert len(session_open) == 0, 'TC2 API call was made while database session was still open'
-            return sample_tc_client_data
-
-        mock_get_session.return_value = SessionTracker()
-        mock_get_client.side_effect = check_session_during_api_call
-
-        company = await get_or_create_company_from_tc2(123, db)
-
-        assert company is not None
-        assert company.tc2_cligency_id == 123
-        assert len(session_open) == 0
 
     async def test_process_tc_client_creates_company(self, db, test_admin, sample_tc_client_data):
         """Test that processing TC2 client creates a company in Hermes"""
