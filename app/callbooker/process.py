@@ -175,24 +175,16 @@ async def book_meeting(
 
     meeting_start = event.meeting_dt
     meeting_end = event.meeting_dt + timedelta(minutes=settings.meeting_dur_mins)
-    if not await check_gcal_open_slots(meeting_start, meeting_end, admin.email):
-        raise MeetingBookingError('Admin is not free at this time.')
+    await _check_admin_availability(meeting_start, meeting_end, admin.email)
 
     meeting = _create_meeting_record(company.id, contact.id, event, meeting_start, meeting_end, db)
 
     try:
         await _create_google_calendar_event(meeting, company, contact, admin, db)
-        return meeting
-    except Exception:
+    except Exception as e:
         _delete_meeting_on_calendar_failure(meeting.id, db)
-        raise
-
-
-def _validate_contact_email(contact: Contact) -> None:
-    """Validate that contact has an email address"""
-    if not contact.email:
-        raise MeetingBookingError('Contact must have an email address to book a meeting.')
-
+        raise e
+    return meeting
 
 def _check_no_duplicate_meeting(contact_id: int, meeting_dt: datetime, db: DBSession) -> None:
     """Check that no meeting already exists within 2 hours of the requested time"""
@@ -209,14 +201,6 @@ def _check_no_duplicate_meeting(contact_id: int, meeting_dt: datetime, db: DBSes
 
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
-
-
-def _get_admin(admin_id: int, db: DBSession) -> Admin:
-    """Get admin by ID or raise error"""
-    admin = db.get(Admin, admin_id)
-    if not admin:
-        raise MeetingBookingError('Admin not found.')
-    return admin
 
 
 async def _check_admin_availability(meeting_start: datetime, meeting_end: datetime, admin_email: str) -> None:
