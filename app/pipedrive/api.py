@@ -1,12 +1,25 @@
+import asyncio
 import logging
 from typing import Optional
 
 import httpx
 import logfire
+from aiolimiter import AsyncLimiter
 
 from app.core.config import settings
 
 logger = logging.getLogger('hermes.pipedrive')
+
+_rate_limiter = AsyncLimiter(max_rate=9, time_period=2)
+
+
+def _extract_rate_limit_headers(response: httpx.Response) -> dict:
+    return {
+        'limit': response.headers.get('x-ratelimit-limit'),
+        'remaining': response.headers.get('x-ratelimit-remaining'),
+        'reset': response.headers.get('x-ratelimit-reset'),
+        'daily_left': response.headers.get('x-daily-requests-left'),
+    }
 
 
 async def pipedrive_request(
@@ -15,15 +28,17 @@ async def pipedrive_request(
     method: str = 'GET',
     query_params: Optional[dict] = None,
     data: Optional[dict] = None,
+    retry: int = 0,
 ) -> dict:
     """
-    Make a request to the Pipedrive API v2 with proper authentication and error handling.
+    Make a request to the Pipedrive API v2 with rate limiting and retry logic.
 
     Args:
         endpoint: The API endpoint (without /v2/ prefix)
         method: HTTP method (GET, POST, PATCH, DELETE)
         query_params: Query parameters dict
         data: Request body data
+        retry: Internal retry counter
 
     Returns:
         Response JSON data
@@ -32,20 +47,37 @@ async def pipedrive_request(
     headers = {'x-api-token': settings.pd_api_key, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
     with logfire.span(f'{method} {endpoint}'):
-        async with httpx.AsyncClient() as client:
-            response = await client.request(
-                method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
-            )
-        logger.info(f'Request method={method} url={endpoint} status_code={response.status_code}')
+        async with _rate_limiter:
+            async with httpx.AsyncClient() as client:
+                response = await client.request(
+                    method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
+                )
+        rate_limit_info = _extract_rate_limit_headers(response)
+        logger.info(
+            f'Request method={method} url={endpoint} status_code={response.status_code} '
+            f'rate_limit={rate_limit_info["remaining"]}/{rate_limit_info["limit"]} '
+            f'daily_left={rate_limit_info["daily_left"]}'
+        )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            try:
-                error_data = response.json()
-            except Exception:
-                error_data = response.text
-            logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
-            raise
+            if e.response.status_code == 429 and retry < 3:
+                wait_time = (retry + 1) * 2
+                logger.warning(
+                    f'Pipedrive API rate limit (429) for {method} {endpoint}, '
+                    f'retry {retry + 1}/3, waiting {wait_time}s...'
+                )
+                await asyncio.sleep(wait_time)
+                return await pipedrive_request(
+                    endpoint, method=method, query_params=query_params, data=data, retry=retry + 1
+                )
+            else:
+                try:
+                    error_data = response.json()
+                except Exception:
+                    error_data = response.text
+                logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
+                raise
         return response.json()
 
 
