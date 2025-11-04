@@ -13,7 +13,11 @@ logger = logging.getLogger('hermes.pipedrive')
 _transport = AsyncRateLimitedTransport.create(
     Rate.create(magnitude=settings.pd_api_max_rate, duration=settings.pd_api_rate_period)
 )
-_client = httpx.AsyncClient(transport=_transport)
+_client = httpx.AsyncClient(
+    transport=_transport
+)  # need to use a singleton client to keep the rate limiting throughout all the requests.
+
+RATE_LIMIT_STATUS_CODE = 429
 
 
 def _extract_rate_limit_headers(response: httpx.Response) -> dict:
@@ -62,11 +66,14 @@ async def pipedrive_request(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and retry < 3:
+            if (
+                settings.pd_api_enable_retry
+                and e.response.status_code == RATE_LIMIT_STATUS_CODE
+                and retry < settings.pd_api_max_retry
+            ):
                 wait_time = (retry + 1) * 2
                 logger.warning(
-                    f'Pipedrive API rate limit (429) for {method} {endpoint}, '
-                    f'retry {retry + 1}/3, waiting {wait_time}s...'
+                    f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/3, waiting {wait_time}s...'
                 )
                 await asyncio.sleep(wait_time)
                 return await pipedrive_request(

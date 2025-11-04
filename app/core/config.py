@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     sync_create_deals: bool = True
     pd_api_max_rate: int = 9
     pd_api_rate_period: int = 2  # seconds
+    pd_api_enable_retry: bool = True
+    pd_api_max_retry: int = 3
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'
