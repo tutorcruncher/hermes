@@ -39,7 +39,7 @@ async def get_deals_by_org_id(org_id: int) -> list[dict]:
 
 
 @command
-async def insert_admin_placeholders(live, db):
+async def insert_admin_placeholders(db):
     """
     Swap Daniel and Tony's data, then duplicate Drew at ID 15.
 
@@ -105,12 +105,6 @@ async def insert_admin_placeholders(live, db):
 
     print(f'Drew duplicated: placeholder at ID 13, real Drew at ID 15')
 
-    if live:
-        db.commit()
-        print('Committing changes')
-    else:
-        print('not committing changes')
-
 
 
 @click.command()
@@ -121,7 +115,12 @@ def patch(command, live):
 
     start = datetime.now()
     with get_session() as db:
-        asyncio.run(command_lookup[command](live=live, db=db))
+        asyncio.run(command_lookup[command](db=db))
+        if live:
+            db.commit()
+            print('Committing changes')
+        else:
+            print('Not committing changes')
 
     print(f'Patch took {(datetime.now() - start).total_seconds():0.2f}s')
 
