@@ -2,6 +2,7 @@
 Tests for Pipedrive sync tasks.
 """
 
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +27,29 @@ class SessionMock:
 
     def __exit__(self, *args):
         return None
+
+
+class MockGCalResource:
+    def __init__(self, admin_username=None):
+        self.admin_username = admin_username
+
+    def freebusy(self):
+        return self
+
+    def query(self, body):
+        self.body = body
+        return self
+
+    def execute(self):
+        if self.admin_username:
+            return {'calendars': {self.admin_username: {'busy': []}}}
+        return {'calendars': {}}
+
+    def events(self):
+        return self
+
+    def insert(self, *args, **kwargs):
+        return self
 
 
 class TestSyncCompanyToPipedrive:
@@ -442,6 +466,66 @@ class TestSyncMeetingToPipedrive:
         await sync_meeting_to_pipedrive(test_meeting.id)
 
         mock_create.assert_called_once()
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_endpoint_syncs_meeting(
+        self, mock_gcal, mock_add_task, client, db, test_admin, test_pipeline, test_stage, test_config
+    ):
+        """Test that sales call endpoint queues meeting sync"""
+
+        from pytz import utc
+
+        mock_gcal.return_value = MockGCalResource(test_admin.username)
+
+        meeting_data = {
+            'admin_id': test_admin.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        call_args = [call.args[0].__name__ for call in mock_add_task.call_args_list]
+        assert 'sync_company_to_pipedrive' in call_args
+        assert 'sync_meeting_to_pipedrive' in call_args
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_endpoint_does_not_sync_meeting(
+        self, mock_gcal, mock_add_task, client, db, test_admin, test_company
+    ):
+        """Test that support call endpoint does NOT queue meeting sync"""
+
+        from pytz import utc
+
+        mock_gcal.return_value = MockGCalResource(test_admin.username)
+
+        meeting_data = {
+            'admin_id': test_admin.id,
+            'company_id': test_company.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-support-call'), json=meeting_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        call_args = [call.args[0].__name__ for call in mock_add_task.call_args_list]
+        assert 'sync_company_to_pipedrive' in call_args
+        assert 'sync_meeting_to_pipedrive' not in call_args
 
 
 class TestDataConversionHelpers:
