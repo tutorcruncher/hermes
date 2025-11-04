@@ -179,6 +179,10 @@ async def sync_meeting_to_pipedrive(meeting_id: int):
                 if not meeting:
                     logger.warning(f'Meeting {meeting_id} not found, skipping sync')
                     return
+                elif meeting.meeting_type == Meeting.TYPE_SUPPORT:
+                    logger.info(f'Skipping Pipedrive sync for support meeting {meeting_id}')
+                    return
+
                 activity_data = _meeting_to_activity_data(meeting, db)
 
             # Make API call without holding database connection
