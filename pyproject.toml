@@ -41,6 +41,7 @@ dev = [
     'pytest-env==1.1.5',
     'toml==0.10.2',
     'factory-boy==3.3.3',
+    'aiohttp==3.11.11',
 ]
 
 [tool.ruff]
