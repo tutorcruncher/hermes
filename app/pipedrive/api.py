@@ -10,14 +10,23 @@ from app.core.config import settings
 
 logger = logging.getLogger('hermes.pipedrive')
 
-_transport = AsyncRateLimitedTransport.create(
-    Rate.create(magnitude=settings.pd_api_max_rate, duration=settings.pd_api_rate_period)
-)
-_client = httpx.AsyncClient(
-    transport=_transport
-)  # need to use a singleton client to keep the rate limiting throughout all the requests.
+_client: Optional[httpx.AsyncClient] = None
 
 RATE_LIMIT_STATUS_CODE = 429
+max_retry = settings.pd_api_max_retry
+
+
+def _get_client() -> httpx.AsyncClient:
+    """
+    So this provides a singleton of _client. Need a singleton obj to maintain the ratelimiting accross different requests
+    """
+    global _client  # here global because we don't want a local var  the callstack.
+    if _client is None:
+        _transport = AsyncRateLimitedTransport.create(
+            Rate.create(magnitude=settings.pd_api_max_rate, duration=settings.pd_api_rate_period)
+        )
+        _client = httpx.AsyncClient(transport=_transport)
+    return _client
 
 
 def _extract_rate_limit_headers(response: httpx.Response) -> dict:
@@ -54,8 +63,9 @@ async def pipedrive_request(
     headers = {'x-api-token': settings.pd_api_key, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
     with logfire.span(f'{method} {endpoint}'):
-        response = await _client.request(
-            method=method, uzrl=url, headers=headers, params=query_params, json=data, timeout=30.0
+        client = _get_client()
+        response = await client.request(
+            method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
         )
         rate_limit_info = _extract_rate_limit_headers(response)
         logger.info(
@@ -66,14 +76,10 @@ async def pipedrive_request(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if (
-                settings.pd_api_enable_retry
-                and e.response.status_code == RATE_LIMIT_STATUS_CODE
-                and retry < settings.pd_api_max_retry
-            ):
+            if settings.pd_api_enable_retry and e.response.status_code == RATE_LIMIT_STATUS_CODE and retry < max_retry:
                 wait_time = (retry + 1) * 2
                 logger.warning(
-                    f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/3, waiting {wait_time}s...'
+                    f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/{max_retry}, waiting {wait_time}s...'
                 )
                 await asyncio.sleep(wait_time)
                 return await pipedrive_request(
