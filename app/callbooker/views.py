@@ -73,8 +73,6 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
 
     # Queue background tasks to sync to Pipedrive
     background_tasks.add_task(sync_company_to_pipedrive, company.id)
-    background_tasks.add_task(sync_meeting_to_pipedrive, meeting.id)
-
     return {'status': 'ok'}
 
 

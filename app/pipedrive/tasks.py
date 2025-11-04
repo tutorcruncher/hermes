@@ -125,8 +125,6 @@ async def sync_person(contact_id: int):
 
 async def sync_deal(deal_id: int):
     """Sync a single deal to Pipedrive"""
-    from app.core.config import settings
-
     with get_session() as db:
         deal = db.get(Deal, deal_id)
         if not deal:
@@ -149,10 +147,6 @@ async def sync_deal(deal_id: int):
                 pd_deal_id = None
 
     if not pd_deal_id:
-        if not settings.sync_create_deals:
-            logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
-            return
-
         try:
             result = await api.create_deal(deal_data)
             new_pd_deal_id = result['data']['id']
@@ -179,10 +173,6 @@ async def sync_meeting_to_pipedrive(meeting_id: int):
                 if not meeting:
                     logger.warning(f'Meeting {meeting_id} not found, skipping sync')
                     return
-                elif meeting.meeting_type == Meeting.TYPE_SUPPORT:
-                    logger.info(f'Skipping Pipedrive sync for support meeting {meeting_id}')
-                    return
-
                 activity_data = _meeting_to_activity_data(meeting, db)
 
             # Make API call without holding database connection

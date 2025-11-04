@@ -443,6 +443,55 @@ class TestSyncMeetingToPipedrive:
 
         mock_create.assert_called_once()
 
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_activity', new_callable=AsyncMock)
+    async def test_sync_support_meeting_skipped(self, mock_create, mock_get_session, db, test_company, test_contact, test_admin):
+        """Test that support meetings are not synced to Pipedrive"""
+        from app.main_app.models import Meeting
+        from tests.factories import MeetingFactory
+
+        # Create a support meeting
+        support_meeting = MeetingFactory.create_with_db(
+            db,
+            meeting_type=Meeting.TYPE_SUPPORT,
+            company_id=test_company.id,
+            contact_id=test_contact.id,
+            admin_id=test_admin.id
+        )
+
+        mock_get_session.return_value = db
+
+        # Sync the support meeting
+        await sync_meeting_to_pipedrive(support_meeting.id)
+
+        # Should NOT call create_activity for support meetings
+        mock_create.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_activity', new_callable=AsyncMock)
+    async def test_sync_sales_meeting_not_skipped(self, mock_create, mock_get_session, db, test_company, test_contact, test_admin):
+        """Test that sales meetings are still synced to Pipedrive"""
+        from app.main_app.models import Meeting
+        from tests.factories import MeetingFactory
+
+        # Create a sales meeting
+        sales_meeting = MeetingFactory.create_with_db(
+            db,
+            meeting_type=Meeting.TYPE_SALES,
+            company_id=test_company.id,
+            contact_id=test_contact.id,
+            admin_id=test_admin.id
+        )
+
+        mock_get_session.return_value = db
+        mock_create.return_value = {'data': {'id': 8888}}
+
+        # Sync the sales meeting
+        await sync_meeting_to_pipedrive(sales_meeting.id)
+
+        # Should call create_activity for sales meetings
+        mock_create.assert_called_once()
+
 
 class TestDataConversionHelpers:
     """Test data conversion helper functions"""
