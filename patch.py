@@ -105,6 +105,39 @@ async def insert_admin_placeholders(db):
 
     print(f'Drew duplicated: placeholder at ID 13, real Drew at ID 15')
 
+@command
+async def swap_gabe_admin(db):
+    '''
+    Now swap gabe and tom admin ids
+    '''
+    from app.main_app.models import Admin
+
+    gabe = db.exec(select(Admin).where(Admin.tc2_admin_id == 2543678)).first()
+    tom = db.exec(select(Admin).where(Admin.tc2_admin_id == 85329)).first()
+
+    print(f'Gabe currently at ID {gabe.id}')
+    print(f'Tom currently at ID {tom.id}')
+
+    print("Swapping")
+
+    fields_to_swap = [field for field in Admin.model_fields.keys() if field != 'id']
+
+    gabe_original = {field: getattr(gabe, field) for field in fields_to_swap}
+    tom_original = {field: getattr(tom, field) for field in fields_to_swap}
+
+    gabe.tc2_admin_id = None
+    tom.tc2_admin_id = None
+    db.flush()
+
+    for field in fields_to_swap:
+        setattr(gabe, field, tom_original[field])
+        setattr(tom, field, gabe_original[field])
+
+    db.add(gabe)
+    db.add(tom)
+    db.flush()
+
+    print(f'Swapped: Gabe data now at ID 7, Tom data now at ID 6')
 
 
 @click.command()
