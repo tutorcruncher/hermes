@@ -1,5 +1,5 @@
-import asyncio
 import logging
+import time
 from typing import Optional
 
 import httpx
@@ -41,7 +41,7 @@ async def tc2_request(url: str, *, method: str = 'GET', data: Optional[dict] = N
                         f'TC2 API rate limit (429) for {method} {url}, '
                         f'attempt {retry}/{max_retries}, waiting {wait_time}s...'
                     )
-                    await asyncio.sleep(wait_time)
+                    time.sleep(wait_time)
                     return await tc2_request(url, method=method, data=data, retry=retry + 1)
                 else:
                     try:

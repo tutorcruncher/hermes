@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta
 from typing import AsyncIterable
 
@@ -75,7 +74,7 @@ async def get_admin_available_slots(
 
     # First we get all the 'busy' slots from Google
     g_cal = AdminGoogleCalendar(admin_email=admin.email)
-    cal_data = await asyncio.to_thread(g_cal.get_free_busy_slots, start, end)
+    cal_data = g_cal.get_free_busy_slots(start, end)
     calendar_busy_slots = []
     for time_slot in cal_data['calendars'][admin.email]['busy']:
         _slot_start = iso_8601_to_datetime(time_slot['start'])

@@ -1,10 +1,10 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, Header
 
 from app.core.config import settings
-from app.core.database import get_session
+from app.core.database import DBSession, get_db
 from app.pipedrive.tasks import purge_company_from_pipedrive, sync_company_to_pipedrive
 from app.tc2.models import TCClient, TCWebhook
 from app.tc2.process import process_tc_client
@@ -18,6 +18,7 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 async def tc2_callback(
     webhook: TCWebhook,
     background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
     webhook_signature: Optional[str] = Header(None, alias='X-Webhook-Signature'),
 ):
     """
@@ -39,8 +40,7 @@ async def tc2_callback(
 
             try:
                 # Process the client (creates/updates Company and Contacts)
-                with get_session() as db:
-                    company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
+                company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
 
                 if company:
                     # Queue background task to sync to Pipedrive

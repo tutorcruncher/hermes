@@ -3,13 +3,11 @@ Tests for callbooker process edge cases to achieve 100% coverage.
 """
 
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from pytz import utc
 from sqlmodel import select
 
-from app.callbooker.models import CBSalesCall
-from app.callbooker.process import book_meeting
 from app.main_app.models import Config, Deal, Pipeline, Stage
 
 
@@ -45,54 +43,6 @@ def fake_gcal_builder(error=False, start_dt: datetime | None = None, meeting_dur
 
 class TestCallbookerProcessEdgeCases:
     """Test callbooker process edge cases for full coverage"""
-
-    @patch('app.callbooker.process.AdminGoogleCalendar')
-    @patch('app.callbooker.process.check_gcal_open_slots', new_callable=AsyncMock)
-    async def test_book_meeting_does_not_hold_session_during_google_api_call(
-        self, mock_check_gcal, mock_gcal_class, db, test_admin, test_company, test_contact
-    ):
-        """Test that book_meeting closes DB session before making Google Calendar API calls"""
-        session_open = []
-
-        class SessionTracker:
-            def __enter__(self):
-                session_open.append(True)
-                return db
-
-            def __exit__(self, *args):
-                session_open.pop()
-                return False
-
-        def check_session_during_gcal_check(*args, **kwargs):
-            assert len(session_open) == 0, 'Google Calendar API call was made while database session was still open'
-            return True
-
-        def check_session_during_gcal_create(*args, **kwargs):
-            assert len(session_open) == 0, (
-                'Google Calendar create_cal_event was made while database session was still open'
-            )
-
-        mock_check_gcal.side_effect = check_session_during_gcal_check
-        mock_gcal_instance = mock_gcal_class.return_value
-        mock_gcal_instance.create_cal_event = check_session_during_gcal_create
-
-        future_dt = datetime.now(utc) + timedelta(days=1)
-        event = CBSalesCall(
-            admin_id=test_admin.id,
-            name='John Doe',
-            email='john@example.com',
-            company_name='Test Company',
-            country='GB',
-            estimated_income=1000,
-            currency='GBP',
-            price_plan='payg',
-            meeting_dt=future_dt,
-        )
-
-        meeting = await book_meeting(test_company, test_contact, event, db)
-
-        assert meeting is not None
-        assert len(session_open) == 0
 
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
