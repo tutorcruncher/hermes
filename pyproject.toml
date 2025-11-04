@@ -5,7 +5,7 @@ description = 'Hermes sales system integrating TC2, Pipedrive, and Callbooker'
 requires-python = '>=3.12'
 dependencies = [
     'alembic==1.16.5',
-    'aiolimiter>=1.1.0',
+    'httpx-limiter>=0.4.0',
     'fastapi[standard]==0.118.0',
     'sqlmodel==0.0.25',
     'uvicorn==0.37.0',

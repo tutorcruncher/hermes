@@ -4,13 +4,16 @@ from typing import Optional
 
 import httpx
 import logfire
-from aiolimiter import AsyncLimiter
+from httpx_limiter import AsyncRateLimitedTransport, Rate
 
 from app.core.config import settings
 
 logger = logging.getLogger('hermes.pipedrive')
 
-_rate_limiter = AsyncLimiter(max_rate=9, time_period=2)
+_transport = AsyncRateLimitedTransport.create(
+    Rate.create(magnitude=settings.pd_api_max_rate, duration=settings.pd_api_rate_period)
+)
+_client = httpx.AsyncClient(transport=_transport)
 
 
 def _extract_rate_limit_headers(response: httpx.Response) -> dict:
@@ -31,7 +34,7 @@ async def pipedrive_request(
     retry: int = 0,
 ) -> dict:
     """
-    Make a request to the Pipedrive API v2 with rate limiting and retry logic.
+    Make a request to the Pipedrive API v2.
 
     Args:
         endpoint: The API endpoint (without /v2/ prefix)
@@ -47,11 +50,9 @@ async def pipedrive_request(
     headers = {'x-api-token': settings.pd_api_key, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
     with logfire.span(f'{method} {endpoint}'):
-        async with _rate_limiter:
-            async with httpx.AsyncClient() as client:
-                response = await client.request(
-                    method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
-                )
+        response = await _client.request(
+            method=method, uzrl=url, headers=headers, params=query_params, json=data, timeout=30.0
+        )
         rate_limit_info = _extract_rate_limit_headers(response)
         logger.info(
             f'Request method={method} url={endpoint} status_code={response.status_code} '

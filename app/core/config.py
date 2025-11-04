@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     pd_api_key: str = 'test-key'
     pd_base_url: str = 'https://tutorcruncher.pipedrive.com'
     sync_create_deals: bool = True
+    pd_api_max_rate: int = 9
+    pd_api_rate_period: int = 2 # seconds
 
     # Google
     g_project_id: str = 'tc-hubspot-314214'
