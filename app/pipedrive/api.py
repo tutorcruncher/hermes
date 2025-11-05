@@ -1,12 +1,41 @@
+import asyncio
 import logging
 from typing import Optional
 
 import httpx
 import logfire
+from httpx_limiter import AsyncRateLimitedTransport, Rate
 
 from app.core.config import settings
 
 logger = logging.getLogger('hermes.pipedrive')
+
+_client: Optional[httpx.AsyncClient] = None
+
+RATE_LIMIT_STATUS_CODE = 429
+max_retry = settings.pd_api_max_retry
+
+
+def _get_client() -> httpx.AsyncClient:
+    """
+    So this provides a singleton of _client. Need a singleton obj to maintain the ratelimiting accross different requests
+    """
+    global _client  # here global because we don't want a local var  the callstack.
+    if _client is None:
+        _transport = AsyncRateLimitedTransport.create(
+            Rate.create(magnitude=settings.pd_api_max_rate, duration=settings.pd_api_rate_period)
+        )
+        _client = httpx.AsyncClient(transport=_transport)
+    return _client
+
+
+def _extract_rate_limit_headers(response: httpx.Response) -> dict:
+    return {
+        'limit': response.headers.get('x-ratelimit-limit'),
+        'remaining': response.headers.get('x-ratelimit-remaining'),
+        'reset': response.headers.get('x-ratelimit-reset'),
+        'daily_left': response.headers.get('x-daily-requests-left'),
+    }
 
 
 async def pipedrive_request(
@@ -15,15 +44,17 @@ async def pipedrive_request(
     method: str = 'GET',
     query_params: Optional[dict] = None,
     data: Optional[dict] = None,
+    retry: int = 0,
 ) -> dict:
     """
-    Make a request to the Pipedrive API v2 with proper authentication and error handling.
+    Make a request to the Pipedrive API v2.
 
     Args:
         endpoint: The API endpoint (without /v2/ prefix)
         method: HTTP method (GET, POST, PATCH, DELETE)
         query_params: Query parameters dict
         data: Request body data
+        retry: Internal retry counter
 
     Returns:
         Response JSON data
@@ -32,20 +63,35 @@ async def pipedrive_request(
     headers = {'x-api-token': settings.pd_api_key, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
     with logfire.span(f'{method} {endpoint}'):
-        async with httpx.AsyncClient() as client:
-            response = await client.request(
-                method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
-            )
-        logger.info(f'Request method={method} url={endpoint} status_code={response.status_code}')
+        client = _get_client()
+        response = await client.request(
+            method=method, url=url, headers=headers, params=query_params, json=data, timeout=30.0
+        )
+        rate_limit_info = _extract_rate_limit_headers(response)
+        logger.info(
+            f'Request method={method} url={endpoint} status_code={response.status_code} '
+            f'rate_limit={rate_limit_info["remaining"]}/{rate_limit_info["limit"]} '
+            f'daily_left={rate_limit_info["daily_left"]}'
+        )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            try:
-                error_data = response.json()
-            except Exception:
-                error_data = response.text
-            logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
-            raise
+            if settings.pd_api_enable_retry and e.response.status_code == RATE_LIMIT_STATUS_CODE and retry < max_retry:
+                wait_time = (retry + 1) * 2
+                logger.warning(
+                    f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/{max_retry}, waiting {wait_time}s...'
+                )
+                await asyncio.sleep(wait_time)
+                return await pipedrive_request(
+                    endpoint, method=method, query_params=query_params, data=data, retry=retry + 1
+                )
+            else:
+                try:
+                    error_data = response.json()
+                except Exception:
+                    error_data = response.text
+                logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
+                raise
         return response.json()
 
 
