@@ -144,11 +144,9 @@ async def swap_gabe_admin(db):
 async def reassign_companies_by_price_plan(db):
     from app.main_app.models import Company, Deal
 
-    price_plan_map = {
-        Company.PP_PAYG: 1, # sam
-        Company.PP_STARTUP: 1, # sam
-        Company.PP_ENTERPRISE: 2, # fionn
-    }
+    TONY_ID = 6
+    SAM_ID = 1
+    FIONN_ID = 2
 
     companies = db.exec(select(Company).where(Company.sales_person_id.in_([3, 4]))).all()
 
@@ -158,7 +156,15 @@ async def reassign_companies_by_price_plan(db):
     deals_updated = 0
 
     for company in companies:
-        new_sales_person_id = price_plan_map.get(company.price_plan)
+        new_sales_person_id = None
+
+        if company.price_plan == Company.PP_ENTERPRISE:
+            new_sales_person_id = FIONN_ID
+        elif company.price_plan in (Company.PP_PAYG, Company.PP_STARTUP):
+            if company.country == 'US':
+                new_sales_person_id = TONY_ID
+            else:
+                new_sales_person_id = SAM_ID
 
         if new_sales_person_id:
             company.sales_person_id = new_sales_person_id
