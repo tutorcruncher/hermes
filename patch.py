@@ -142,32 +142,241 @@ async def swap_gabe_admin(db):
 
 @command
 async def reassign_companies_by_price_plan(db):
-    from app.main_app.models import Company
+    from app.main_app.models import Company, Deal
+
+    price_plan_map = {
+        Company.PP_PAYG: 1, # sam
+        Company.PP_STARTUP: 1, # sam
+        Company.PP_ENTERPRISE: 2, # fionn
+    }
 
     companies = db.exec(select(Company).where(Company.sales_person_id.in_([3, 4]))).all()
 
     print(f'Found {len(companies)} companies with sales_person_id in (3, 4)')
 
-    payg_count = 0
-    startup_count = 0
-    enterprise_count = 0
+    companies_updated = 0
+    deals_updated = 0
 
     for company in companies:
-        if company.price_plan == Company.PP_PAYG:
-            company.sales_person_id = 1
-            payg_count += 1
-        elif company.price_plan == Company.PP_STARTUP:
-            company.sales_person_id = 1
-            startup_count += 1
-        elif company.price_plan == Company.PP_ENTERPRISE:
-            company.sales_person_id = 2
-            enterprise_count += 1
+        new_sales_person_id = price_plan_map.get(company.price_plan)
 
-        db.add(company)
+        if new_sales_person_id:
+            company.sales_person_id = new_sales_person_id
+            db.add(company)
+            companies_updated += 1
 
-    print(f'Updated {payg_count} PAYG companies to sales_person_id=1')
-    print(f'Updated {startup_count} Startup companies to sales_person_id=1')
-    print(f'Updated {enterprise_count} Enterprise companies to sales_person_id=2')
+            for deal in company.deals:
+                deal.admin_id = new_sales_person_id
+                db.add(deal)
+                deals_updated += 1
+
+    print(f'Updated {companies_updated} companies')
+    print(f'Updated {deals_updated} deals')
+
+
+def _categorize_deals(deals, db):
+    from app.main_app.models import Company
+
+    deals_with_org_id = []
+    deals_without_org_id = []
+    no_name_count = 0
+
+    for deal in deals:
+        if not deal.name:
+            no_name_count += 1
+            continue
+
+        company = db.get(Company, deal.company_id)
+        if company and company.pd_org_id:
+            deals_with_org_id.append((deal, company.pd_org_id))
+        else:
+            deals_without_org_id.append(deal)
+
+    return deals_with_org_id, deals_without_org_id, no_name_count
+
+def _find_matching_deal(pd_deal, deals_with_org_id, deals_without_org_id):
+    def match_deal_by_substring():
+        for deal, deal_org_id in deals_with_org_id:
+            if deal_org_id == org_id:
+                hermes_title_lower = deal.name.lower().strip()
+                if hermes_title_lower in pd_title_lower or pd_title_lower in hermes_title_lower:
+                    return deal
+        return None
+
+    def match_deal_exact():
+        for deal in deals_without_org_id:
+            if deal.name.lower().strip() == pd_title_lower:
+                return deal
+        return None
+
+    title = pd_deal.get('title')
+    if not title:
+        return None
+
+    pd_title_lower = title.lower().strip()
+    org_id = pd_deal.get('org_id')
+
+    if org_id:
+        return match_deal_by_substring()
+    else:
+        return match_deal_exact()
+
+
+@command
+async def sync_deals_without_pd_id(db):
+    """
+    Find and link deals missing pd_deal_id by matching them in Pipedrive.
+
+    Deals without pd_deal_id were never properly synced. This patch fetches all deals
+    from Pipedrive and matches them to Hermes deals by company pd_org_id and deal name.
+
+    Process:
+    1. Query all Hermes deals where pd_deal_id is NULL
+    2. Categorize deals by whether company has pd_org_id
+    3. Fetch all deals from Pipedrive API in paginated requests (500 per page)
+    4. Match using substring match (with org_id) or exact match (without org_id)
+
+    Outcome:
+    Deals missing pd_deal_id will have pd_deal_id set.
+    """
+    from app.main_app.models import Deal
+
+    deals = db.exec(select(Deal).where(Deal.pd_deal_id.is_(None))).all()
+    deals_with_org_id, deals_without_org_id, no_name_count = _categorize_deals(deals, db)
+
+    print(f'Found {len(deals)} deals with pd_deal_id NULL')
+    print(f'{len(deals_with_org_id)} deals have company with pd_org_id (substring match)')
+    print(f'{len(deals_without_org_id)} deals have no pd_org_id (exact match)')
+    print(f'{no_name_count} deals skipped - deal has no name')
+
+    existing_pd_deal_ids = {d.pd_deal_id for d in db.exec(select(Deal).where(Deal.pd_deal_id.is_not(None))).all()}
+    print(f'{len(existing_pd_deal_ids)} pd_deal_ids already exist in database')
+
+    updated_count = 0
+    skipped_count = 0
+    cursor = None
+    page_count = 0
+    matched_deals = set()
+
+    while True:
+        params = {'limit': 500, 'cursor': cursor} if cursor else {'limit': 500}
+
+        print(f'Fetching page {page_count + 1} from Pipedrive...')
+        result = await api.pipedrive_request('deals', method='GET', query_params=params)
+        pd_deals = result.get('data', [])
+
+        if not pd_deals:
+            print('No more deals returned')
+            break
+
+        print(f'Processing {len(pd_deals)} deals from page {page_count + 1}')
+        page_count += 1
+
+        for pd_deal in pd_deals:
+            pd_deal_id = pd_deal['id']
+            hermes_deal = _find_matching_deal(pd_deal, deals_with_org_id, deals_without_org_id)
+
+            if hermes_deal:
+                matched_deals.add(hermes_deal.id)
+                if pd_deal_id in existing_pd_deal_ids:
+                    skipped_count += 1
+                else:
+                    hermes_deal.pd_deal_id = pd_deal_id
+                    db.add(hermes_deal)
+                    updated_count += 1
+
+        cursor = result.get('additional_data', {}).get('next_cursor')
+        if not cursor:
+            print('No more pages')
+            break
+
+        print(f'{updated_count} deals updated, {skipped_count} skipped (duplicate pd_deal_id)')
+
+    unmatched_count = len(deals_with_org_id) + len(deals_without_org_id) - len(matched_deals)
+
+    print(f'Processed {page_count} pages')
+    print(f'Updated {updated_count} deals total')
+    print(f'Skipped {skipped_count} deals (pd_deal_id already exists)')
+    print(f'{unmatched_count} deals not found in Pipedrive or name mismatch')
+
+
+@command
+async def sync_deal_owners_from_pipedrive(db):
+    """
+    Sync deal admin_id from Pipedrive to correct owner assignments in Hermes.
+
+    Some deals in Hermes have incorrect admin_id values (3, 4, or 8) which causes
+    wrong owner_id to sent to Pipedrive during sync. This patch will fetch the
+    current owner_id from Pipedrive for these deals and updates Hermes to match.
+
+    Process:
+    1. Build a mapping of Pipedrive owner_id to Hermes admin.id for all admins
+    2. Query all Hermes deals where admin_id is 3, 4, or 8 (incorrect assignments)
+    3. Fetch all deals from Pipedrive API in paginated requests (500 per page)
+    4. For each deal found in both systems, look up the owner_id from Pipedrive
+    5. Map that owner_id to the correct Hermes admin.id and update the deal
+    6. Continue pagination until all Pipedrive deals are processed
+
+    Outcome:
+    All deals with admin_id in (3, 4, 8) will have their admin_id updated to match
+    the current owner in Pipedrive, ensuring future syncs send correct owner_id.
+    """
+    from app.main_app.models import Admin, Deal
+
+
+    admins = db.exec(select(Admin)).all()
+    pd_owner_to_admin = {admin.pd_owner_id: admin.id for admin in admins}
+
+    print(f'Loaded {len(admins)} admins')
+    print(f'pd_owner_id to admin.id mapping: {len(pd_owner_to_admin)} entries')
+
+    deals = db.exec(select(Deal).where(Deal.admin_id.in_([3, 4, 8]))).all()
+    hermes_deal_map = {deal.pd_deal_id: deal for deal in deals if deal.pd_deal_id}
+
+    print(f'Found {len(deals)} deals with admin_id in (3, 4, 8)')
+    print(f'Of these, {len(hermes_deal_map)} have pd_deal_id set')
+
+    updated_count = 0
+    cursor = None
+    page_count = 0
+
+    while True:
+        params = {'limit': 500}
+        if cursor:
+            params['cursor'] = cursor
+
+        print(f'Fetching page {page_count + 1} from Pipedrive...')
+        result = await api.pipedrive_request('deals', method='GET', query_params=params)
+        pd_deals = result.get('data', [])
+
+        if not pd_deals:
+            print('No more deals returned')
+            break
+
+        print(f'Processing {len(pd_deals)} deals from page {page_count + 1}')
+        page_count += 1
+
+        for pd_deal in pd_deals:
+            pd_deal_id = pd_deal['id']
+            owner_id = pd_deal.get('owner_id')
+
+            if pd_deal_id in hermes_deal_map and owner_id:
+                hermes_admin_id = pd_owner_to_admin.get(owner_id)
+                if hermes_admin_id:
+                    deal = hermes_deal_map[pd_deal_id]
+                    deal.admin_id = hermes_admin_id
+                    db.add(deal)
+                    updated_count += 1
+
+        cursor = result.get('additional_data', {}).get('next_cursor')
+        if not cursor:
+            print('No more pages')
+            break
+
+        print(f'{updated_count} deals updated so far')
+
+    print(f'Processed {page_count} pages')
+    print(f'Updated {updated_count} deals total')
 
 
 @click.command()
