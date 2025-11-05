@@ -140,6 +140,36 @@ async def swap_gabe_admin(db):
     print(f'Swapped: Gabe data now at ID 7, Tom data now at ID 6')
 
 
+@command
+async def reassign_companies_by_price_plan(db):
+    from app.main_app.models import Company
+
+    companies = db.exec(select(Company).where(Company.sales_person_id.in_([3, 4]))).all()
+
+    print(f'Found {len(companies)} companies with sales_person_id in (3, 4)')
+
+    payg_count = 0
+    startup_count = 0
+    enterprise_count = 0
+
+    for company in companies:
+        if company.price_plan == Company.PP_PAYG:
+            company.sales_person_id = 1
+            payg_count += 1
+        elif company.price_plan == Company.PP_STARTUP:
+            company.sales_person_id = 1
+            startup_count += 1
+        elif company.price_plan == Company.PP_ENTERPRISE:
+            company.sales_person_id = 2
+            enterprise_count += 1
+
+        db.add(company)
+
+    print(f'Updated {payg_count} PAYG companies to sales_person_id=1')
+    print(f'Updated {startup_count} Startup companies to sales_person_id=1')
+    print(f'Updated {enterprise_count} Enterprise companies to sales_person_id=2')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 @click.option('--live', is_flag=True)
