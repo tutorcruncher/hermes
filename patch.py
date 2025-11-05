@@ -386,7 +386,6 @@ async def sync_deal_owners_from_pipedrive(db):
                 hermes_admin_id = pd_owner_to_admin.get(owner_id)
                 if hermes_admin_id:
                     deal = hermes_deal_map[pd_deal_id]
-                    print("REAL ADMIN ID", hermes_admin_id, "OWNER ID", owner_id)
                     deal.admin_id = hermes_admin_id
                     db.add(deal)
                     updated_count += 1
