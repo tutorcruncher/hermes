@@ -23,6 +23,26 @@ logger = logging.getLogger('hermes.patch')
 
 commands = []
 
+'''
+1	"Sam"
+2	"Fionn"
+3	"Maahi"
+4	"Raashi"
+9	"Tony"
+15	"Drew"
+6	"Tom"
+7	"Gabe"
+'''
+
+TONY_ID = 9
+SAM_ID = 1
+FIONN_ID = 2
+GABE_ID = 7
+DREW_ID = 15
+TOM_ID = 6
+MAAHI_ID = 3
+RAASHI_ID = 4
+DAN_ID = 8
 
 def command(func):
     commands.append(func)
@@ -144,13 +164,9 @@ async def swap_gabe_admin(db):
 async def reassign_companies_by_price_plan(db):
     from app.main_app.models import Company, Deal
 
-    TONY_ID = 6
-    SAM_ID = 1
-    FIONN_ID = 2
+    companies = db.exec(select(Company).where(Company.sales_person_id.in_([MAAHI_ID, RAASHI_ID]))).all()
 
-    companies = db.exec(select(Company).where(Company.sales_person_id.in_([3, 4]))).all()
-
-    print(f'Found {len(companies)} companies with sales_person_id in (3, 4)')
+    print(f'Found {len(companies)} companies with sales_person_id')
 
     companies_updated = 0
     deals_updated = 0
@@ -336,10 +352,10 @@ async def sync_deal_owners_from_pipedrive(db):
     print(f'Loaded {len(admins)} admins')
     print(f'pd_owner_id to admin.id mapping: {len(pd_owner_to_admin)} entries')
 
-    deals = db.exec(select(Deal).where(Deal.admin_id.in_([3, 4, 8]))).all()
+    deals = db.exec(select(Deal).where(Deal.admin_id.in_([MAAHI_ID, RAASHI_ID, DAN_ID]))).all()
     hermes_deal_map = {deal.pd_deal_id: deal for deal in deals if deal.pd_deal_id}
 
-    print(f'Found {len(deals)} deals with admin_id in (3, 4, 8)')
+    print(f'Found {len(deals)} deals')
     print(f'Of these, {len(hermes_deal_map)} have pd_deal_id set')
 
     updated_count = 0
@@ -370,6 +386,7 @@ async def sync_deal_owners_from_pipedrive(db):
                 hermes_admin_id = pd_owner_to_admin.get(owner_id)
                 if hermes_admin_id:
                     deal = hermes_deal_map[pd_deal_id]
+                    print("REAL ADMIN ID", hermes_admin_id, "OWNER ID", owner_id)
                     deal.admin_id = hermes_admin_id
                     db.add(deal)
                     updated_count += 1
