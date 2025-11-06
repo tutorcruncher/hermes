@@ -14,9 +14,7 @@ import click
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Deal
 from app.pipedrive import api
-from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('hermes.patch')
@@ -28,21 +26,21 @@ commands = []
 2	"Fionn"
 3	"Maahi"
 4	"Raashi"
-9	"Tony"
-15	"Drew"
 6	"Tom"
+9	"Tony"
 7	"Gabe"
+15	"Drew"
 '''
 
-TONY_ID = 9
 SAM_ID = 1
 FIONN_ID = 2
-GABE_ID = 7
-DREW_ID = 15
-TOM_ID = 6
 MAAHI_ID = 3
 RAASHI_ID = 4
+TOM_ID = 6
+GABE_ID = 7
 DAN_ID = 8
+TONY_ID = 9
+DREW_ID = 15
 
 def command(func):
     commands.append(func)
@@ -327,20 +325,20 @@ async def sync_deal_owners_from_pipedrive(db):
     """
     Sync deal admin_id from Pipedrive to correct owner assignments in Hermes.
 
-    Some deals in Hermes have incorrect admin_id values (3, 4, or 8) which causes
+    Some deals in Hermes have incorrect admin_id values not in SALES TEAM which causes
     wrong owner_id to sent to Pipedrive during sync. This patch will fetch the
     current owner_id from Pipedrive for these deals and updates Hermes to match.
 
     Process:
     1. Build a mapping of Pipedrive owner_id to Hermes admin.id for all admins
-    2. Query all Hermes deals where admin_id is 3, 4, or 8 (incorrect assignments)
+    2. Query all Hermes deals where admin_id is not in SALES TEAM
     3. Fetch all deals from Pipedrive API in paginated requests (500 per page)
     4. For each deal found in both systems, look up the owner_id from Pipedrive
     5. Map that owner_id to the correct Hermes admin.id and update the deal
     6. Continue pagination until all Pipedrive deals are processed
 
     Outcome:
-    All deals with admin_id in (3, 4, 8) will have their admin_id updated to match
+    All deals with admin_id not in SALES TEAM will have their admin_id updated to match
     the current owner in Pipedrive, ensuring future syncs send correct owner_id.
     """
     from app.main_app.models import Admin, Deal
@@ -352,7 +350,7 @@ async def sync_deal_owners_from_pipedrive(db):
     print(f'Loaded {len(admins)} admins')
     print(f'pd_owner_id to admin.id mapping: {len(pd_owner_to_admin)} entries')
 
-    deals = db.exec(select(Deal).where(Deal.admin_id.in_([MAAHI_ID, RAASHI_ID, DAN_ID]))).all()
+    deals = db.exec(select(Deal).where(Deal.admin_id.not_in([SAM_ID, FIONN_ID, TONY_ID, DREW_ID]))).all()
     hermes_deal_map = {deal.pd_deal_id: deal for deal in deals if deal.pd_deal_id}
 
     print(f'Found {len(deals)} deals')
