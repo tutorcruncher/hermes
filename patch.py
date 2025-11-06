@@ -350,7 +350,7 @@ async def sync_deal_owners_from_pipedrive(db):
     print(f'Loaded {len(admins)} admins')
     print(f'pd_owner_id to admin.id mapping: {len(pd_owner_to_admin)} entries')
 
-    deals = db.exec(select(Deal).where(Deal.admin_id.not_in([SAM_ID, FIONN_ID, TONY_ID, DREW_ID]))).all()
+    deals = db.exec(select(Deal).where(Deal.admin_id.not_in([SAM_ID, FIONN_ID, GABE_ID, TONY_ID, DREW_ID]))).all()
     hermes_deal_map = {deal.pd_deal_id: deal for deal in deals if deal.pd_deal_id}
 
     print(f'Found {len(deals)} deals')
