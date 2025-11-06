@@ -257,11 +257,9 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
 
-    # Only include emails if contact has a valid email
     if contact.email:
         data['emails'] = [{'value': contact.email, 'label': 'work', 'primary': True}]
 
-    # Only include phones if contact has a valid phone
     if contact.phone:
         data['phones'] = [{'value': contact.phone, 'label': 'work', 'primary': True}]
 

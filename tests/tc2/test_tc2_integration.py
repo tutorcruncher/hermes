@@ -606,9 +606,7 @@ class TestTC2EdgeCases:
         company = db.create(Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg'))
 
         # Create contact without email and phone
-        contact = db.create(
-            Contact(first_name='Test', last_name='User', email=None, phone=None, company_id=company.id)
-        )
+        contact = db.create(Contact(first_name='Test', last_name='User', email=None, phone=None, company_id=company.id))
 
         await sync_person(contact.id)
 
