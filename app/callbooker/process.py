@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.callbooker.google import AdminGoogleCalendar
@@ -95,7 +96,25 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
         company_data = event.company_dict()
         company = Company(**company_data)
         db.add(company)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Previously tc2_admin_id was passed as bdr_id, but with the rebuild we expect the hermes_admin_id.
+            # So this handles those old urls.
+            db.rollback()
+            bdr_id = company_data.get('bdr_person_id')
+            if not bdr_id:
+                raise
+
+            admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_id)).one_or_none()
+            if not admin:
+                logger.error(f'Could not find admin with tc2_admin_id {bdr_id}')
+                raise
+
+            company.bdr_person_id = admin.id
+            db.add(company)
+            db.commit()
+
         db.refresh(company)
         logger.info(f'Created company {company.id}')
 

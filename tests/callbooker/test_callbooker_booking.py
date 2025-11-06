@@ -432,6 +432,52 @@ class TestSalesCallBooking:
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_with_bdr_person_resolves_tc2_admin_id(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test booking sales call when tc2_admin_id is passed as bdr_person_id gets resolved to admin.id"""
+        from sqlalchemy.exc import IntegrityError
+
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        sales_person = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+        bdr_person = db.create(
+            Admin(
+                first_name='BDR',
+                last_name='Person',
+                username='bdr@example.com',
+                tc2_admin_id=4253776,
+                is_bdr_person=True,
+            )
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['bdr_person_id'] = 4253776
+
+        original_commit = db.commit
+        commit_count = [0]
+
+        def mock_commit():
+            commit_count[0] += 1
+            if commit_count[0] == 1:
+                raise IntegrityError('', '', '', '')
+            return original_commit()
+
+        db.commit = mock_commit
+
+        try:
+            r = client.post(
+                client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data}
+            )
+
+            assert r.status_code == 200
+
+            company = db.exec(select(Company)).first()
+            assert company.bdr_person_id == bdr_person.id
+        finally:
+            db.commit = original_commit
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_uses_pipeline_dft_entry_stage(
         self, mock_gcal_builder, mock_add_task, client, db, test_admin
     ):
