@@ -253,11 +253,17 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
 
     data = {
         'name': contact.name,
-        'emails': [{'value': contact.email, 'label': 'work', 'primary': True}],
-        'phones': [{'value': contact.phone, 'label': 'work', 'primary': True}],
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
+
+    # Only include emails if contact has a valid email
+    if contact.email:
+        data['emails'] = [{'value': contact.email, 'label': 'work', 'primary': True}]
+
+    # Only include phones if contact has a valid phone
+    if contact.phone:
+        data['phones'] = [{'value': contact.phone, 'label': 'work', 'primary': True}]
 
     # Add custom fields
     custom_fields = {}
