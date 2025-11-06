@@ -99,6 +99,8 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
         try:
             db.commit()
         except IntegrityError:
+            # Previously tc2_admin_id was passed as bdr_id, but with the rebuild we expect the hermes_admin_id.
+            # So this handles those old urls.
             db.rollback()
             bdr_id = company_data.get('bdr_person_id')
             if not bdr_id:
