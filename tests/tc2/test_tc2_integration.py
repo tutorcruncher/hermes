@@ -863,12 +863,12 @@ class TestTC2SyncableFields:
         assert company.gclid_expiry_dt.year == 2025
         assert company.gclid_expiry_dt.month == 12
         assert company.gclid_expiry_dt.day == 1
+        assert company.signup_questionnaire == 'questionnaire_data'
 
-        # Extra attrs fields
+        # Extra attrs fields (non-syncable)
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
         assert company.estimated_income == '5000'
-        assert company.signup_questionnaire == 'questionnaire_data'
 
         # Verify contact was created
         contact = db.exec(select(Contact).where(Contact.company_id == company.id)).one()
@@ -918,7 +918,6 @@ class TestTC2SyncableFields:
         assert updated_company.utm_source == 'google'
         assert updated_company.utm_campaign == 'summer2024'
         assert updated_company.estimated_income == '5000'
-        assert updated_company.signup_questionnaire == 'questionnaire_data'
 
         # Syncable fields SHOULD change
         assert updated_company.tc2_status == 'active'
@@ -955,6 +954,7 @@ class TestTC2SyncableFields:
         assert updated_company.gclid_expiry_dt.year == 2026
         assert updated_company.gclid_expiry_dt.month == 1
         assert updated_company.gclid_expiry_dt.day == 1
+        assert updated_company.signup_questionnaire == 'new_questionnaire_data'
 
     async def test_syncable_fields_updated_on_existing_company(self, client, db, test_admin, sample_tc_client_data):
         """Test that only syncable fields are updated when webhook processes existing company"""
@@ -1092,13 +1092,13 @@ class TestTC2SyncableFields:
         db.expire_all()
         updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
 
-        # Syncable field should update
+        # Syncable fields should update
         assert updated_company.paid_invoice_count == 100  # IS syncable - should update
+        assert updated_company.signup_questionnaire == 'changed_questionnaire'  # IS syncable - should update
 
         # Non-syncable fields should remain unchanged
         assert updated_company.utm_source == 'initial_source'
         assert updated_company.utm_campaign == 'initial_campaign'
-        assert updated_company.signup_questionnaire == 'initial_questionnaire'
         assert updated_company.estimated_income == '5000'
 
     async def test_contacts_not_updated_for_existing_company(self, client, db, test_admin, sample_tc_client_data):

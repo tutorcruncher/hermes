@@ -28,11 +28,12 @@ COMPANY_SYNCABLE_FIELDS = (
         'tc2_status',
         'narc',
         'paid_invoice_count',
+        'signup_questionnaire',
     }
 )
 
 
-def _update_syncable_fields(company: Company, tc_client: TCClient):
+def _update_syncable_fields(company: Company, tc_client: TCClient, extra_attrs_dict: dict):
     """
     Update only syncable fields for an existing company.
 
@@ -41,7 +42,10 @@ def _update_syncable_fields(company: Company, tc_client: TCClient):
     """
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
-        value = getattr(tc_client.meta_agency, tc2_field)
+        value = getattr(tc_client.meta_agency, tc2_field, None)
+        if value is None and field in extra_attrs_dict:
+            value = extra_attrs_dict.get(field)
+
         setattr(company, field, value)
 
 
@@ -130,7 +134,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
-        _update_syncable_fields(company, tc_client)
+        _update_syncable_fields(company, tc_client, extra_attrs_dict)
         _close_open_deals_if_narc_or_terminated(company, db)
         db.add(company)
         db.commit()
