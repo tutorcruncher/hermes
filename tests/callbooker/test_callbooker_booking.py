@@ -587,13 +587,11 @@ class TestSalesCallBooking:
         assert r.status_code == 200
 
         # Verify the most recent contact (contact2) was used
-        meeting = db.exec(select(Meeting)).first()
+        meeting = db.exec(select(Meeting).where(Meeting.contact_id == contact2.id)).one()
         assert meeting is not None
-        assert meeting.contact_id == contact2.id
 
-        deal = db.exec(select(Deal)).first()
+        deal = db.exec(select(Deal).where(Deal.contact_id == contact2.id)).one()
         assert deal is not None
-        assert deal.contact_id == contact2.id
 
     @patch('app.pipedrive.api.pipedrive_request')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -639,13 +637,11 @@ class TestSalesCallBooking:
         assert r.status_code == 200
 
         # Verify the most recent contact (contact2) was used
-        meeting = db.exec(select(Meeting)).first()
+        meeting = db.exec(select(Meeting).where(Meeting.contact_id == contact2.id)).one()
         assert meeting is not None
-        assert meeting.contact_id == contact2.id
 
-        deal = db.exec(select(Deal)).first()
+        deal = db.exec(select(Deal).where(Deal.contact_id == contact2.id)).one()
         assert deal is not None
-        assert deal.contact_id == contact2.id
 
 
 class TestSupportCallBooking:
