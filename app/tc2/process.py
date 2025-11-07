@@ -23,20 +23,18 @@ COMPANY_SYNCABLE_FIELDS = {
     'narc',
 }
 
-CONTACT_SYNCABLE_FIELDS = {}
 
-
-def _update_syncable_fields(model: Company | Contact, source_data, syncable_fields: set, field_mapping: dict = None):
+def _update_syncable_fields(company: Company, tc_client: TCClient):
     """
-    Update only syncable fields for an existing model instance.
+    Update only syncable fields for an existing company.
 
     This prevents the 3-hourly TC2 webhook job from overwriting fields that may have been
-    updated in Pipedrive.
+    updated in Pipedrive. Only fields in COMPANY_SYNCABLE_FIELDS will be updated.
     """
-    for field in syncable_fields:
-        source_field = field_mapping.get(field, field) if field_mapping else field
-        value = getattr(source_data, source_field)
-        setattr(model, field, value)
+    for field in COMPANY_SYNCABLE_FIELDS:
+        tc2_field = 'status' if field == 'tc2_status' else field
+        value = getattr(tc_client.meta_agency, tc2_field)
+        setattr(company, field, value)
 
 
 def _close_open_deals_if_narc_or_terminated(company: Company, db: DBSession):
@@ -124,7 +122,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
-        _update_syncable_fields(company, tc_client.meta_agency, COMPANY_SYNCABLE_FIELDS, {'tc2_status': 'status'})
+        _update_syncable_fields(company, tc_client)
         _close_open_deals_if_narc_or_terminated(company, db)
         db.add(company)
         db.commit()
@@ -168,7 +166,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
                 primary_contact = contact
 
     # Create deal if requested and conditions are met
-    deal = None
     if create_deal and not company.narc:
         # Determine if we should create a deal based on company status and age
         should_create_deal = (
@@ -210,18 +207,7 @@ async def process_tc_recipient(
     contact_email = recipient.email or user_email
     contact_phone = user_phone  # Recipients don't have phone, always use user phone
 
-    if contact:
-        # Update existing contact
-        contact.first_name = recipient.first_name
-        contact.last_name = recipient.last_name
-        contact.email = contact_email
-        contact.phone = contact_phone
-        contact.country = company.country
-        contact.company_id = company.id
-        db.add(contact)
-        db.commit()
-        db.refresh(contact)
-    else:
+    if not contact:
         # Create new contact
         contact = Contact(
             tc2_sr_id=recipient.id,
@@ -235,6 +221,8 @@ async def process_tc_recipient(
         db.add(contact)
         db.commit()
         db.refresh(contact)
+
+    # we return contact back without updating it if it already exists
 
     return contact
 
