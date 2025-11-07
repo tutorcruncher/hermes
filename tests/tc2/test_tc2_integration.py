@@ -476,6 +476,182 @@ class TestTC2EdgeCases:
         # hermes_id should always be sent (it's an int)
         assert COMPANY_PD_FIELD_MAP['hermes_id'] in custom_fields
 
+    @patch('httpx.AsyncClient.request')
+    async def test_contact_without_email_syncs_to_pipedrive_successfully(
+        self, mock_request, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that contact without email can be synced to Pipedrive without validation errors"""
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create contact without email
+        sample_tc_client_data['paid_recipients'] = [
+            {
+                'id': 789,
+                'first_name': 'John',
+                'last_name': 'Doe',
+                'email': None,  # No email
+            }
+        ]
+        sample_tc_client_data['user']['email'] = None
+        sample_tc_client_data['model'] = 'Client'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        # This should not raise any errors
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        # Verify contact was created
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contacts = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
+        assert len(contacts) == 1
+        assert contacts[0].email is None
+
+        # Verify the Pipedrive API request did NOT include 'emails' field
+        if mock_request.called:
+            for call in mock_request.call_args_list:
+                if 'persons' in str(call):
+                    call_data = call.kwargs.get('json', {})
+                    # emails field should not be present when email is None
+                    assert 'emails' not in call_data or call_data.get('emails') is None
+
+    @patch('httpx.AsyncClient.request')
+    async def test_contact_without_phone_syncs_to_pipedrive_successfully(
+        self, mock_request, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that contact without phone can be synced to Pipedrive without validation errors"""
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create contact without phone
+        sample_tc_client_data['paid_recipients'] = [
+            {
+                'id': 789,
+                'first_name': 'Jane',
+                'last_name': 'Smith',
+                'email': 'jane@example.com',
+            }
+        ]
+        sample_tc_client_data['user']['phone'] = None
+        sample_tc_client_data['model'] = 'Client'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        # This should not raise any errors
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        # Verify contact was created
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contacts = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
+        assert len(contacts) == 1
+        assert contacts[0].phone is None
+        assert contacts[0].email == 'jane@example.com'
+
+    @patch('httpx.AsyncClient.request')
+    async def test_contact_with_empty_string_email_syncs_to_pipedrive(
+        self, mock_request, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that contact with empty string email is handled correctly"""
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create contact with empty string email
+        sample_tc_client_data['paid_recipients'] = [
+            {
+                'id': 789,
+                'first_name': 'Bob',
+                'last_name': 'Jones',
+                'email': '',  # Empty string
+            }
+        ]
+        sample_tc_client_data['user']['email'] = ''
+        sample_tc_client_data['model'] = 'Client'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        # This should not raise any errors
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        # Verify contact was created
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contacts = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
+        assert len(contacts) == 1
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_contact_to_person_data_excludes_empty_email_and_phone(self, mock_api, db, test_admin):
+        """Test that _contact_to_person_data excludes emails/phones fields when empty"""
+        from app.pipedrive.tasks import sync_person
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        # Create company first
+        company = db.create(Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg'))
+
+        # Create contact without email and phone
+        contact = db.create(Contact(first_name='Test', last_name='User', email=None, phone=None, company_id=company.id))
+
+        await sync_person(contact.id)
+
+        # Verify the API was called
+        assert mock_api.called
+        call_data = mock_api.call_args.kwargs['data']
+
+        # emails and phones fields should NOT be present
+        assert 'emails' not in call_data
+        assert 'phones' not in call_data
+        assert call_data['name'] == 'Test User'
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_contact_to_person_data_includes_valid_email_and_phone(self, mock_api, db, test_admin):
+        """Test that _contact_to_person_data includes emails/phones fields when valid"""
+        from app.pipedrive.tasks import sync_person
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        # Create company first
+        company = db.create(Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg'))
+
+        # Create contact with email and phone
+        contact = db.create(
+            Contact(
+                first_name='Test',
+                last_name='User',
+                email='test@example.com',
+                phone='+1234567890',
+                company_id=company.id,
+            )
+        )
+
+        await sync_person(contact.id)
+
+        # Verify the API was called
+        assert mock_api.called
+        call_data = mock_api.call_args.kwargs['data']
+
+        # emails and phones fields SHOULD be present with correct structure
+        assert 'emails' in call_data
+        assert call_data['emails'] == [{'value': 'test@example.com', 'label': 'work', 'primary': True}]
+        assert 'phones' in call_data
+        assert call_data['phones'] == [{'value': '+1234567890', 'label': 'work', 'primary': True}]
+
 
 class TestTC2DealCreation:
     """Test deal creation from TC2 webhooks"""
