@@ -10,6 +10,48 @@ from app.tc2.models import TCClient, TCRecipient
 
 logger = logging.getLogger('hermes.tc2')
 
+COMPANY_SYNCABLE_FIELDS = {
+    'pay0_dt',
+    'pay1_dt',
+    'pay3_dt',
+    'card_saved_dt',
+    'price_plan',
+    'email_confirmed_dt',
+    'gclid',
+    'gclid_expiry_dt',
+    'tc2_status',
+    'narc',
+    'paid_invoice_count',
+}
+
+
+def _update_syncable_fields(company: Company, tc_client: TCClient):
+    """
+    Update only syncable fields for an existing company.
+    This prevents the 3-hourly TC2 webhook job from overwriting fields that may have been
+    updated in Pipedrive. Only fields in COMPANY_SYNCABLE_FIELDS will be updated.
+    """
+    for field in COMPANY_SYNCABLE_FIELDS:
+        tc2_field = 'status' if field == 'tc2_status' else field
+        value = getattr(tc_client.meta_agency, tc2_field)
+        setattr(company, field, value)
+
+
+def _close_open_deals_if_narc_or_terminated(company: Company, db: DBSession):
+    """
+    Close all open deals for a company if it's marked as NARC or terminated.
+    """
+    if company.narc or company.tc2_status == 'terminated':
+        open_deals = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).all()
+        for deal in open_deals:
+            deal.status = Deal.STATUS_LOST
+            db.add(deal)
+        if open_deals:
+            db.commit()
+            logger.info(
+                f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
+            )
+
 
 async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) -> Company:
     """
@@ -80,44 +122,10 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
-        # Update existing company
-        company.name = tc_client.meta_agency.name[:255]
-        company.tc2_agency_id = tc_client.meta_agency.id
-        company.tc2_status = tc_client.meta_agency.status
-        company.country = tc_client.meta_agency.country
-        company.website = tc_client.meta_agency.website
-        company.paid_invoice_count = tc_client.meta_agency.paid_invoice_count
-        company.price_plan = tc_client.meta_agency.price_plan
-        company.narc = tc_client.meta_agency.narc or False
-        company.pay0_dt = tc_client.meta_agency.pay0_dt
-        company.pay1_dt = tc_client.meta_agency.pay1_dt
-        company.pay3_dt = tc_client.meta_agency.pay3_dt
-        company.card_saved_dt = tc_client.meta_agency.card_saved_dt
-        company.email_confirmed_dt = tc_client.meta_agency.email_confirmed_dt
-        company.gclid = tc_client.meta_agency.gclid
-        company.gclid_expiry_dt = tc_client.meta_agency.gclid_expiry_dt
-        company.created = tc_client.meta_agency.created
-        company.created = tc_client.meta_agency.created
+        _update_syncable_fields(company, tc_client)
+        _close_open_deals_if_narc_or_terminated(company, db)
 
-        # Close open deals if company is NARC or terminated
-        if company.narc or company.tc2_status == 'terminated':
-            open_deals = db.exec(
-                select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)
-            ).all()
-            for deal in open_deals:
-                deal.status = Deal.STATUS_LOST
-                db.add(deal)
-            if open_deals:
-                db.commit()
-                logger.info(
-                    f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
-                )
-
-        # Update relationships
-        company.sales_person_id = sales_person.id
-        company.support_person_id = support_person.id if support_person else None
-        company.bdr_person_id = bdr_person.id if bdr_person else None
-
+        # handle extra attrs
         if 'utm_source' in extra_attrs_dict:
             company.utm_source = extra_attrs_dict['utm_source']
         if 'utm_campaign' in extra_attrs_dict:
@@ -161,16 +169,14 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         db.add(company)
         db.commit()
         db.refresh(company)
-
-    # Process paid recipients (contacts)
-    primary_contact = None
-    for i, recipient in enumerate(tc_client.paid_recipients):
-        contact = await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
-        if i == 0:
-            primary_contact = contact
+        # should be done only once during company creation
+        primary_contact = None
+        for i, recipient in enumerate(tc_client.paid_recipients):
+            contact = await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
+            if i == 0:
+                primary_contact = contact
 
     # Create deal if requested and conditions are met
-    deal = None
     if create_deal and not company.narc:
         # Determine if we should create a deal based on company status and age
         should_create_deal = (
@@ -212,18 +218,7 @@ async def process_tc_recipient(
     contact_email = recipient.email or user_email
     contact_phone = user_phone  # Recipients don't have phone, always use user phone
 
-    if contact:
-        # Update existing contact
-        contact.first_name = recipient.first_name
-        contact.last_name = recipient.last_name
-        contact.email = contact_email
-        contact.phone = contact_phone
-        contact.country = company.country
-        contact.company_id = company.id
-        db.add(contact)
-        db.commit()
-        db.refresh(contact)
-    else:
+    if not contact:
         # Create new contact
         contact = Contact(
             tc2_sr_id=recipient.id,
@@ -237,6 +232,8 @@ async def process_tc_recipient(
         db.add(contact)
         db.commit()
         db.refresh(contact)
+
+    # we return contact back without updating it if it already exists
 
     return contact
 
