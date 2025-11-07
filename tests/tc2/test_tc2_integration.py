@@ -1377,3 +1377,89 @@ class TestTC2SyncableFields:
         # Fields not in update extra_attrs should keep their values
         assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
         assert updated_company.signup_questionnaire == 'initial_questionnaire'  # Not in extra_attrs, keeps original
+
+    async def test_updated_company_is_compatible_with_pipedrive_sync(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that company updated via webhook can be synced to Pipedrive without errors"""
+        from unittest.mock import patch
+
+        from app.pipedrive.tasks import sync_company_to_pipedrive
+
+        # Create company
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+        sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid'
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'google'},
+            {'machine_name': 'signup_questionnaire', 'value': 'test_questionnaire'},
+        ]
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        assert db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Now update via webhook
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'facebook'},
+        ]
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Verify company can be synced to Pipedrive
+        with patch('app.pipedrive.api.pipedrive_request') as mock_api:
+            mock_api.return_value = {'data': {'id': 999}}
+
+            # This should not raise any errors
+            await sync_company_to_pipedrive(updated_company.id)
+
+            # Verify API was called multiple times (organization, person, etc.)
+            assert mock_api.called
+            assert mock_api.call_count >= 1
+
+            # Find the organization creation call
+            org_call = None
+            for call in mock_api.call_args_list:
+                if call.args and 'organizations' in call.args[0]:
+                    org_call = call
+                    break
+
+            assert org_call is not None, 'Organization API call should have been made'
+            call_data = org_call.kwargs['data']
+
+            # Verify all required fields are present
+            assert 'name' in call_data
+            assert 'owner_id' in call_data
+            assert call_data['name'] == updated_company.name
+
+            # Verify custom fields are properly formatted
+            assert 'custom_fields' in call_data
+            custom_fields = call_data['custom_fields']
+
+            # All custom field values should be serializable (not causing errors)
+            assert isinstance(custom_fields, dict)
+
+            # Verify updated syncable fields are in the payload
+            from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+            if 'tc2_status' in COMPANY_PD_FIELD_MAP:
+                pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
+                assert pd_field_id in custom_fields
+                assert custom_fields[pd_field_id] == 'active'
