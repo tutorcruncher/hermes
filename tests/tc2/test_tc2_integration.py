@@ -1435,10 +1435,13 @@ class TestTC2SyncableFields:
         assert mock_api.called
         assert mock_api.call_count >= 1
 
-        # Find the organization creation call
+        # Find the organization call (could be POST or PATCH)
         org_call = None
         for call in mock_api.call_args_list:
-            if call.args and 'organizations' in call.args[0]:
+            first_arg = call.args[0] if call.args else call.kwargs.get('url', '')
+            method = call.kwargs.get('method', '')
+            # Check for organization endpoint (either 'organizations' POST or 'organizations/{id}' PATCH)
+            if 'organizations' in first_arg and method in ('POST', 'PATCH'):
                 org_call = call
                 break
 
