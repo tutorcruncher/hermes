@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import select
 
+from app.core.config import settings
 from app.core.database import DBSession
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline
 from app.tc2.api import get_client
@@ -10,18 +11,22 @@ from app.tc2.models import TCClient, TCRecipient
 
 logger = logging.getLogger('hermes.tc2')
 
-COMPANY_SYNCABLE_FIELDS = {
-    'pay0_dt',
-    'pay1_dt',
-    'pay3_dt',
-    'card_saved_dt',
-    'price_plan',
-    'email_confirmed_dt',
-    'gclid',
-    'gclid_expiry_dt',
-    'tc2_status',
-    'narc',
-}
+COMPANY_SYNCABLE_FIELDS = (
+    set(settings.company_syncable_fields.split(','))
+    if settings.company_syncable_fields
+    else {
+        'pay0_dt',
+        'pay1_dt',
+        'pay3_dt',
+        'card_saved_dt',
+        'price_plan',
+        'email_confirmed_dt',
+        'gclid',
+        'gclid_expiry_dt',
+        'tc2_status',
+        'narc',
+    }
+)
 
 
 def _update_syncable_fields(company: Company, tc_client: TCClient):

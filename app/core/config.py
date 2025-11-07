@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     """Application settings"""
 
     model_config = SettingsConfigDict(env_file='.env', extra='allow', case_sensitive=False)
+    company_syncable_fields: Optional[str] = None  # comma delimated
 
     # Dev and Test settings
     testing: bool = False
