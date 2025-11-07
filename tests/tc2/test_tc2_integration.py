@@ -255,7 +255,7 @@ class TestTC2Integration:
         assert updated_company.gclid == 'NEW_GCLID'
 
     async def test_process_client_updates_signup_questionnaire_extra_attr(self, db, test_admin, sample_tc_client_data):
-        """Test that signup_questionnaire extra attribute is NOT updated for existing company"""
+        """Test that signup_questionnaire extra attribute IS updated for existing company (syncable field)"""
         sample_tc_client_data['extra_attrs'] = [{'machine_name': 'signup_questionnaire', 'value': 'initial_data'}]
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -266,7 +266,7 @@ class TestTC2Integration:
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
-        assert updated_company.signup_questionnaire == 'initial_data'  # NOT updated (not syncable)
+        assert updated_company.signup_questionnaire == 'updated_data'  # IS updated (syncable field)
 
     async def test_process_client_updates_estimated_income_extra_attr(self, db, test_admin, sample_tc_client_data):
         """Test that estimated_monthly_income extra attribute is NOT updated for existing company"""
