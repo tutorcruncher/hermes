@@ -786,6 +786,176 @@ class TestTC2DealCreation:
 class TestTC2SyncableFields:
     """Test TC2 syncable fields via webhook endpoint"""
 
+    async def test_new_company_creation_sets_all_fields_and_contact(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that creating a new company via webhook sets all fields correctly including contact"""
+
+        # Prepare webhook data with all fields
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['name'] = 'New Test Company'
+        sample_tc_client_data['meta_agency']['country'] = 'GB'
+        sample_tc_client_data['meta_agency']['website'] = 'https://testcompany.com'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['meta_agency']['narc'] = False
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-11-01T10:00:00Z'
+        sample_tc_client_data['meta_agency']['pay1_dt'] = None
+        sample_tc_client_data['meta_agency']['pay3_dt'] = None
+        sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-11-02T12:00:00Z'
+        sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-11-01T09:00:00Z'
+        sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid_123'
+        sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2025-12-01T00:00:00Z'
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'google'},
+            {'machine_name': 'utm_campaign', 'value': 'summer2024'},
+            {'machine_name': 'estimated_monthly_income', 'value': '5000'},
+            {'machine_name': 'signup_questionnaire', 'value': 'questionnaire_data'},
+        ]
+        sample_tc_client_data['paid_recipients'] = [
+            {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
+        ]
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        # Verify company was created with all fields
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Core fields
+        assert company.name == 'New Test Company'
+        assert company.tc2_agency_id == 456
+        assert company.tc2_cligency_id == 123
+        assert company.country == 'GB'
+        assert company.website == 'https://testcompany.com'
+        assert company.sales_person_id == test_admin.id
+
+        # Syncable fields
+        assert company.tc2_status == 'trial'
+        assert company.price_plan == 'payg'
+        assert company.paid_invoice_count == 0
+        assert company.narc is False
+        assert company.pay0_dt is not None
+        assert company.pay0_dt.year == 2025
+        assert company.pay0_dt.month == 11
+        assert company.pay0_dt.day == 1
+        assert company.pay0_dt.hour == 10
+        assert company.pay1_dt is None
+        assert company.pay3_dt is None
+        assert company.card_saved_dt is not None
+        assert company.card_saved_dt.year == 2025
+        assert company.card_saved_dt.month == 11
+        assert company.card_saved_dt.day == 2
+        assert company.card_saved_dt.hour == 12
+        assert company.email_confirmed_dt is not None
+        assert company.email_confirmed_dt.year == 2025
+        assert company.email_confirmed_dt.month == 11
+        assert company.email_confirmed_dt.day == 1
+        assert company.email_confirmed_dt.hour == 9
+        assert company.gclid == 'test_gclid_123'
+        assert company.gclid_expiry_dt is not None
+        assert company.gclid_expiry_dt.year == 2025
+        assert company.gclid_expiry_dt.month == 12
+        assert company.gclid_expiry_dt.day == 1
+
+        # Extra attrs fields
+        assert company.utm_source == 'google'
+        assert company.utm_campaign == 'summer2024'
+        assert company.estimated_income == '5000'
+        assert company.signup_questionnaire == 'questionnaire_data'
+
+        # Verify contact was created
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).one()
+        assert contact.tc2_sr_id == 789
+        assert contact.first_name == 'John'
+        assert contact.last_name == 'Doe'
+        assert contact.email == 'john@example.com'
+        assert contact.company_id == company.id
+
+        # Now send UPDATE webhook with changed syncable and non-syncable fields
+        sample_tc_client_data['meta_agency']['name'] = 'Changed Company Name'
+        sample_tc_client_data['meta_agency']['country'] = 'US'
+        sample_tc_client_data['meta_agency']['website'] = 'https://changed-website.com'
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'monthly-startup'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+        sample_tc_client_data['meta_agency']['narc'] = True
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-10-01T08:00:00Z'
+        sample_tc_client_data['meta_agency']['pay1_dt'] = '2025-10-15T10:00:00Z'
+        sample_tc_client_data['meta_agency']['pay3_dt'] = '2025-11-15T14:00:00Z'
+        sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-10-02T09:00:00Z'
+        sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-09-25T11:00:00Z'
+        sample_tc_client_data['meta_agency']['gclid'] = 'new_gclid_456'
+        sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2026-01-01T00:00:00Z'
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'facebook'},
+            {'machine_name': 'utm_campaign', 'value': 'winter2025'},
+            {'machine_name': 'estimated_monthly_income', 'value': '10000'},
+            {'machine_name': 'signup_questionnaire', 'value': 'new_questionnaire_data'},
+        ]
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567900,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Non-syncable fields should NOT change
+        assert updated_company.name == 'New Test Company'
+        assert updated_company.country == 'GB'
+        assert updated_company.website == 'https://testcompany.com'
+        assert updated_company.utm_source == 'google'
+        assert updated_company.utm_campaign == 'summer2024'
+        assert updated_company.estimated_income == '5000'
+        assert updated_company.signup_questionnaire == 'questionnaire_data'
+
+        # Syncable fields SHOULD change
+        assert updated_company.tc2_status == 'active'
+        assert updated_company.price_plan == 'startup'
+        assert updated_company.paid_invoice_count == 5
+        assert updated_company.narc is True
+        assert updated_company.pay0_dt is not None
+        assert updated_company.pay0_dt.year == 2025
+        assert updated_company.pay0_dt.month == 10
+        assert updated_company.pay0_dt.day == 1
+        assert updated_company.pay0_dt.hour == 8
+        assert updated_company.pay1_dt is not None
+        assert updated_company.pay1_dt.year == 2025
+        assert updated_company.pay1_dt.month == 10
+        assert updated_company.pay1_dt.day == 15
+        assert updated_company.pay1_dt.hour == 10
+        assert updated_company.pay3_dt is not None
+        assert updated_company.pay3_dt.year == 2025
+        assert updated_company.pay3_dt.month == 11
+        assert updated_company.pay3_dt.day == 15
+        assert updated_company.pay3_dt.hour == 14
+        assert updated_company.card_saved_dt is not None
+        assert updated_company.card_saved_dt.year == 2025
+        assert updated_company.card_saved_dt.month == 10
+        assert updated_company.card_saved_dt.day == 2
+        assert updated_company.card_saved_dt.hour == 9
+        assert updated_company.email_confirmed_dt is not None
+        assert updated_company.email_confirmed_dt.year == 2025
+        assert updated_company.email_confirmed_dt.month == 9
+        assert updated_company.email_confirmed_dt.day == 25
+        assert updated_company.email_confirmed_dt.hour == 11
+        assert updated_company.gclid == 'new_gclid_456'
+        assert updated_company.gclid_expiry_dt is not None
+        assert updated_company.gclid_expiry_dt.year == 2026
+        assert updated_company.gclid_expiry_dt.month == 1
+        assert updated_company.gclid_expiry_dt.day == 1
+
     async def test_syncable_fields_updated_on_existing_company(self, client, db, test_admin, sample_tc_client_data):
         """Test that only syncable fields are updated when webhook processes existing company"""
         # Create initial company via webhook
@@ -1087,3 +1257,71 @@ class TestTC2SyncableFields:
 
         lost_deals = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_LOST)).all()
         assert len(lost_deals) > 0
+
+    async def test_company_syncable_fields_env_override(
+        self, client, db, test_admin, sample_tc_client_data, monkeypatch
+    ):
+        """Test that COMPANY_SYNCABLE_FIELDS can be overridden via environment variable"""
+        from app.tc2 import process
+
+        # Override COMPANY_SYNCABLE_FIELDS to only include pay0_dt, card_saved_dt, price_plan
+        custom_syncable_fields = {'pay0_dt', 'card_saved_dt', 'price_plan'}
+        monkeypatch.setattr(process, 'COMPANY_SYNCABLE_FIELDS', custom_syncable_fields)
+
+        # Create company with initial values
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        sample_tc_client_data['meta_agency']['narc'] = False
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-11-01T10:00:00Z'
+        sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-11-02T12:00:00Z'
+        sample_tc_client_data['meta_agency']['gclid'] = 'original_gclid'
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.tc2_status == 'trial'
+        assert company.price_plan == 'payg'
+        assert company.paid_invoice_count == 0
+        assert company.narc is False
+        assert company.gclid == 'original_gclid'
+
+        # Update all fields including ones in custom syncable list
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'monthly-startup'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
+        sample_tc_client_data['meta_agency']['narc'] = True
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-10-01T08:00:00Z'
+        sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-10-02T09:00:00Z'
+        sample_tc_client_data['meta_agency']['gclid'] = 'changed_gclid'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Only fields in custom syncable list should update: pay0_dt, card_saved_dt, price_plan
+        assert updated_company.price_plan == 'startup'
+        assert updated_company.pay0_dt.year == 2025
+        assert updated_company.pay0_dt.month == 10
+        assert updated_company.pay0_dt.day == 1
+        assert updated_company.card_saved_dt.year == 2025
+        assert updated_company.card_saved_dt.month == 10
+        assert updated_company.card_saved_dt.day == 2
+
+        # Fields NOT in custom syncable list should NOT update
+        assert updated_company.tc2_status == 'trial'
+        assert updated_company.paid_invoice_count == 0
+        assert updated_company.narc is False
+        assert updated_company.gclid == 'original_gclid'
