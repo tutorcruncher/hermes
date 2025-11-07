@@ -2,6 +2,7 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -493,7 +494,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that processing a new trial company creates a deal"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Set company as trial, created recently, no paid invoices
         sample_tc_client_data['meta_agency']['status'] = 'trial'
@@ -519,7 +520,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that processing pending email confirmation company creates a deal"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'pending_email_conf'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -535,7 +536,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that active (paying) companies don't get deals created"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'active'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -549,7 +550,7 @@ class TestTC2DealCreation:
 
     async def test_process_tc_client_no_deal_for_old_company(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that companies older than 90 days don't get deals created"""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         # Company created 91 days ago
         old_date = datetime.now(timezone.utc) - timedelta(days=91)
@@ -567,7 +568,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that companies with paid invoices don't get deals created"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -581,7 +582,7 @@ class TestTC2DealCreation:
 
     async def test_process_tc_client_no_deal_for_narc_company(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that NARC companies don't get deals created"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -598,7 +599,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that deals are not created when create_deal=False"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -612,7 +613,7 @@ class TestTC2DealCreation:
 
     async def test_deal_inherits_company_fields(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that deal inherits custom fields from company"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -639,7 +640,7 @@ class TestTC2DealCreation:
 
     async def test_deal_uses_correct_pipeline_for_startup(self, db, test_admin, sample_tc_client_data):
         """Test that startup companies get deals in startup pipeline"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from app.main_app.models import Config, Pipeline
 
@@ -669,7 +670,7 @@ class TestTC2DealCreation:
 
     async def test_deal_uses_correct_pipeline_for_enterprise(self, db, test_admin, sample_tc_client_data):
         """Test that enterprise companies get deals in enterprise pipeline"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from app.main_app.models import Config, Pipeline
 
@@ -701,7 +702,7 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that get_or_create_deal returns existing open deal instead of creating new one"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from app.tc2.process import get_or_create_deal
 
@@ -841,28 +842,13 @@ class TestTC2SyncableFields:
         assert company.price_plan == 'payg'
         assert company.paid_invoice_count == 0
         assert company.narc is False
-        assert company.pay0_dt is not None
-        assert company.pay0_dt.year == 2025
-        assert company.pay0_dt.month == 11
-        assert company.pay0_dt.day == 1
-        assert company.pay0_dt.hour == 10
+        assert company.pay0_dt == datetime(2025, 11, 1, 10)
         assert company.pay1_dt is None
         assert company.pay3_dt is None
-        assert company.card_saved_dt is not None
-        assert company.card_saved_dt.year == 2025
-        assert company.card_saved_dt.month == 11
-        assert company.card_saved_dt.day == 2
-        assert company.card_saved_dt.hour == 12
-        assert company.email_confirmed_dt is not None
-        assert company.email_confirmed_dt.year == 2025
-        assert company.email_confirmed_dt.month == 11
-        assert company.email_confirmed_dt.day == 1
-        assert company.email_confirmed_dt.hour == 9
+        assert company.card_saved_dt == datetime(2025, 11, 2, 12)
+        assert company.email_confirmed_dt == datetime(2025, 11, 1, 9)
         assert company.gclid == 'test_gclid_123'
-        assert company.gclid_expiry_dt is not None
-        assert company.gclid_expiry_dt.year == 2025
-        assert company.gclid_expiry_dt.month == 12
-        assert company.gclid_expiry_dt.day == 1
+        assert company.gclid_expiry_dt == datetime(2025, 12, 1, 0)
         assert company.signup_questionnaire == 'questionnaire_data'
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
@@ -919,36 +905,13 @@ class TestTC2SyncableFields:
         assert updated_company.price_plan == 'startup'
         assert updated_company.paid_invoice_count == 5
         assert updated_company.narc is True
-        assert updated_company.pay0_dt is not None
-        assert updated_company.pay0_dt.year == 2025
-        assert updated_company.pay0_dt.month == 10
-        assert updated_company.pay0_dt.day == 1
-        assert updated_company.pay0_dt.hour == 8
-        assert updated_company.pay1_dt is not None
-        assert updated_company.pay1_dt.year == 2025
-        assert updated_company.pay1_dt.month == 10
-        assert updated_company.pay1_dt.day == 15
-        assert updated_company.pay1_dt.hour == 10
-        assert updated_company.pay3_dt is not None
-        assert updated_company.pay3_dt.year == 2025
-        assert updated_company.pay3_dt.month == 11
-        assert updated_company.pay3_dt.day == 15
-        assert updated_company.pay3_dt.hour == 14
-        assert updated_company.card_saved_dt is not None
-        assert updated_company.card_saved_dt.year == 2025
-        assert updated_company.card_saved_dt.month == 10
-        assert updated_company.card_saved_dt.day == 2
-        assert updated_company.card_saved_dt.hour == 9
-        assert updated_company.email_confirmed_dt is not None
-        assert updated_company.email_confirmed_dt.year == 2025
-        assert updated_company.email_confirmed_dt.month == 9
-        assert updated_company.email_confirmed_dt.day == 25
-        assert updated_company.email_confirmed_dt.hour == 11
+        assert updated_company.pay0_dt == datetime(2025, 10, 1, 8)
+        assert updated_company.pay1_dt == datetime(2025, 10, 15, 10)
+        assert updated_company.pay3_dt == datetime(2025, 11, 15, 14)
+        assert updated_company.card_saved_dt == datetime(2025, 10, 2, 9)
+        assert updated_company.email_confirmed_dt == datetime(2025, 9, 25, 11)
         assert updated_company.gclid == 'new_gclid_456'
-        assert updated_company.gclid_expiry_dt is not None
-        assert updated_company.gclid_expiry_dt.year == 2026
-        assert updated_company.gclid_expiry_dt.month == 1
-        assert updated_company.gclid_expiry_dt.day == 1
+        assert updated_company.gclid_expiry_dt == datetime(2026, 1, 1, 0)
         assert updated_company.signup_questionnaire == 'new_questionnaire_data'
         assert updated_company.utm_source == 'facebook'
         assert updated_company.utm_campaign == 'winter2025'
