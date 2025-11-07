@@ -12,6 +12,8 @@ from app.tc2.models import TCClient, TCRecipient
 logger = logging.getLogger('hermes.tc2')
 
 COMPANY_SYNCABLE_FIELDS = (
+    # can simply override by setting the config vars
+    # example 'pay0_dt,card_saved_dt'
     set(settings.company_syncable_fields.split(','))
     if settings.company_syncable_fields
     else {
