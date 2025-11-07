@@ -28,27 +28,19 @@ COMPANY_SYNCABLE_FIELDS = (
         'tc2_status',
         'narc',
         'paid_invoice_count',
-        'signup_questionnaire',
-        'utm_source',
-        'utm_campaign',
-        'estimated_income',
     }
 )
 
 
-def _update_syncable_fields(company: Company, tc_client: TCClient, extra_attrs_dict: dict):
+def _update_syncable_fields(company: Company, tc_client: TCClient):
     """
     Update only syncable fields for an existing company.
-
     This prevents the 3-hourly TC2 webhook job from overwriting fields that may have been
     updated in Pipedrive. Only fields in COMPANY_SYNCABLE_FIELDS will be updated.
     """
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
-        value = getattr(tc_client.meta_agency, tc2_field, None)
-        if value is None and field in extra_attrs_dict:
-            value = extra_attrs_dict.get(field)
-
+        value = getattr(tc_client.meta_agency, tc2_field)
         setattr(company, field, value)
 
 
@@ -137,8 +129,19 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
-        _update_syncable_fields(company, tc_client, extra_attrs_dict)
+        _update_syncable_fields(company, tc_client)
         _close_open_deals_if_narc_or_terminated(company, db)
+
+        # handle extra attrs
+        if 'utm_source' in extra_attrs_dict:
+            company.utm_source = extra_attrs_dict['utm_source']
+        if 'utm_campaign' in extra_attrs_dict:
+            company.utm_campaign = extra_attrs_dict['utm_campaign']
+        if 'signup_questionnaire' in extra_attrs_dict:
+            company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
+        if 'estimated_monthly_income' in extra_attrs_dict:
+            company.estimated_income = extra_attrs_dict['estimated_monthly_income']
+
         db.add(company)
         db.commit()
         db.refresh(company)

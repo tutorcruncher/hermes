@@ -725,7 +725,7 @@ class TestTC2DealCreation:
         assert len(all_deals) == 1
 
     async def test_update_company_extra_attrs_can_be_set_initially(self, db, test_admin, sample_tc_client_data):
-        """Test that extra_attrs fields are set on creation but NOT updated for existing company"""
+        """Test that extra_attrs fields are set on creation and updated for existing company (now syncable)"""
         # Create company without extra_attrs
         sample_tc_client_data['extra_attrs'] = []
 
@@ -737,7 +737,7 @@ class TestTC2DealCreation:
         assert company.utm_campaign is None
         assert company.estimated_income is None
 
-        # Now TC2 sends update WITH extra_attrs - but they won't update (not syncable)
+        # Now TC2 sends update WITH extra_attrs - they WILL update (syncable fields)
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2024'},
@@ -747,10 +747,10 @@ class TestTC2DealCreation:
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
-        # Values should STILL be None (not syncable fields)
-        assert updated_company.utm_source is None
-        assert updated_company.utm_campaign is None
-        assert updated_company.estimated_income is None
+        # Values SHOULD be updated (syncable fields)
+        assert updated_company.utm_source == 'facebook'
+        assert updated_company.utm_campaign == 'winter2024'
+        assert updated_company.estimated_income == '10000'
 
     async def test_update_company_support_bdr_stay_none_if_never_set(self, db, sample_tc_client_data):
         """Test that support_person_id and bdr_person_id stay None if never provided"""
@@ -1321,3 +1321,59 @@ class TestTC2SyncableFields:
         assert updated_company.paid_invoice_count == 0
         assert updated_company.narc is False
         assert updated_company.gclid == 'original_gclid'
+
+    async def test_missing_fields_in_update_webhook_doesnt_break(self, client, db, test_admin, sample_tc_client_data):
+        """Test that missing syncable fields in TC2 webhook don't break existing company update"""
+        # Create company with all fields populated
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+        sample_tc_client_data['meta_agency']['narc'] = False
+        sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-11-01T10:00:00Z'
+        sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-11-02T12:00:00Z'
+        sample_tc_client_data['meta_agency']['gclid'] = 'original_gclid'
+        sample_tc_client_data['extra_attrs'] = [
+            {'machine_name': 'utm_source', 'value': 'google'},
+            {'machine_name': 'signup_questionnaire', 'value': 'initial_questionnaire'},
+        ]
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.tc2_status == 'trial'
+        assert company.paid_invoice_count == 5
+        assert company.gclid == 'original_gclid'
+        assert company.utm_source == 'google'
+        assert company.signup_questionnaire == 'initial_questionnaire'
+
+        # Now send update with MISSING optional fields (gclid, extra_attrs)
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
+        sample_tc_client_data['meta_agency']['gclid'] = None  # TC2 might send None
+        sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = None
+        sample_tc_client_data['extra_attrs'] = []  # No extra attrs in this update
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Syncable fields should update even when None
+        assert updated_company.tc2_status == 'active'
+        assert updated_company.paid_invoice_count == 10
+        assert updated_company.gclid is None  # Set to None
+
+        # Fields not in update extra_attrs should keep their values
+        assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
+        assert updated_company.signup_questionnaire == 'initial_questionnaire'  # Not in extra_attrs, keeps original
