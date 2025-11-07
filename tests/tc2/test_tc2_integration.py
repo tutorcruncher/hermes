@@ -949,6 +949,28 @@ class TestTC2DealCreation:
         assert updated_company.bdr_person_id is None
         assert updated_company.paid_invoice_count == 5
 
+    async def test_webhook_with_no_paid_recipients(self, client, db, test_admin, sample_tc_client_data):
+        """Test that webhook with no paid_recipients doesn't crash when trying to create deal"""
+        # Create company first with recipients
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+        assert company is not None
+
+        # Now send update webhook with empty paid_recipients (like the real webhook)
+        sample_tc_client_data['paid_recipients'] = []
+        sample_tc_client_data['meta_agency']['status'] = 'live'
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Should not crash and should update successfully
+        assert updated_company is not None
+        assert updated_company.tc2_status == 'live'
+
 
 class TestTC2SyncableFields:
     """Test TC2 syncable fields via webhook endpoint"""
