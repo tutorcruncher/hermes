@@ -81,6 +81,7 @@ class TestTC2Integration:
         company = await process_tc_client(tc_client, db)
         company_id = company.id
         original_name = company.name
+        original_paid_invoice_count = company.paid_invoice_count
 
         sample_tc_client_data['meta_agency']['name'] = 'Updated Agency'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
@@ -91,7 +92,7 @@ class TestTC2Integration:
 
         assert updated_company.id == company_id
         assert updated_company.name == original_name  # name is NOT syncable
-        assert updated_company.paid_invoice_count == 0  # paid_invoice_count is NOT syncable
+        assert updated_company.paid_invoice_count == original_paid_invoice_count  # paid_invoice_count is NOT syncable
         assert updated_company.price_plan == 'startup'  # price_plan IS syncable
 
     @patch('httpx.AsyncClient.request')
