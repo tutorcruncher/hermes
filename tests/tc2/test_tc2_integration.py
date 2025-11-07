@@ -494,7 +494,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that processing a new trial company creates a deal"""
-        from datetime import datetime
 
         # Set company as trial, created recently, no paid invoices
         sample_tc_client_data['meta_agency']['status'] = 'trial'
@@ -520,7 +519,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that processing pending email confirmation company creates a deal"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'pending_email_conf'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -536,7 +534,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that active (paying) companies don't get deals created"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'active'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -550,7 +547,7 @@ class TestTC2DealCreation:
 
     async def test_process_tc_client_no_deal_for_old_company(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that companies older than 90 days don't get deals created"""
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         # Company created 91 days ago
         old_date = datetime.now(timezone.utc) - timedelta(days=91)
@@ -568,7 +565,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that companies with paid invoices don't get deals created"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -582,7 +578,6 @@ class TestTC2DealCreation:
 
     async def test_process_tc_client_no_deal_for_narc_company(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that NARC companies don't get deals created"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -599,7 +594,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that deals are not created when create_deal=False"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -613,7 +607,6 @@ class TestTC2DealCreation:
 
     async def test_deal_inherits_company_fields(self, db, test_admin, test_config, sample_tc_client_data):
         """Test that deal inherits custom fields from company"""
-        from datetime import datetime
 
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
@@ -640,7 +633,6 @@ class TestTC2DealCreation:
 
     async def test_deal_uses_correct_pipeline_for_startup(self, db, test_admin, sample_tc_client_data):
         """Test that startup companies get deals in startup pipeline"""
-        from datetime import datetime
 
         from app.main_app.models import Config, Pipeline
 
@@ -670,7 +662,6 @@ class TestTC2DealCreation:
 
     async def test_deal_uses_correct_pipeline_for_enterprise(self, db, test_admin, sample_tc_client_data):
         """Test that enterprise companies get deals in enterprise pipeline"""
-        from datetime import datetime
 
         from app.main_app.models import Config, Pipeline
 
@@ -702,7 +693,6 @@ class TestTC2DealCreation:
         self, db, test_admin, test_config, sample_tc_client_data
     ):
         """Test that get_or_create_deal returns existing open deal instead of creating new one"""
-        from datetime import datetime
 
         from app.tc2.process import get_or_create_deal
 
