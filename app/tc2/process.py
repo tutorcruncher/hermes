@@ -29,6 +29,9 @@ COMPANY_SYNCABLE_FIELDS = (
         'narc',
         'paid_invoice_count',
         'signup_questionnaire',
+        'utm_source',
+        'utm_campaign',
+        'estimated_income',
     }
 )
 

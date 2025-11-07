@@ -269,7 +269,7 @@ class TestTC2Integration:
         assert updated_company.signup_questionnaire == 'updated_data'  # IS updated (syncable field)
 
     async def test_process_client_updates_estimated_income_extra_attr(self, db, test_admin, sample_tc_client_data):
-        """Test that estimated_monthly_income extra attribute is NOT updated for existing company"""
+        """Test that estimated_monthly_income extra attribute IS updated for existing company (syncable field)"""
         sample_tc_client_data['extra_attrs'] = [{'machine_name': 'estimated_monthly_income', 'value': '5000'}]
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -280,7 +280,7 @@ class TestTC2Integration:
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
-        assert updated_company.estimated_income == '5000'  # NOT updated (not syncable)
+        assert updated_company.estimated_income == '10000'  # IS updated (syncable field)
 
 
 class TestTC2EdgeCases:
@@ -864,8 +864,6 @@ class TestTC2SyncableFields:
         assert company.gclid_expiry_dt.month == 12
         assert company.gclid_expiry_dt.day == 1
         assert company.signup_questionnaire == 'questionnaire_data'
-
-        # Extra attrs fields (non-syncable)
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
         assert company.estimated_income == '5000'
@@ -915,9 +913,6 @@ class TestTC2SyncableFields:
         assert updated_company.name == 'New Test Company'
         assert updated_company.country == 'GB'
         assert updated_company.website == 'https://testcompany.com'
-        assert updated_company.utm_source == 'google'
-        assert updated_company.utm_campaign == 'summer2024'
-        assert updated_company.estimated_income == '5000'
 
         # Syncable fields SHOULD change
         assert updated_company.tc2_status == 'active'
@@ -955,6 +950,9 @@ class TestTC2SyncableFields:
         assert updated_company.gclid_expiry_dt.month == 1
         assert updated_company.gclid_expiry_dt.day == 1
         assert updated_company.signup_questionnaire == 'new_questionnaire_data'
+        assert updated_company.utm_source == 'facebook'
+        assert updated_company.utm_campaign == 'winter2025'
+        assert updated_company.estimated_income == '10000'
 
     async def test_syncable_fields_updated_on_existing_company(self, client, db, test_admin, sample_tc_client_data):
         """Test that only syncable fields are updated when webhook processes existing company"""
@@ -1095,11 +1093,9 @@ class TestTC2SyncableFields:
         # Syncable fields should update
         assert updated_company.paid_invoice_count == 100  # IS syncable - should update
         assert updated_company.signup_questionnaire == 'changed_questionnaire'  # IS syncable - should update
-
-        # Non-syncable fields should remain unchanged
-        assert updated_company.utm_source == 'initial_source'
-        assert updated_company.utm_campaign == 'initial_campaign'
-        assert updated_company.estimated_income == '5000'
+        assert updated_company.utm_source == 'changed_source'  # IS syncable - should update
+        assert updated_company.utm_campaign == 'changed_campaign'  # IS syncable - should update
+        assert updated_company.estimated_income == '50000'  # IS syncable - should update
 
     async def test_contacts_not_updated_for_existing_company(self, client, db, test_admin, sample_tc_client_data):
         """Test that contacts are not updated when company already exists"""
