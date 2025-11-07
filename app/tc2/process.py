@@ -25,6 +25,7 @@ COMPANY_SYNCABLE_FIELDS = (
         'gclid_expiry_dt',
         'tc2_status',
         'narc',
+        'paid_invoice_count',
     }
 )
 
