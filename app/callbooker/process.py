@@ -87,7 +87,9 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
     # Try to find company by name
     if not company:
-        company = db.exec(select(Company).where(Company.name.ilike(event.company_name))).one_or_none()
+        company = db.exec(
+            select(Company).where(Company.name.ilike(event.company_name)).order_by(Company.id.desc())
+        ).first()
         if company:
             logger.info(f'Found company {company.id} by name')
 

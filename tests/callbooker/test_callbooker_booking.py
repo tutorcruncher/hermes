@@ -520,6 +520,44 @@ class TestSalesCallBooking:
         assert deal is not None
         assert deal.stage_id == stage2.id  # Should use the configured default stage
 
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_duplicate_company_names_uses_most_recent(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that when multiple companies with same name exist, most recent one is used"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pipedrive.return_value = {'data': {'id': 999}}
+
+        admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+
+        # Create two companies with the same name
+        db.create(Company(id=1, name='Duplicate Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+        company2 = db.create(
+            Company(id=2, name='Duplicate Company', sales_person_id=admin.id, price_plan='payg', country='GB')
+        )
+
+        # Book a sales call with the duplicate company name
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_name'] = 'Duplicate Company'
+        meeting_data['admin_id'] = admin.id
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        # Verify the most recent company (company2) was used
+        contact = db.exec(select(Contact)).first()
+        assert contact is not None
+        assert contact.company_id == company2.id
+
+        deal = db.exec(select(Deal)).first()
+        assert deal is not None
+        assert deal.company_id == company2.id
+
+        meeting = db.exec(select(Meeting)).first()
+        assert meeting is not None
+        assert meeting.company_id == company2.id
+
 
 class TestSupportCallBooking:
     """Test support call booking flow"""
