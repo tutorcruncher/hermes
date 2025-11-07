@@ -558,6 +558,95 @@ class TestSalesCallBooking:
         assert meeting is not None
         assert meeting.company_id == company2.id
 
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_duplicate_email_contacts_uses_most_recent(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that when multiple contacts with same email exist, most recent one is used"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pipedrive.return_value = {'data': {'id': 999}}
+
+        admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+
+        # Create two contacts with the same email
+        db.create(
+            Contact(id=1, email='duplicate@example.com', first_name='Old', last_name='Contact', company_id=company.id)
+        )
+        contact2 = db.create(
+            Contact(id=2, email='duplicate@example.com', first_name='New', last_name='Contact', company_id=company.id)
+        )
+
+        # Book a sales call with the duplicate email
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['email'] = 'duplicate@example.com'
+        meeting_data['admin_id'] = admin.id
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        # Verify the most recent contact (contact2) was used
+        meeting = db.exec(select(Meeting)).first()
+        assert meeting is not None
+        assert meeting.contact_id == contact2.id
+
+        deal = db.exec(select(Deal)).first()
+        assert deal is not None
+        assert deal.contact_id == contact2.id
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_duplicate_phone_contacts_uses_most_recent(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that when multiple contacts with same phone exist, most recent one is used"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pipedrive.return_value = {'data': {'id': 999}}
+
+        admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+
+        # Create two contacts with the same phone
+        db.create(
+            Contact(
+                id=1,
+                phone='+1234567890',
+                email='old@example.com',
+                first_name='Old',
+                last_name='Contact',
+                company_id=company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                id=2,
+                phone='+1234567890',
+                email='new@example.com',
+                first_name='New',
+                last_name='Contact',
+                company_id=company.id,
+            )
+        )
+
+        # Book a sales call with the duplicate phone (but different email)
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['email'] = 'different@example.com'  # Different email so it searches by phone
+        meeting_data['phone'] = '+1234567890'
+        meeting_data['admin_id'] = admin.id
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        # Verify the most recent contact (contact2) was used
+        meeting = db.exec(select(Meeting)).first()
+        assert meeting is not None
+        assert meeting.contact_id == contact2.id
+
+        deal = db.exec(select(Deal)).first()
+        assert deal is not None
+        assert deal.contact_id == contact2.id
+
 
 class TestSupportCallBooking:
     """Test support call booking flow"""
