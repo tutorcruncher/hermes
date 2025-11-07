@@ -1378,13 +1378,15 @@ class TestTC2SyncableFields:
         assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
         assert updated_company.signup_questionnaire == 'initial_questionnaire'  # Not in extra_attrs, keeps original
 
+    @patch('app.pipedrive.api.pipedrive_request')
     async def test_updated_company_is_compatible_with_pipedrive_sync(
-        self, client, db, test_admin, sample_tc_client_data
+        self, mock_api, client, db, test_admin, sample_tc_client_data
     ):
         """Test that company updated via webhook can be synced to Pipedrive without errors"""
-        from unittest.mock import patch
-
         from app.pipedrive.tasks import sync_company_to_pipedrive
+
+        # Mock all Pipedrive API calls (including background tasks)
+        mock_api.return_value = {'data': {'id': 999}}
 
         # Create company
         sample_tc_client_data['model'] = 'Client'
@@ -1423,43 +1425,41 @@ class TestTC2SyncableFields:
         db.expire_all()
         updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
 
+        # Reset mock to track only the explicit sync call
+        mock_api.reset_mock()
+
         # Verify company can be synced to Pipedrive
-        with patch('app.pipedrive.api.pipedrive_request') as mock_api:
-            mock_api.return_value = {'data': {'id': 999}}
+        await sync_company_to_pipedrive(updated_company.id)
 
-            # This should not raise any errors
-            await sync_company_to_pipedrive(updated_company.id)
+        # Verify API was called multiple times (organization, person, etc.)
+        assert mock_api.called
+        assert mock_api.call_count >= 1
 
-            # Verify API was called multiple times (organization, person, etc.)
-            assert mock_api.called
-            assert mock_api.call_count >= 1
+        # Find the organization creation call
+        org_call = None
+        for call in mock_api.call_args_list:
+            if call.args and 'organizations' in call.args[0]:
+                org_call = call
+                break
 
-            # Find the organization creation call
-            org_call = None
-            for call in mock_api.call_args_list:
-                if call.args and 'organizations' in call.args[0]:
-                    org_call = call
-                    break
+        assert org_call is not None, 'Organization API call should have been made'
+        call_data = org_call.kwargs['data']
 
-            assert org_call is not None, 'Organization API call should have been made'
-            call_data = org_call.kwargs['data']
+        # Verify all required fields are present
+        assert 'name' in call_data
+        assert 'owner_id' in call_data
+        assert call_data['name'] == updated_company.name
 
-            # Verify all required fields are present
-            assert 'name' in call_data
-            assert 'owner_id' in call_data
-            assert call_data['name'] == updated_company.name
+        # Verify custom fields are properly formatted
+        assert 'custom_fields' in call_data
+        custom_fields = call_data['custom_fields']
 
-            # Verify custom fields are properly formatted
-            assert 'custom_fields' in call_data
-            custom_fields = call_data['custom_fields']
+        # All custom field values should be serializable (not causing errors)
+        assert isinstance(custom_fields, dict)
 
-            # All custom field values should be serializable (not causing errors)
-            assert isinstance(custom_fields, dict)
+        # Verify updated syncable fields are in the payload
+        from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 
-            # Verify updated syncable fields are in the payload
-            from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
-
-            if 'tc2_status' in COMPANY_PD_FIELD_MAP:
-                pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
-                assert pd_field_id in custom_fields
-                assert custom_fields[pd_field_id] == 'active'
+        pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
+        assert pd_field_id in custom_fields
+        assert custom_fields[pd_field_id] == 'active'
