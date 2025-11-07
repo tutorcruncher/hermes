@@ -332,6 +332,42 @@ class TestTC2EdgeCases:
         contacts = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
         assert len(contacts) == 0
 
+    async def test_existing_company_with_no_paid_recipients_and_deal_creation(
+        self, db, test_admin, sample_tc_client_data
+    ):
+        """Test updating existing company with empty paid_recipients when deal creation criteria met"""
+        # Create company first with paid_recipients and deal creation criteria
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+        assert company is not None
+        assert company.tc2_status == 'trial'
+
+        # Get the created contact
+        contacts = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
+        assert len(contacts) == 1
+
+        # Now update the same company with empty paid_recipients (like real TC2 webhook)
+        sample_tc_client_data['paid_recipients'] = []
+        sample_tc_client_data['meta_agency']['status'] = 'live'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 1
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Should not crash and should update successfully
+        assert updated_company is not None
+        assert updated_company.id == company.id
+        assert updated_company.tc2_status == 'live'
+        assert updated_company.paid_invoice_count == 1
+
+        # Contacts should remain unchanged
+        contacts_after = db.exec(select(Contact).where(Contact.company_id == company.id)).all()
+        assert len(contacts_after) == 1
+
     async def test_tc2_narc_agency_closes_open_deals(
         self, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
     ):
