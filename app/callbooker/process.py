@@ -74,20 +74,22 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
     # Try to find contact by email or phone, then get their company
     if not company and event.email:
-        contact = db.exec(select(Contact).where(Contact.email == event.email)).one_or_none()
+        contact = db.exec(select(Contact).where(Contact.email == event.email).order_by(Contact.id.desc())).first()
         if contact:
             logger.info(f'Found contact {contact.id} by email')
             company = db.get(Company, contact.company_id)
 
     if not company and event.phone:
-        contact = db.exec(select(Contact).where(Contact.phone == event.phone)).one_or_none()
+        contact = db.exec(select(Contact).where(Contact.phone == event.phone).order_by(Contact.id.desc())).first()
         if contact:
             logger.info(f'Found contact {contact.id} by phone')
             company = db.get(Company, contact.company_id)
 
     # Try to find company by name
     if not company:
-        company = db.exec(select(Company).where(Company.name.ilike(event.company_name))).one_or_none()
+        company = db.exec(
+            select(Company).where(Company.name.ilike(event.company_name)).order_by(Company.id.desc())
+        ).first()
         if company:
             logger.info(f'Found company {company.id} by name')
 
