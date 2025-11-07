@@ -92,6 +92,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     sales_person = None
     support_person = None
     bdr_person = None
+    primary_contact = None
 
     logger.info(
         f'Processing client {tc_client.id}: sales_person_id={tc_client.sales_person_id}, support_person_id={tc_client.associated_admin_id}, bdr_person_id={tc_client.bdr_person_id}'
@@ -170,7 +171,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         db.commit()
         db.refresh(company)
         # should be done only once during company creation
-        primary_contact = None
         for i, recipient in enumerate(tc_client.paid_recipients):
             contact = await process_tc_recipient(recipient, company, db, tc_client.user.email, tc_client.user.phone)
             if i == 0:
