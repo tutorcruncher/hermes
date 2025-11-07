@@ -28,6 +28,9 @@ COMPANY_SYNCABLE_FIELDS = (
         'tc2_status',
         'narc',
         'paid_invoice_count',
+        'utm_source',
+        'utm_campaign',
+        'estimated_income',
     }
 )
 
