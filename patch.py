@@ -402,21 +402,47 @@ async def sync_deal_owners_from_pipedrive(db):
 @command
 async def delete_orphaned_deals(db):
     """
-    Delete deals with pd_deal_id=NULL that have no meetings attached.
+    Delete deals with pd_deal_id=NULL that have no meetings attached and are older than 1 month.
 
     These are orphaned deals that were never synced to Pipedrive and have no dependencies.
+    Only deletes deals where:
+    - Company was created more than 1 month ago, OR
+    - Deal has meetings and the most recent meeting was created more than 1 month ago
     """
+    from datetime import datetime, timedelta, timezone
+
     from app.main_app.models import Deal
 
     orphaned_deals = db.exec(select(Deal).where(Deal.pd_deal_id.is_(None))).all()
 
+    one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
     deals_to_delete = []
+    old_deals_count = 0
     for deal in orphaned_deals:
-        if not deal.meetings:
-            deals_to_delete.append(deal)
+        is_old = False
+        company = deal.company
+
+        # Check if company is old
+        if company and company.created:
+            company_created = company.created if company.created.tzinfo else company.created.replace(tzinfo=timezone.utc)
+            if company_created < one_month_ago:
+                is_old = True
+        # Check if deal has meetings and most recent meeting is old
+        if not is_old and deal.meetings:
+            most_recent_meeting = max(deal.meetings, key=lambda m: m.created)
+            meeting_created = most_recent_meeting.created if most_recent_meeting.created.tzinfo else most_recent_meeting.created.replace(tzinfo=timezone.utc)
+            if meeting_created < one_month_ago:
+                is_old = True
+
+        if is_old:
+            old_deals_count += 1
+            if not deal.meetings:
+                deals_to_delete.append(deal)
 
     print(f'Found {len(orphaned_deals)} deals with pd_deal_id=NULL')
-    print(f'Of these, {len(deals_to_delete)} have no meetings and can be deleted')
+    print(f'Of these, {old_deals_count} are older than 1 month (company or meeting created before {one_month_ago.date()})')
+    print(f'Of the old deals, {len(deals_to_delete)} have no meetings and can be deleted')
 
     for deal in deals_to_delete:
         db.delete(deal)
