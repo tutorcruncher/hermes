@@ -150,6 +150,7 @@ async def sync_deal(deal_id: int):
 
     if not pd_deal_id:
         if deal.status == Deal.STATUS_DELETED:
+            # So that older deleted deals are not recreated.
             logger.info(f'Deal {deal_id} is deleted, skipping sync')
             return
 
