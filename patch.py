@@ -420,24 +420,17 @@ async def delete_orphaned_deals(db):
     deals_to_delete = []
     old_deals_count = 0
     for deal in orphaned_deals:
-        is_old = False
         company = deal.company
 
-        # Check if company is old
+        # Only process deals without meetings
+        if deal.meetings:
+            continue
+
+        # Check if company is old enough (> 1 month)
         if company and company.created:
             company_created = company.created if company.created.tzinfo else company.created.replace(tzinfo=timezone.utc)
             if company_created < one_month_ago:
-                is_old = True
-        # Check if deal has meetings and most recent meeting is old
-        if not is_old and deal.meetings:
-            most_recent_meeting = max(deal.meetings, key=lambda m: m.created)
-            meeting_created = most_recent_meeting.created if most_recent_meeting.created.tzinfo else most_recent_meeting.created.replace(tzinfo=timezone.utc)
-            if meeting_created < one_month_ago:
-                is_old = True
-
-        if is_old:
-            old_deals_count += 1
-            if not deal.meetings:
+                old_deals_count += 1
                 deals_to_delete.append(deal)
 
     print(f'Found {len(orphaned_deals)} deals with pd_deal_id=NULL')
