@@ -149,6 +149,10 @@ async def sync_deal(deal_id: int):
                 pd_deal_id = None
 
     if not pd_deal_id:
+        if deal.status == Deal.STATUS_DELETED:
+            logger.info(f'Deal {deal_id} is deleted, skipping sync')
+            return
+
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return

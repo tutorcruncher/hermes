@@ -399,6 +399,31 @@ async def sync_deal_owners_from_pipedrive(db):
     print(f'Updated {updated_count} deals total')
 
 
+@command
+async def delete_orphaned_deals(db):
+    """
+    Delete deals with pd_deal_id=NULL that have no meetings attached.
+
+    These are orphaned deals that were never synced to Pipedrive and have no dependencies.
+    """
+    from app.main_app.models import Deal
+
+    orphaned_deals = db.exec(select(Deal).where(Deal.pd_deal_id.is_(None))).all()
+
+    deals_to_delete = []
+    for deal in orphaned_deals:
+        if not deal.meetings:
+            deals_to_delete.append(deal)
+
+    print(f'Found {len(orphaned_deals)} deals with pd_deal_id=NULL')
+    print(f'Of these, {len(deals_to_delete)} have no meetings and can be deleted')
+
+    for deal in deals_to_delete:
+        db.delete(deal)
+
+    print(f'Deleted {len(deals_to_delete)} orphaned deals')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 @click.option('--live', is_flag=True)
