@@ -329,6 +329,144 @@ class TestSyncDeal:
         db.refresh(test_deal)
         assert test_deal.pd_deal_id == 4444
 
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_callbooker_deleted_deal_not_synced_to_pipedrive(
+        self,
+        mock_gcal,
+        mock_bg_task,
+        mock_create_person,
+        mock_create_org,
+        mock_create_deal,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        test_config,
+    ):
+        """Test that deals marked deleted via Pipedrive webhook are not re-synced from callbooker"""
+        from datetime import datetime
+
+        from pytz import utc
+        from sqlmodel import select
+
+        from app.main_app.models import Company, Deal
+
+        mock_gcal.return_value = MockGCalResource(test_admin.username)
+        mock_create_org.return_value = {'data': {'id': 7777}}
+        mock_create_person.return_value = {'data': {'id': 8888}}
+        mock_create_deal.return_value = {'data': {'id': 9999}}
+
+        # Book a sales call which creates a deal
+        meeting_data = {
+            'admin_id': test_admin.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        # Get the created company and deal
+        company = db.exec(select(Company).where(Company.name == 'Test Company')).first()
+        assert company is not None
+
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal is not None
+        assert deal.pd_deal_id is None
+        assert deal.status == Deal.STATUS_OPEN
+
+        # Manually mark the deal as deleted (simulating a Pipedrive deletion)
+        deal.status = Deal.STATUS_DELETED
+        db.add(deal)
+        db.commit()
+        db.refresh(deal)
+
+        # Now trigger sync manually
+        await sync_deal(deal.id)
+
+        # Verify create_deal was NOT called for deleted deal
+        mock_create_deal.assert_not_called()
+
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_callbooker_open_deal_synced_to_pipedrive(
+        self,
+        mock_gcal,
+        mock_bg_task,
+        mock_create_person,
+        mock_create_org,
+        mock_create_deal,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        test_config,
+    ):
+        """Test that open deals from callbooker are synced to Pipedrive"""
+        from datetime import datetime
+
+        from pytz import utc
+        from sqlmodel import select
+
+        from app.main_app.models import Company, Deal
+
+        mock_gcal.return_value = MockGCalResource(test_admin.username)
+        mock_create_org.return_value = {'data': {'id': 7777}}
+        mock_create_person.return_value = {'data': {'id': 8888}}
+        mock_create_deal.return_value = {'data': {'id': 9999}}
+
+        # Book a sales call which creates a deal
+        meeting_data = {
+            'admin_id': test_admin.id,
+            'name': 'Test Person',
+            'email': 'test@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        # Get the created company and deal
+        company = db.exec(select(Company).where(Company.name == 'Test Company')).first()
+        assert company is not None
+
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal is not None
+        assert deal.pd_deal_id is None
+        assert deal.status == Deal.STATUS_OPEN
+
+        # Trigger sync manually
+        await sync_deal(deal.id)
+
+        # Verify create_deal WAS called for open deal
+        mock_create_deal.assert_called_once()
+
+        # Verify deal has pd_deal_id set
+        db.refresh(deal)
+        assert deal.pd_deal_id == 9999
+
 
 class TestDealToPDData:
     """Test _deal_to_pd_data conversion function"""
