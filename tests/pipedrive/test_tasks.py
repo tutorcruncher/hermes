@@ -331,6 +331,7 @@ class TestSyncDeal:
 
     @patch('app.core.config.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('fastapi.BackgroundTasks.add_task')
@@ -341,6 +342,7 @@ class TestSyncDeal:
         mock_bg_task,
         mock_create_person,
         mock_create_org,
+        mock_update_deal,
         mock_create_deal,
         client,
         db,
@@ -349,7 +351,7 @@ class TestSyncDeal:
         test_stage,
         test_config,
     ):
-        """Test that deals marked deleted via Pipedrive webhook are not re-synced from callbooker"""
+        """Test that deals marked deleted are not included in company sync"""
         from datetime import datetime
 
         from pytz import utc
@@ -387,17 +389,54 @@ class TestSyncDeal:
         assert deal.pd_deal_id is None
         assert deal.status == Deal.STATUS_OPEN
 
-        # Manually mark the deal as deleted (simulating a Pipedrive deletion)
+        # Manually mark the deal as deleted (no pd_deal_id)
         deal.status = Deal.STATUS_DELETED
         db.add(deal)
         db.commit()
         db.refresh(deal)
 
-        # Now trigger sync manually
-        await sync_deal(deal.id)
+        # Reset mocks
+        mock_create_deal.reset_mock()
+
+        # Now trigger company sync which should filter out deleted deals
+        await sync_company_to_pipedrive(company.id)
 
         # Verify create_deal was NOT called for deleted deal
         mock_create_deal.assert_not_called()
+
+    @patch('app.pipedrive.tasks.sync_organization', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.sync_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    async def test_tc2_closed_deal_synced_to_pipedrive(
+        self, mock_get_deal, mock_update_deal, mock_sync_person, mock_sync_org, db, test_deal
+    ):
+        """Test that deals closed by TC2 (with pd_deal_id) are still synced to Pipedrive"""
+        from app.main_app.models import Deal
+
+        # Set up a deal that exists in Pipedrive
+        test_deal.pd_deal_id = 5555
+        test_deal.status = Deal.STATUS_OPEN
+        db.add(test_deal)
+        db.commit()
+
+        # Mock Pipedrive response
+        mock_get_deal.return_value = {'data': {'id': 5555, 'status': 'open'}}
+
+        # TC2 closes the deal (NARC or terminated)
+        test_deal.status = Deal.STATUS_LOST
+        db.add(test_deal)
+        db.commit()
+
+        # Trigger company sync
+        await sync_company_to_pipedrive(test_deal.company_id)
+
+        # Verify deal was synced and updated in Pipedrive
+        mock_get_deal.assert_called_once_with(5555)
+        mock_update_deal.assert_called_once()
+        # Verify status was updated
+        call_args = mock_update_deal.call_args
+        assert call_args[0][1]['status'] == Deal.STATUS_LOST
 
     @patch('app.core.config.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)

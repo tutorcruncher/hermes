@@ -25,7 +25,15 @@ async def sync_company_to_pipedrive(company_id: int):
                     logger.warning(f'Company {company_id} not found, skipping sync')
                     return
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
-                deal_ids = [d.id for d in db.exec(select(Deal).where(Deal.company_id == company_id)).all()]
+                deal_ids = [
+                    d.id
+                    for d in db.exec(
+                        select(Deal).where(
+                            Deal.company_id == company_id,
+                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN),
+                        )
+                    ).all()
+                ]
 
             await sync_organization(company_id)
 
@@ -149,11 +157,6 @@ async def sync_deal(deal_id: int):
                 pd_deal_id = None
 
     if not pd_deal_id:
-        if deal.status == Deal.STATUS_DELETED:
-            # So that older deleted deals are not recreated.
-            logger.info(f'Deal {deal_id} is deleted, skipping sync')
-            return
-
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return
