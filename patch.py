@@ -402,12 +402,12 @@ async def sync_deal_owners_from_pipedrive(db):
 @command
 async def delete_orphaned_deals(db):
     """
-    Delete deals with pd_deal_id=NULL that have no meetings attached and are older than 1 month.
+    Delete deals with pd_deal_id=NULL that have no meetings attached and whose company is older than 1 month.
 
     These are orphaned deals that were never synced to Pipedrive and have no dependencies.
     Only deletes deals where:
-    - Company was created more than 1 month ago, OR
-    - Deal has meetings and the most recent meeting was created more than 1 month ago
+    - Deal has no meetings attached (no calendar events)
+    - Company was created more than 1 month ago
     """
     from datetime import datetime, timedelta, timezone
 

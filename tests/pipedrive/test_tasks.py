@@ -414,19 +414,14 @@ class TestSyncDeal:
         """Test that deals closed by TC2 (with pd_deal_id) are still synced to Pipedrive"""
         from app.main_app.models import Deal
 
-        # Set up a deal that exists in Pipedrive
+        # Set up a deal that was closed by TC2 (NARC or terminated)
         test_deal.pd_deal_id = 5555
-        test_deal.status = Deal.STATUS_OPEN
-        db.add(test_deal)
-        db.commit()
-
-        # Mock Pipedrive response
-        mock_get_deal.return_value = {'data': {'id': 5555, 'status': 'open'}}
-
-        # TC2 closes the deal (NARC or terminated)
         test_deal.status = Deal.STATUS_LOST
         db.add(test_deal)
         db.commit()
+
+        # Mock Pipedrive response - deal is still open in Pipedrive
+        mock_get_deal.return_value = {'data': {'id': 5555, 'status': 'open'}}
 
         # Trigger company sync
         await sync_company_to_pipedrive(test_deal.company_id)
@@ -434,7 +429,7 @@ class TestSyncDeal:
         # Verify deal was synced and updated in Pipedrive
         mock_get_deal.assert_called_once_with(5555)
         mock_update_deal.assert_called_once()
-        # Verify status was updated
+        # Verify status was updated to lost
         call_args = mock_update_deal.call_args
         assert call_args[0][1]['status'] == Deal.STATUS_LOST
 
