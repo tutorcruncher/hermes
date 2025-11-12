@@ -399,6 +399,50 @@ async def sync_deal_owners_from_pipedrive(db):
     print(f'Updated {updated_count} deals total')
 
 
+@command
+async def delete_orphaned_deals(db):
+    """
+    Delete deals with pd_deal_id=NULL that have no meetings attached and whose company is older than 1 month.
+
+    These are orphaned deals that were never synced to Pipedrive and have no dependencies.
+    Only deletes deals where:
+    - Deal has no meetings attached (no calendar events)
+    - Company was created more than 1 month ago
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.main_app.models import Deal
+
+    orphaned_deals = db.exec(select(Deal).where(Deal.pd_deal_id.is_(None))).all()
+
+    one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+    deals_to_delete = []
+    old_deals_count = 0
+    for deal in orphaned_deals:
+        company = deal.company
+
+        # Only process deals without meetings
+        if deal.meetings:
+            continue
+
+        # Check if company is old enough (> 1 month)
+        if company and company.created:
+            company_created = company.created if company.created.tzinfo else company.created.replace(tzinfo=timezone.utc)
+            if company_created < one_month_ago:
+                old_deals_count += 1
+                deals_to_delete.append(deal)
+
+    print(f'Found {len(orphaned_deals)} deals with pd_deal_id=NULL')
+    print(f'Of these, {old_deals_count} are older than 1 month (company or meeting created before {one_month_ago.date()})')
+    print(f'Of the old deals, {len(deals_to_delete)} have no meetings and can be deleted')
+
+    for deal in deals_to_delete:
+        db.delete(deal)
+
+    print(f'Deleted {len(deals_to_delete)} orphaned deals')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 @click.option('--live', is_flag=True)
