@@ -23,6 +23,16 @@ CB_MEETING_DATA = {
 }
 
 
+def get_pipedrive_call_data(mock_pipedrive, endpoint: str, method: str):
+    """Extract data from a specific Pipedrive API call"""
+    calls = [
+        call.kwargs['data']
+        for call in mock_pipedrive.call_args_list
+        if call.args[0] == endpoint and call.kwargs.get('method') == method
+    ]
+    return calls[0] if calls else None
+
+
 def fake_gcal_builder(error=False, start_dt: datetime | None = None, meeting_dur_mins: int = 90):
     """Mock Google Calendar resource"""
 
@@ -1227,7 +1237,6 @@ class TestCallbookerValidation:
     ):
         """Test that sales call creates Pipedrive activity with type='meeting' for proper reminders"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
-        # Mock all Pipedrive API calls
         mock_pipedrive.return_value = {'data': {'id': 12345}}
 
         admin = db.create(
@@ -1255,28 +1264,17 @@ class TestCallbookerValidation:
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
-
         assert r.status_code == 200
 
-        # Find the activity creation call
-        activity_call = None
-        for call in mock_pipedrive.call_args_list:
-            args, kwargs = call
-            if args[0] == 'activities' and kwargs.get('method') == 'POST':
-                activity_call = kwargs.get('data')
-                break
-
-        # Verify activity was created with type='meeting'
-        assert activity_call is not None, 'Activity creation was not called'
-        assert activity_call['type'] == 'meeting', (
-            f"Activity type should be 'meeting' for 'Scheduled/Planned Meeting', got {activity_call.get('type')}"
+        activity_data = get_pipedrive_call_data(mock_pipedrive, 'activities', 'POST')
+        assert activity_data is not None, 'Activity creation was not called'
+        assert activity_data['type'] == 'meeting', (
+            f"Activity type should be 'meeting' for 'Scheduled/Planned Meeting', got {activity_data.get('type')}"
         )
-
-        # Verify other activity fields are present
-        assert 'subject' in activity_call
-        assert 'due_date' in activity_call
-        assert 'due_time' in activity_call
-        assert activity_call['owner_id'] == admin.pd_owner_id
+        assert activity_data['subject']
+        assert activity_data['due_date']
+        assert activity_data['due_time']
+        assert activity_data['owner_id'] == admin.pd_owner_id
 
     @patch('app.pipedrive.api.pipedrive_request')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -1285,7 +1283,6 @@ class TestCallbookerValidation:
     ):
         """Test that support call creates Pipedrive activity with type='meeting' for proper reminders"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
-        # Mock all Pipedrive API calls
         mock_pipedrive.return_value = {'data': {'id': 12345}}
 
         admin = db.create(
@@ -1318,25 +1315,14 @@ class TestCallbookerValidation:
         }
 
         r = client.post(client.app.url_path_for('book-support-call'), json=meeting_data)
-
         assert r.status_code == 200
 
-        # Find the activity creation call
-        activity_call = None
-        for call in mock_pipedrive.call_args_list:
-            args, kwargs = call
-            if args[0] == 'activities' and kwargs.get('method') == 'POST':
-                activity_call = kwargs.get('data')
-                break
-
-        # Verify activity was created with type='meeting'
-        assert activity_call is not None, 'Activity creation was not called'
-        assert activity_call['type'] == 'meeting', (
-            f"Activity type should be 'meeting' for 'Scheduled/Planned Meeting', got {activity_call.get('type')}"
+        activity_data = get_pipedrive_call_data(mock_pipedrive, 'activities', 'POST')
+        assert activity_data is not None, 'Activity creation was not called'
+        assert activity_data['type'] == 'meeting', (
+            f"Activity type should be 'meeting' for 'Scheduled/Planned Meeting', got {activity_data.get('type')}"
         )
-
-        # Verify other activity fields
-        assert 'subject' in activity_call
-        assert 'due_date' in activity_call
-        assert 'due_time' in activity_call
-        assert activity_call['owner_id'] == admin.pd_owner_id
+        assert activity_data['subject']
+        assert activity_data['due_date']
+        assert activity_data['due_time']
+        assert activity_data['owner_id'] == admin.pd_owner_id
