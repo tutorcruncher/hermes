@@ -250,7 +250,7 @@ async def get_or_create_deal(company: Company, contact: Contact | None, db: DBSe
     Returns:
         Created or existing Deal
     """
-    # Check if theres already a deal for this company of any status
+    # Check if there's already an existing deal for this company
     existing_deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
 
     if existing_deal:
