@@ -250,11 +250,11 @@ async def get_or_create_deal(company: Company, contact: Contact | None, db: DBSe
     Returns:
         Created or existing Deal
     """
-    # Check if there's already an open deal for this company
-    existing_deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).first()
+    # Check if there's already a deal for this company of any status
+    existing_deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
 
     if existing_deal:
-        logger.info(f'Found existing open deal {existing_deal.id} for company {company.id}')
+        logger.info(f'Found existing deal {existing_deal.id} (status={existing_deal.status}) for company {company.id}')
         return existing_deal
 
     # Get config to determine pipeline
