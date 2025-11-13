@@ -927,6 +927,114 @@ class TestTC2DealCreation:
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 1
 
+    async def test_get_or_create_deal_returns_existing_lost_deal(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that get_or_create_deal returns existing lost deal instead of creating new one"""
+
+        from app.tc2.process import get_or_create_deal
+
+        # Create company first
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Get the created deal and mark it as lost
+        deal1 = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        deal1.status = Deal.STATUS_LOST
+        db.add(deal1)
+        db.commit()
+        db.refresh(deal1)
+
+        # Try to create another deal - should return existing lost deal, not create new one
+        deal2 = await get_or_create_deal(company, None, db)
+
+        assert deal1.id == deal2.id
+        assert deal2.status == Deal.STATUS_LOST
+        # Verify only one deal exists
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 1
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_tc2_webhook_does_not_reopen_lost_deals(
+        self, mock_api, client, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that TC2 webhook does not create new deals or reopen lost deals in Pipedrive"""
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        # Create company with deal via webhook
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert deal is not None
+        assert deal.status == Deal.STATUS_OPEN
+
+        # Mark deal as lost (simulating Pipedrive webhook)
+        deal.status = Deal.STATUS_LOST
+        db.add(deal)
+        db.commit()
+
+        # Send another TC2 webhook (like 3-hourly job would)
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        # Should still have only one deal, and it should still be lost
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 1
+        assert all_deals[0].status == Deal.STATUS_LOST
+
+    async def test_get_or_create_deal_returns_existing_won_deal(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that get_or_create_deal returns existing won deal instead of creating new one"""
+
+        from app.tc2.process import get_or_create_deal
+
+        # Create company and deal
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        tc_client = TCClient(**sample_tc_client_data)
+        company = await process_tc_client(tc_client, db, create_deal=True)
+
+        # Mark deal as won
+        deal1 = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        deal1.status = Deal.STATUS_WON
+        db.add(deal1)
+        db.commit()
+        db.refresh(deal1)
+
+        # Try to create another deal - should return existing won deal
+        deal2 = await get_or_create_deal(company, None, db)
+
+        assert deal1.id == deal2.id
+        assert deal2.status == Deal.STATUS_WON
+        # Verify only one deal exists
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 1
+
     async def test_update_company_extra_attrs_can_be_set_initially(self, db, test_admin, sample_tc_client_data):
         """Test that extra_attrs fields are set on creation and updated for existing company (now syncable)"""
         # Create company without extra_attrs
