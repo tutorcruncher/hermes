@@ -325,6 +325,7 @@ def _meeting_to_activity_data(meeting: Meeting, db) -> dict:
     company = db.get(Company, meeting.company_id) if meeting.company_id else None
 
     data = {
+        'type': 'meeting',
         'due_date': meeting.start_time.strftime('%Y-%m-%d') if meeting.start_time else None,
         'due_time': meeting.start_time.strftime('%H:%M') if meeting.start_time else None,
         'subject': meeting.name,

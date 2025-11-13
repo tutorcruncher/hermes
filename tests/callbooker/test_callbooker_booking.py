@@ -23,6 +23,16 @@ CB_MEETING_DATA = {
 }
 
 
+def get_pipedrive_call_data(mock_pipedrive, endpoint: str, method: str):
+    """Extract data from a specific Pipedrive API call"""
+    calls = [
+        call.kwargs['data']
+        for call in mock_pipedrive.call_args_list
+        if call.args[0] == endpoint and call.kwargs.get('method') == method
+    ]
+    return calls[0] if calls else None
+
+
 def fake_gcal_builder(error=False, start_dt: datetime | None = None, meeting_dur_mins: int = 90):
     """Mock Google Calendar resource"""
 
@@ -1219,3 +1229,49 @@ class TestCallbookerValidation:
 
         # Two calendar events created
         assert len(event_creations) == 2
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_creates_pipedrive_activity_with_meeting_type(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test that sales call creates Pipedrive activity with type='meeting' for proper reminders"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pipedrive.return_value = {'data': {'id': 12345}}
+
+        admin = db.create(
+            Admin(
+                first_name='Sales',
+                last_name='Person',
+                username='sales@example.com',
+                pd_owner_id=100,
+                tc2_admin_id=1,
+                is_sales_person=True,
+            )
+        )
+
+        future_dt = datetime.now(utc) + timedelta(days=1)
+        meeting_data = {
+            'admin_id': admin.id,
+            'name': 'John Doe',
+            'email': 'john@example.com',
+            'company_name': 'Test Company',
+            'country': 'GB',
+            'estimated_income': 1000,
+            'currency': 'GBP',
+            'price_plan': 'payg',
+            'meeting_dt': future_dt.isoformat(),
+        }
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+
+        activity_data = get_pipedrive_call_data(mock_pipedrive, 'activities', 'POST')
+        assert activity_data is not None, 'Activity creation was not called'
+        assert activity_data['type'] == 'meeting', (
+            f"Activity type should be 'meeting' for 'Scheduled/Planned Meeting', got {activity_data.get('type')}"
+        )
+        assert activity_data['subject']
+        assert activity_data['due_date']
+        assert activity_data['due_time']
+        assert activity_data['owner_id'] == admin.pd_owner_id
