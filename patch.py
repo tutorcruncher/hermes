@@ -41,6 +41,13 @@ GABE_ID = 7
 DAN_ID = 8
 TONY_ID = 9
 DREW_ID = 15
+CHRIS_ID = 11
+
+INACTIVE_ADMIN_IDS = [TOM_ID, DAN_ID, 11, 13]  # Tom, Daniel, Chris, Drew (old id=13)
+INACTIVE_BDR_IDS = [TOM_ID, DAN_ID, 13]  # Tom, Daniel, Drew (old id=13)
+
+SALES_PERSONS = [SAM_ID, FIONN_ID, TONY_ID]
+BDR_PERSONS = [DREW_ID, GABE_ID]
 
 def command(func):
     commands.append(func)
@@ -443,9 +450,10 @@ async def delete_orphaned_deals(db):
     print(f'Deleted {len(deals_to_delete)} orphaned deals')
 
 
-async def reassign_inactive_admin_companies(db):
+@command
+async def reassign_inactive_sales_person_companies(db):
     """
-    Reassign companies from inactive admins (Daniel, Tom, Drew id=13, Chris) to active sales team.
+    Reassign companies from inactive sales persons (Daniel, Tom, Drew id=13, Chris) to active sales team.
 
     Assignment rules:
     - Enterprise → Fionn
@@ -459,8 +467,6 @@ async def reassign_inactive_admin_companies(db):
     - Chris CodeToPixels (id=11)
     """
     from app.main_app.models import Company, Deal
-
-    INACTIVE_ADMIN_IDS = [6, 8, 11, 13]  # Tom, Daniel, Chris, Drew (old id=13)
 
     companies = db.exec(select(Company).where(Company.sales_person_id.in_(INACTIVE_ADMIN_IDS))).all()
 
@@ -492,6 +498,41 @@ async def reassign_inactive_admin_companies(db):
 
     print(f'Updated {companies_updated} companies')
     print(f'Updated {deals_updated} deals')
+
+
+@command
+async def reassign_inactive_bdr_person_companies(db):
+    """
+    Reassign companies from inactive BDR admins (Tom, Daniel, Drew id=13) to active BDR team.
+
+    BDR Assignment rules:
+    - US → Drew (id=15)
+    - Other countries → Gabe (id=7)
+
+    Inactive BDR admins:
+    - Tom Hamilton Stubber (id=6) - 556 companies
+    - Daniel Jezeph (id=8) - 55 companies
+    - Drew Van Airsdale (id=13) - 88 companies
+    """
+    from app.main_app.models import Company
+
+    companies = db.exec(select(Company).where(Company.bdr_person_id.in_(INACTIVE_BDR_IDS))).all()
+
+    print(f'Found {len(companies)} companies assigned to inactive BDR admins')
+
+    companies_updated = 0
+
+    for company in companies:
+        if company.country == 'US':
+            new_bdr_person_id = DREW_ID  # Drew (id=15)
+        else:
+            new_bdr_person_id = GABE_ID  # Gabe (id=7)
+
+        company.bdr_person_id = new_bdr_person_id
+        db.add(company)
+        companies_updated += 1
+
+    print(f'Updated {companies_updated} companies')
 
 
 @click.command()
