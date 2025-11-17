@@ -12,7 +12,10 @@ logger = logging.getLogger('hermes.pipedrive')
 
 _client: Optional[httpx.AsyncClient] = None
 
-RATE_LIMIT_STATUS_CODE = 429
+RATE_LIMIT_STATUS_CODES = (
+    429,
+    403,  # ratelimiting by Cloudflare
+)
 max_retry = settings.pd_api_max_retry
 
 
@@ -76,7 +79,7 @@ async def pipedrive_request(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if settings.pd_api_enable_retry and e.response.status_code == RATE_LIMIT_STATUS_CODE and retry < max_retry:
+            if settings.pd_api_enable_retry and e.response.status_code in RATE_LIMIT_STATUS_CODES and retry < max_retry:
                 wait_time = (retry + 1) * 2
                 logger.warning(
                     f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/{max_retry}, waiting {wait_time}s...'
