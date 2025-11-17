@@ -443,6 +443,57 @@ async def delete_orphaned_deals(db):
     print(f'Deleted {len(deals_to_delete)} orphaned deals')
 
 
+async def reassign_inactive_admin_companies(db):
+    """
+    Reassign companies from inactive admins (Daniel, Tom, Drew id=13, Chris) to active sales team.
+
+    Assignment rules:
+    - Enterprise → Fionn
+    - PAYG/Startup + US → Tony
+    - PAYG/Startup + Other countries → Sam
+
+    Inactive admins:
+    - Daniel Jezeph (id=8)
+    - Tom Hamilton Stubber (id=6)
+    - Drew Van Airsdale (id=13)
+    - Chris CodeToPixels (id=11)
+    """
+    from app.main_app.models import Company, Deal
+
+    INACTIVE_ADMIN_IDS = [6, 8, 11, 13]  # Tom, Daniel, Chris, Drew (old id=13)
+
+    companies = db.exec(select(Company).where(Company.sales_person_id.in_(INACTIVE_ADMIN_IDS))).all()
+
+    print(f'Found {len(companies)} companies assigned to inactive admins')
+
+    companies_updated = 0
+    deals_updated = 0
+
+    for company in companies:
+        new_sales_person_id = None
+
+        if company.price_plan == Company.PP_ENTERPRISE:
+            new_sales_person_id = FIONN_ID
+        elif company.price_plan in (Company.PP_PAYG, Company.PP_STARTUP):
+            if company.country == 'US':
+                new_sales_person_id = TONY_ID
+            else:
+                new_sales_person_id = SAM_ID
+
+        if new_sales_person_id:
+            company.sales_person_id = new_sales_person_id
+            db.add(company)
+            companies_updated += 1
+
+            for deal in company.deals:
+                deal.admin_id = new_sales_person_id
+                db.add(deal)
+                deals_updated += 1
+
+    print(f'Updated {companies_updated} companies')
+    print(f'Updated {deals_updated} deals')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 @click.option('--live', is_flag=True)
