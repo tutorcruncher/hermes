@@ -48,6 +48,7 @@ INACTIVE_BDR_IDS = [TOM_ID, DAN_ID, 13]  # Tom, Daniel, Drew (old id=13)
 
 SALES_PERSONS = [SAM_ID, FIONN_ID, TONY_ID]
 BDR_PERSONS = [DREW_ID, GABE_ID]
+SALES_TEAM = [*SALES_PERSONS, *BDR_PERSONS]
 
 def command(func):
     commands.append(func)
@@ -484,6 +485,7 @@ async def reassign_inactive_sales_person_companies(db):
             if company.country == 'US':
                 new_sales_person_id = TONY_ID
             else:
+                # even if company country is NULL, we default to Sam
                 new_sales_person_id = SAM_ID
 
         if new_sales_person_id:
@@ -492,9 +494,13 @@ async def reassign_inactive_sales_person_companies(db):
             companies_updated += 1
 
             for deal in company.deals:
-                deal.admin_id = new_sales_person_id
-                db.add(deal)
-                deals_updated += 1
+                if deal.admin_id not in SALES_TEAM:
+                    # In this case we should let the deal have the same admin as the sales person.
+                    # Reasoning to include BDR persons in this is because of the case where company have a wrong sales person id
+                    # But the deals have one of the BDR persons assigned as admin, in which case prefer not to change the deal
+                    deal.admin_id = new_sales_person_id
+                    db.add(deal)
+                    deals_updated += 1
 
     print(f'Updated {companies_updated} companies')
     print(f'Updated {deals_updated} deals')
@@ -533,6 +539,39 @@ async def reassign_inactive_bdr_person_companies(db):
         companies_updated += 1
 
     print(f'Updated {companies_updated} companies')
+
+@command
+async def reassign_deals_with_invalid_admin(db):
+    """
+    Reassign deals that have invalid admin_id to their company's sales_person.
+
+    This fixes deals where:
+    - Deal's admin has invalid pd_owner_id (NULL or 0)
+    - Company already has a valid sales_person
+    - Deal admin is different from company sales_person
+
+    These deals will be assigned to match their company's sales_person.
+    """
+    from app.main_app.models import Admin, Deal
+
+    deals = db.exec(
+        select(Deal)
+        .join(Admin, Deal.admin_id == Admin.id)
+        .where((Admin.pd_owner_id.is_(None)) | (Admin.pd_owner_id == 0))
+    ).all()
+
+    print(f'Found {len(deals)} deals with invalid admin pd_owner_id')
+
+    deals_updated = 0
+
+    for deal in deals:
+        company = deal.company
+        if company and company.sales_person_id:
+            deal.admin_id = company.sales_person_id
+            db.add(deal)
+            deals_updated += 1
+
+    print(f'Updated {deals_updated} deals')
 
 
 @click.command()
