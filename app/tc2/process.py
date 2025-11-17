@@ -73,7 +73,13 @@ async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) ->
     return company
 
 
-async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: bool = True) -> Company:
+async def process_tc_client(
+    tc_client: TCClient,
+    db: DBSession,
+    create_deal: bool = True,
+    prefetched_companies: dict[int, Company] | None = None,
+    prefetched_admins: dict[int, Admin] | None = None,
+) -> Company:
     """
     Process TC2 client data and create/update Company and Contacts.
 
@@ -86,7 +92,10 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         Created or updated Company
     """
     # Get or create company
-    company = db.exec(select(Company).where(Company.tc2_cligency_id == tc_client.id)).one_or_none()
+    if prefetched_companies and tc_client.id in prefetched_companies:
+        company = db.get(Company, prefetched_companies[tc_client.id].id)
+    else:
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == tc_client.id)).one_or_none()
 
     # Get admin relationships
     sales_person = None
@@ -99,13 +108,24 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     )
 
     if tc_client.sales_person_id:
-        sales_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)).one_or_none()
+        if prefetched_admins and tc_client.sales_person_id in prefetched_admins:
+            sales_person = db.get(Admin, prefetched_admins[tc_client.sales_person_id].id)
+        else:
+            sales_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.sales_person_id)).one_or_none()
 
     if tc_client.associated_admin_id:
-        support_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.associated_admin_id)).one_or_none()
+        if prefetched_admins and tc_client.associated_admin_id in prefetched_admins:
+            support_person = db.get(Admin, prefetched_admins[tc_client.associated_admin_id].id)
+        else:
+            support_person = db.exec(
+                select(Admin).where(Admin.tc2_admin_id == tc_client.associated_admin_id)
+            ).one_or_none()
 
     if tc_client.bdr_person_id:
-        bdr_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)).one_or_none()
+        if prefetched_admins and tc_client.bdr_person_id in prefetched_admins:
+            bdr_person = db.get(Admin, prefetched_admins[tc_client.bdr_person_id].id)
+        else:
+            bdr_person = db.exec(select(Admin).where(Admin.tc2_admin_id == tc_client.bdr_person_id)).one_or_none()
         if not bdr_person:
             logger.warning(f'BDR person {tc_client.bdr_person_id} not found for client {tc_client.id}')
     else:
