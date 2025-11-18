@@ -5,7 +5,7 @@ from sqlmodel import select
 
 from app.core.database import DBSession
 from app.main_app.common import get_or_create_deal
-from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline
+from app.main_app.models import Admin, Company, Contact, Deal
 from app.tc2.api import get_client
 from app.tc2.models import TCClient, TCRecipient
 

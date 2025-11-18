@@ -11,7 +11,7 @@ from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.utils import iso_8601_to_datetime
 from app.core.config import settings
 from app.core.database import DBSession
-from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.main_app.models import Admin, Company, Contact, Meeting
 
 logger = logging.getLogger('hermes.callbooker')
 
