@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import select
 
-from app.main_app.models import Admin, Company, Contact, Deal
+from app.main_app.models import Admin, Company, Contact, Deal, Meeting
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
 from tests.helpers import create_mock_response
@@ -1762,11 +1762,18 @@ class TestGetOrCreateDealConsolidation:
         # Verify meeting was created and linked to OPEN deal (not lost)
         meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
         assert meeting is not None
-        assert meeting.deal_id == open_deal.id  # Should be linked to open deal
+        assert meeting.deal_id == open_deal.id  # Should be linked to open deal, not lost_deal
+        assert meeting.admin_id == test_admin.id
+        assert meeting.contact_id == contact.id
+        assert meeting.meeting_type == Meeting.TYPE_SALES
 
         # Verify no new deals were created
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 2  # Still only 2 deals
+
+        # Verify the deals are still the same ones
+        deal_ids = {d.id for d in all_deals}
+        assert deal_ids == {lost_deal.id, open_deal.id}
 
     @patch('httpx.AsyncClient.request')
     async def test_tc2_flow_with_multiple_deals_gets_first_deal(
@@ -1832,7 +1839,14 @@ class TestGetOrCreateDealConsolidation:
         # Verify no new deal was created (TC2 found existing one)
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 2  # Still only 2 deals
-        # TC2 should return first deal (lost_deal) since no status filter
+
+        # Verify the deals are still the same ones (no duplicates)
+        deal_ids = {d.id for d in all_deals}
+        assert deal_ids == {lost_deal.id, won_deal.id}
+
+        # TC2 should have found first deal (lost_deal) since no status filter
+        first_deal = db.exec(select(Deal).where(Deal.company_id == company.id)).first()
+        assert first_deal.id == lost_deal.id
 
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     @patch('fastapi.BackgroundTasks.add_task')
@@ -1909,8 +1923,19 @@ class TestGetOrCreateDealConsolidation:
         open_deals = [d for d in all_deals if d.status == Deal.STATUS_OPEN]
         assert len(open_deals) == 1
 
+        new_deal = open_deals[0]
+        assert new_deal.id != lost_deal.id  # It's a NEW deal
+        assert new_deal.status == Deal.STATUS_OPEN
+        assert new_deal.company_id == company.id
+        assert new_deal.admin_id == test_admin.id
+        assert new_deal.pipeline_id == test_config.payg_pipeline_id
+        assert new_deal.name == company.name
+        assert new_deal.contact_id == contact.id
+
         meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
-        assert meeting.deal_id == open_deals[0].id
+        assert meeting.deal_id == new_deal.id
+        assert meeting.admin_id == test_admin.id
+        assert meeting.contact_id == contact.id
 
     @patch('httpx.AsyncClient.request')
     async def test_tc2_webhook_does_not_create_duplicate_when_multiple_deals_exist(
@@ -1988,6 +2013,18 @@ class TestGetOrCreateDealConsolidation:
         # Verify no additional deals were created
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 3  # Still only 3 deals
+
+        # Verify the deals are still the same ones (no duplicates)
+        deal_ids = {d.id for d in all_deals}
+        assert deal_ids == {deal1.id, deal2.id, deal3.id}
+
+        # Verify statuses remain unchanged
+        db.refresh(deal1)
+        db.refresh(deal2)
+        db.refresh(deal3)
+        assert deal1.status == Deal.STATUS_OPEN
+        assert deal2.status == Deal.STATUS_LOST
+        assert deal3.status == Deal.STATUS_WON
 
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     @patch('fastapi.BackgroundTasks.add_task')
@@ -2070,7 +2107,20 @@ class TestGetOrCreateDealConsolidation:
 
         # Verify meeting linked to first open deal, no new deal created
         meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
-        assert meeting.deal_id == open_deal1.id
+        assert meeting.deal_id == open_deal1.id  # Linked to FIRST open deal, not second
+        assert meeting.admin_id == test_admin.id
+        assert meeting.contact_id == contact.id
+        assert meeting.meeting_type == Meeting.TYPE_SALES
 
         all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
         assert len(all_deals) == 2  # Still only 2 deals
+
+        # Verify the deals are still the same ones (no duplicates)
+        deal_ids = {d.id for d in all_deals}
+        assert deal_ids == {open_deal1.id, open_deal2.id}
+
+        # Verify both are still open
+        db.refresh(open_deal1)
+        db.refresh(open_deal2)
+        assert open_deal1.status == Deal.STATUS_OPEN
+        assert open_deal2.status == Deal.STATUS_OPEN
