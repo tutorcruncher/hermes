@@ -846,12 +846,17 @@ class TestTC2DealCreation:
     async def test_deal_uses_correct_pipeline_for_startup(self, db, test_admin, sample_tc_client_data):
         """Test that startup companies get deals in startup pipeline"""
 
-        from app.main_app.models import Config, Pipeline
+        from app.main_app.models import Config, Pipeline, Stage
+
+        # Create stage first
+        stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
 
         # Create separate pipelines for each price plan
-        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=1))
-        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=1))
-        enterprise_pipeline = db.create(Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=1))
+        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=stage.id))
+        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=stage.id))
+        enterprise_pipeline = db.create(
+            Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=stage.id)
+        )
 
         db.create(
             Config(
@@ -875,12 +880,17 @@ class TestTC2DealCreation:
     async def test_deal_uses_correct_pipeline_for_enterprise(self, db, test_admin, sample_tc_client_data):
         """Test that enterprise companies get deals in enterprise pipeline"""
 
-        from app.main_app.models import Config, Pipeline
+        from app.main_app.models import Config, Pipeline, Stage
+
+        # Create stage first
+        stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
 
         # Create separate pipelines for each price plan
-        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=1))
-        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=1))
-        enterprise_pipeline = db.create(Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=1))
+        payg_pipeline = db.create(Pipeline(name='PAYG Pipeline', pd_pipeline_id=101, dft_entry_stage_id=stage.id))
+        startup_pipeline = db.create(Pipeline(name='Startup Pipeline', pd_pipeline_id=102, dft_entry_stage_id=stage.id))
+        enterprise_pipeline = db.create(
+            Pipeline(name='Enterprise Pipeline', pd_pipeline_id=103, dft_entry_stage_id=stage.id)
+        )
 
         db.create(
             Config(
@@ -1502,10 +1512,11 @@ class TestTC2SyncableFields:
 
     async def test_narc_company_closes_open_deals(self, client, db, test_admin, sample_tc_client_data):
         """Test that marking company as NARC closes all open deals"""
-        from app.main_app.models import Config, Pipeline
+        from app.main_app.models import Config, Pipeline, Stage
 
-        # Create pipeline and config for deal creation
-        pipeline = db.create(Pipeline(name='Test Pipeline', pd_pipeline_id=101, dft_entry_stage_id=1))
+        # Create stage and pipeline for deal creation
+        stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
+        pipeline = db.create(Pipeline(name='Test Pipeline', pd_pipeline_id=101, dft_entry_stage_id=stage.id))
         db.create(
             Config(
                 payg_pipeline_id=pipeline.id,
@@ -1698,12 +1709,32 @@ class TestTC2SyncableFields:
 class TestGetOrCreateDealConsolidation:
     """Test consolidated get_or_create_deal function with filters"""
 
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    @patch('fastapi.BackgroundTasks.add_task')
     @patch('httpx.AsyncClient.request')
     async def test_callbooker_flow_with_multiple_deals_gets_only_open_deal(
-        self, mock_request, client, db, test_admin, test_config
+        self, mock_request, mock_add_task, mock_gcal_builder, client, db, test_admin, test_config
     ):
         """Test callbooker flow gets OPEN deal when multiple deals exist (uses status filter)"""
         from tests.helpers import create_mock_response
+
+        class MockGCalResource:
+            def execute(self):
+                return {'calendars': {test_admin.email: {'busy': []}}}
+
+            def query(self, body: dict):
+                return self
+
+            def freebusy(self, *args, **kwargs):
+                return self
+
+            def events(self):
+                return self
+
+            def insert(self, *args, **kwargs):
+                return self
+
+        mock_gcal_builder.return_value = MockGCalResource()
 
         mock_response = create_mock_response({'data': {'id': 999}})
         mock_request.return_value = mock_response
@@ -1855,26 +1886,23 @@ class TestGetOrCreateDealConsolidation:
     ):
         """Test callbooker creates new deal when only LOST deals exist (status filter finds nothing)"""
 
-        def fake_gcal_builder_fn():
-            class MockGCalResource:
-                def execute(self):
-                    return {'calendars': {test_admin.email: {'busy': []}}}
+        class MockGCalResource:
+            def execute(self):
+                return {'calendars': {test_admin.email: {'busy': []}}}
 
-                def query(self, body: dict):
-                    return self
+            def query(self, body: dict):
+                return self
 
-                def freebusy(self, *args, **kwargs):
-                    return self
+            def freebusy(self, *args, **kwargs):
+                return self
 
-                def events(self):
-                    return self
+            def events(self):
+                return self
 
-                def insert(self, *args, **kwargs):
-                    return self
+            def insert(self, *args, **kwargs):
+                return self
 
-            return MockGCalResource()
-
-        mock_gcal_builder.side_effect = [fake_gcal_builder_fn()]
+        mock_gcal_builder.return_value = MockGCalResource()
 
         # Create company
         company = db.create(
@@ -2033,26 +2061,23 @@ class TestGetOrCreateDealConsolidation:
     ):
         """Test callbooker returns first OPEN deal when multiple OPEN deals exist"""
 
-        def fake_gcal_builder_fn():
-            class MockGCalResource:
-                def execute(self):
-                    return {'calendars': {test_admin.email: {'busy': []}}}
+        class MockGCalResource:
+            def execute(self):
+                return {'calendars': {test_admin.email: {'busy': []}}}
 
-                def query(self, body: dict):
-                    return self
+            def query(self, body: dict):
+                return self
 
-                def freebusy(self, *args, **kwargs):
-                    return self
+            def freebusy(self, *args, **kwargs):
+                return self
 
-                def events(self):
-                    return self
+            def events(self):
+                return self
 
-                def insert(self, *args, **kwargs):
-                    return self
+            def insert(self, *args, **kwargs):
+                return self
 
-            return MockGCalResource()
-
-        mock_gcal_builder.side_effect = [fake_gcal_builder_fn()]
+        mock_gcal_builder.return_value = MockGCalResource()
 
         # Create company
         company = db.create(

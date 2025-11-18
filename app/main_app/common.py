@@ -3,7 +3,7 @@ import logging
 from sqlmodel import select
 
 from app.core.database import DBSession
-from app.main_app.models import Company, Config, Contact, Deal, Pipeline
+from app.main_app.models import Company, Config, Contact, Deal, Pipeline, Stage
 
 logger = logging.getLogger('hermes.main_app')
 
@@ -56,6 +56,12 @@ async def get_or_create_deal(company: Company, contact: Contact, db: DBSession, 
     if not pipeline.dft_entry_stage_id:
         logger.error(f'Pipeline {pipeline_id} has no default entry stage')
         raise ValueError(f'Pipeline {pipeline_id} has no default entry stage')
+
+    # Verify stage exists
+    stage = db.exec(select(Stage).where(Stage.id == pipeline.dft_entry_stage_id)).first()
+    if not stage:
+        logger.error(f'Stage {pipeline.dft_entry_stage_id} not found for pipeline {pipeline_id}')
+        raise ValueError(f'Stage {pipeline.dft_entry_stage_id} not found')
 
     deal = Deal(
         company_id=company.id,

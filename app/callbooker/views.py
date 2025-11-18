@@ -44,6 +44,15 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
         db.commit()
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
+    except ValueError as e:
+        error_msg = str(e)
+        if 'Config not found' in error_msg:
+            error_msg = 'System configuration not found. Please contact support.'
+        elif 'Pipeline' in error_msg and 'not found' in error_msg:
+            error_msg = 'System configuration error. Please contact support.'
+        elif 'no default entry stage' in error_msg or ('Stage' in error_msg and 'not found' in error_msg):
+            error_msg = 'No stage configured for this pipeline. Please contact support.'
+        return JSONResponse({'status': 'error', 'message': error_msg}, status_code=400)
 
     # Queue background tasks to sync to Pipedrive
     background_tasks.add_task(sync_company_to_pipedrive, company.id)

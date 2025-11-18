@@ -145,8 +145,13 @@ class TestCallbookerProcessEdgeCases:
         assert r.status_code == 400
         assert 'System configuration not found' in r.json()['message']
 
-    async def test_sales_call_stage_not_found_raises_error(self, client, db, test_admin, test_pipeline, test_config):
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_stage_not_found_raises_error(
+        self, mock_gcal_builder, client, db, test_admin, test_pipeline, test_config
+    ):
         """Test that booking raises error when stage referenced by pipeline doesn't exist"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+
         # Create a pipeline with an invalid dft_entry_stage_id
         stage = db.create(Stage(pd_stage_id=999, name='Test Stage'))
         pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage.id))
