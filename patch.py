@@ -21,17 +21,6 @@ logger = logging.getLogger('hermes.patch')
 
 commands = []
 
-'''
-1	"Sam"
-2	"Fionn"
-3	"Maahi"
-4	"Raashi"
-6	"Tom"
-9	"Tony"
-7	"Gabe"
-15	"Drew"
-'''
-
 SAM_ID = 1
 FIONN_ID = 2
 MAAHI_ID = 3
@@ -40,8 +29,8 @@ TOM_ID = 6
 GABE_ID = 7
 DAN_ID = 8
 TONY_ID = 9
-DREW_ID = 15
 CHRIS_ID = 11
+DREW_ID = 15
 
 INACTIVE_ADMIN_IDS = [TOM_ID, DAN_ID, 11, 13]  # Tom, Daniel, Chris, Drew (old id=13)
 INACTIVE_BDR_IDS = [TOM_ID, DAN_ID, 13]  # Tom, Daniel, Drew (old id=13)
