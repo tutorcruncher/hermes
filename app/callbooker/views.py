@@ -19,7 +19,7 @@ from app.callbooker.process import (
 from app.common.utils import get_bearer, sign_args
 from app.core.config import settings
 from app.core.database import DBSession, get_db
-from app.main_app.common import get_or_create_deal
+from app.main_app.common import DealCreationError, get_or_create_deal
 from app.main_app.models import Admin, Company, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive, sync_meeting_to_pipedrive
 from app.tc2.process import get_or_create_company_from_tc2
@@ -42,7 +42,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
         meeting.deal_id = deal.id
         db.add(meeting)
         db.commit()
-    except MeetingBookingError as e:
+    except (MeetingBookingError, DealCreationError) as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
     # Queue background tasks to sync to Pipedrive
@@ -68,7 +68,7 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
         meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
         db.add(meeting)
         db.commit()
-    except MeetingBookingError as e:
+    except (MeetingBookingError, DealCreationError) as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
     # Queue background tasks to sync to Pipedrive

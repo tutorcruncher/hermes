@@ -8,6 +8,11 @@ from app.main_app.models import Company, Config, Contact, Deal, Pipeline, Stage
 logger = logging.getLogger('hermes.main_app')
 
 
+class DealCreationError(Exception):
+    """Raised when deal cannot be created due to configuration errors"""
+    pass
+
+
 async def get_or_create_deal(company: Company, contact: Contact, db: DBSession, **filters):
     """
     Get or create a deal for a company.
@@ -34,7 +39,7 @@ async def get_or_create_deal(company: Company, contact: Contact, db: DBSession, 
     config = db.exec(select(Config)).first()
     if not config:
         logger.error('No config found, cannot create deal')
-        raise ValueError('Config not found')
+        raise DealCreationError('Config not found')
 
     pipeline_id = None
     match company.price_plan:
@@ -46,22 +51,22 @@ async def get_or_create_deal(company: Company, contact: Contact, db: DBSession, 
             pipeline_id = config.enterprise_pipeline_id
         case _:
             logger.error(f'Unknown price plan {company.price_plan} for company {company.id}')
-            raise ValueError(f'Unknown price plan {company.price_plan}')
+            raise DealCreationError(f'Unknown price plan: {company.price_plan}')
 
     pipeline = db.exec(select(Pipeline).where(Pipeline.id == pipeline_id)).first()
     if not pipeline:
         logger.error(f'Pipeline {pipeline_id} not found')
-        raise ValueError(f'Pipeline {pipeline_id} not found')
+        raise DealCreationError(f'Pipeline {pipeline_id} not found')
 
     if not pipeline.dft_entry_stage_id:
         logger.error(f'Pipeline {pipeline_id} has no default entry stage')
-        raise ValueError(f'Pipeline {pipeline_id} has no default entry stage')
+        raise DealCreationError(f'Pipeline {pipeline_id} has no default entry stage')
 
     # Verify stage exists
     stage = db.exec(select(Stage).where(Stage.id == pipeline.dft_entry_stage_id)).first()
     if not stage:
         logger.error(f'Stage {pipeline.dft_entry_stage_id} not found for pipeline {pipeline_id}')
-        raise ValueError(f'Stage {pipeline.dft_entry_stage_id} not found')
+        raise DealCreationError(f'Stage {pipeline.dft_entry_stage_id} not found')
 
     deal = Deal(
         company_id=company.id,

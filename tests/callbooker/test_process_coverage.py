@@ -143,7 +143,7 @@ class TestCallbookerProcessEdgeCases:
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
         assert r.status_code == 400
-        assert 'System configuration not found' in r.json()['message']
+        assert 'Config not found' in r.json()['message']
 
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_stage_not_found_raises_error(
@@ -181,7 +181,7 @@ class TestCallbookerProcessEdgeCases:
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
         assert r.status_code == 400
-        assert 'No stage configured' in r.json()['message']
+        assert 'Stage' in r.json()['message'] and 'not found' in r.json()['message']
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
