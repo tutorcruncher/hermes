@@ -10,6 +10,7 @@ logger = logging.getLogger('hermes.main_app')
 
 class DealCreationError(Exception):
     """Raised when deal cannot be created due to configuration errors"""
+
     pass
 
 

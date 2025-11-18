@@ -1706,6 +1706,28 @@ class TestTC2SyncableFields:
         assert custom_fields[pd_field_id] == 'active'
 
 
+def create_mock_gcal_resource(admin_email: str):
+    """Factory function to create MockGCalResource with specific admin email"""
+
+    class MockGCalResource:
+        def execute(self):
+            return {'calendars': {admin_email: {'busy': []}}}
+
+        def query(self, body: dict):
+            return self
+
+        def freebusy(self, *args, **kwargs):
+            return self
+
+        def events(self):
+            return self
+
+        def insert(self, *args, **kwargs):
+            return self
+
+    return MockGCalResource()
+
+
 class TestGetOrCreateDealConsolidation:
     """Test consolidated get_or_create_deal function with filters"""
 
@@ -1718,23 +1740,7 @@ class TestGetOrCreateDealConsolidation:
         """Test callbooker flow gets OPEN deal when multiple deals exist (uses status filter)"""
         from tests.helpers import create_mock_response
 
-        class MockGCalResource:
-            def execute(self):
-                return {'calendars': {test_admin.email: {'busy': []}}}
-
-            def query(self, body: dict):
-                return self
-
-            def freebusy(self, *args, **kwargs):
-                return self
-
-            def events(self):
-                return self
-
-            def insert(self, *args, **kwargs):
-                return self
-
-        mock_gcal_builder.return_value = MockGCalResource()
+        mock_gcal_builder.return_value = create_mock_gcal_resource(test_admin.email)
 
         mock_response = create_mock_response({'data': {'id': 999}})
         mock_request.return_value = mock_response
@@ -1886,23 +1892,7 @@ class TestGetOrCreateDealConsolidation:
     ):
         """Test callbooker creates new deal when only LOST deals exist (status filter finds nothing)"""
 
-        class MockGCalResource:
-            def execute(self):
-                return {'calendars': {test_admin.email: {'busy': []}}}
-
-            def query(self, body: dict):
-                return self
-
-            def freebusy(self, *args, **kwargs):
-                return self
-
-            def events(self):
-                return self
-
-            def insert(self, *args, **kwargs):
-                return self
-
-        mock_gcal_builder.return_value = MockGCalResource()
+        mock_gcal_builder.return_value = create_mock_gcal_resource(test_admin.email)
 
         # Create company
         company = db.create(
@@ -2061,23 +2051,7 @@ class TestGetOrCreateDealConsolidation:
     ):
         """Test callbooker returns first OPEN deal when multiple OPEN deals exist"""
 
-        class MockGCalResource:
-            def execute(self):
-                return {'calendars': {test_admin.email: {'busy': []}}}
-
-            def query(self, body: dict):
-                return self
-
-            def freebusy(self, *args, **kwargs):
-                return self
-
-            def events(self):
-                return self
-
-            def insert(self, *args, **kwargs):
-                return self
-
-        mock_gcal_builder.return_value = MockGCalResource()
+        mock_gcal_builder.return_value = create_mock_gcal_resource(test_admin.email)
 
         # Create company
         company = db.create(
