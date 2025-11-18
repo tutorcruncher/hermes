@@ -345,3 +345,258 @@ class TestEndToEndRateLimiting:
 
         # Verify 429 errors occurred in logs
         assert '429' in caplog.text
+
+
+class TestCloudflareRateLimiting:
+    """Tests for Cloudflare 403 rate limiting with retry logic"""
+
+    @pytest.mark.asyncio
+    async def test_403_cloudflare_retry_succeeds_on_second_attempt(self, monkeypatch):
+        """Test that 403 Cloudflare rate limit retries and succeeds"""
+        from unittest.mock import AsyncMock, patch
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        monkeypatch.setattr('app.core.config.settings.pd_api_max_retry', 3)
+
+        call_count = [0]
+
+        async def mock_request_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return MockResponse(
+                    json_data={'error': 'Cloudflare rate limit'},
+                    status_code=403,
+                    headers={
+                        'x-ratelimit-limit': '10',
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': '2',
+                        'x-daily-requests-left': '9500',
+                    },
+                    raise_for_status_error=True,
+                )
+            return MockResponse(
+                json_data={'data': {'id': 999, 'name': 'Test Org'}},
+                status_code=200,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '9',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9499',
+                },
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            result = await api.pipedrive_request('organizations/999')
+
+            assert result == {'data': {'id': 999, 'name': 'Test Org'}}
+            assert call_count[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_429_api_retry_succeeds_on_third_attempt(self, monkeypatch):
+        """Test that 429 API rate limit retries multiple times and succeeds"""
+        from unittest.mock import AsyncMock, patch
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        monkeypatch.setattr('app.core.config.settings.pd_api_max_retry', 5)
+
+        call_count = [0]
+
+        async def mock_request_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return MockResponse(
+                    json_data={'error': 'Rate limit exceeded'},
+                    status_code=429,
+                    headers={
+                        'x-ratelimit-limit': '10',
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': '2',
+                        'x-daily-requests-left': '9500',
+                    },
+                    raise_for_status_error=True,
+                )
+            return MockResponse(
+                json_data={'data': {'id': 888}},
+                status_code=200,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '8',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9498',
+                },
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            result = await api.pipedrive_request('organizations/888')
+
+            assert result == {'data': {'id': 888}}
+            assert call_count[0] == 3
+
+    @pytest.mark.asyncio
+    async def test_403_retry_fails_after_max_attempts(self, monkeypatch):
+        """Test that 403 errors fail after max retry attempts"""
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        monkeypatch.setattr('app.core.config.settings.pd_api_max_retry', 3)
+
+        async def mock_request_side_effect(*args, **kwargs):
+            return MockResponse(
+                json_data={'error': 'Cloudflare rate limit'},
+                status_code=403,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9500',
+                },
+                raise_for_status_error=True,
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await api.pipedrive_request('organizations/777')
+
+            assert mock_request.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_403_no_retry_when_disabled(self, monkeypatch):
+        """Test that 403 errors do not retry when retry is disabled"""
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', False)
+
+        async def mock_request_side_effect(*args, **kwargs):
+            return MockResponse(
+                json_data={'error': 'Cloudflare rate limit'},
+                status_code=403,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9500',
+                },
+                raise_for_status_error=True,
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await api.pipedrive_request('organizations/666')
+
+            assert mock_request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_mixed_403_and_429_retries(self, monkeypatch):
+        """Test that both 403 and 429 errors are retried correctly"""
+        from unittest.mock import AsyncMock, patch
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        monkeypatch.setattr('app.core.config.settings.pd_api_max_retry', 5)
+
+        call_count = [0]
+
+        async def mock_request_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return MockResponse(
+                    json_data={'error': 'Cloudflare rate limit'},
+                    status_code=403,
+                    headers={
+                        'x-ratelimit-limit': '10',
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': '2',
+                        'x-daily-requests-left': '9500',
+                    },
+                    raise_for_status_error=True,
+                )
+            if call_count[0] == 2:
+                return MockResponse(
+                    json_data={'error': 'API rate limit exceeded'},
+                    status_code=429,
+                    headers={
+                        'x-ratelimit-limit': '10',
+                        'x-ratelimit-remaining': '0',
+                        'x-ratelimit-reset': '2',
+                        'x-daily-requests-left': '9500',
+                    },
+                    raise_for_status_error=True,
+                )
+            return MockResponse(
+                json_data={'data': {'id': 555, 'name': 'Success'}},
+                status_code=200,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '7',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9498',
+                },
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            result = await api.pipedrive_request('organizations/555')
+
+            assert result == {'data': {'id': 555, 'name': 'Success'}}
+            assert call_count[0] == 3
+
+    @pytest.mark.asyncio
+    async def test_404_error_does_not_retry(self, monkeypatch):
+        """Test that non-rate-limit errors like 404 do not trigger retry"""
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
+
+        from app.pipedrive import api
+        from tests.helpers import MockResponse
+
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        monkeypatch.setattr('app.core.config.settings.pd_api_max_retry', 3)
+
+        async def mock_request_side_effect(*args, **kwargs):
+            return MockResponse(
+                json_data={'error': 'Not found'},
+                status_code=404,
+                headers={
+                    'x-ratelimit-limit': '10',
+                    'x-ratelimit-remaining': '9',
+                    'x-ratelimit-reset': '2',
+                    'x-daily-requests-left': '9500',
+                },
+                raise_for_status_error=True,
+            )
+
+        with patch('httpx.AsyncClient.request', new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = mock_request_side_effect
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await api.pipedrive_request('organizations/404')
+
+            assert mock_request.call_count == 1
