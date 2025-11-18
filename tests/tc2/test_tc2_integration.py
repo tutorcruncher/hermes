@@ -1693,3 +1693,384 @@ class TestTC2SyncableFields:
         pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
         assert pd_field_id in custom_fields
         assert custom_fields[pd_field_id] == 'active'
+
+
+class TestGetOrCreateDealConsolidation:
+    """Test consolidated get_or_create_deal function with filters"""
+
+    @patch('httpx.AsyncClient.request')
+    async def test_callbooker_flow_with_multiple_deals_gets_only_open_deal(
+        self, mock_request, client, db, test_admin, test_config
+    ):
+        """Test callbooker flow gets OPEN deal when multiple deals exist (uses status filter)"""
+        from tests.helpers import create_mock_response
+
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create company with sales person
+        company = db.create(
+            Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg', country='GB')
+        )
+
+        # Create contact
+        contact = db.create(Contact(first_name='John', last_name='Doe', email='john@test.com', company_id=company.id))
+
+        # Create two deals - one LOST, one OPEN
+        lost_deal = db.create(
+            Deal(
+                name='Lost Deal',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_LOST,
+            )
+        )
+
+        open_deal = db.create(
+            Deal(
+                name='Open Deal',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_OPEN,
+            )
+        )
+
+        # Book a sales call via callbooker (end-to-end)
+        r = client.post(
+            client.app.url_path_for('book-sales-call'),
+            json={
+                'admin_id': test_admin.id,
+                'name': 'John Doe',
+                'email': 'john@test.com',
+                'company_id': company.id,
+                'company_name': 'Test Company',
+                'website': 'https://test.com',
+                'country': 'GB',
+                'estimated_income': 1000,
+                'currency': 'GBP',
+                'price_plan': 'payg',
+                'meeting_dt': '2026-07-03T09:00:00Z',
+            },
+        )
+
+        assert r.status_code == 200
+
+        # Verify meeting was created and linked to OPEN deal (not lost)
+        meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
+        assert meeting is not None
+        assert meeting.deal_id == open_deal.id  # Should be linked to open deal
+
+        # Verify no new deals were created
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 2  # Still only 2 deals
+
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_flow_with_multiple_deals_gets_first_deal(
+        self, mock_request, client, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test TC2 flow gets first deal regardless of status (no status filter)"""
+        from tests.helpers import create_mock_response
+
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create company first without deal
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'active'  # Won't create deal
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+
+        # Manually create two deals - one LOST, one WON
+        lost_deal = db.create(
+            Deal(
+                name='Lost Deal',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_LOST,
+            )
+        )
+
+        won_deal = db.create(
+            Deal(
+                name='Won Deal',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_WON,
+            )
+        )
+
+        # Now send TC2 webhook that would trigger deal creation
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        # Verify no new deal was created (TC2 found existing one)
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 2  # Still only 2 deals
+        # TC2 should return first deal (lost_deal) since no status filter
+
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    @patch('fastapi.BackgroundTasks.add_task')
+    async def test_callbooker_flow_creates_new_open_deal_when_only_lost_deals_exist(
+        self, mock_add_task, mock_gcal_builder, client, db, test_admin, test_config
+    ):
+        """Test callbooker creates new deal when only LOST deals exist (status filter finds nothing)"""
+
+        def fake_gcal_builder_fn():
+            class MockGCalResource:
+                def execute(self):
+                    return {'calendars': {test_admin.email: {'busy': []}}}
+
+                def query(self, body: dict):
+                    return self
+
+                def freebusy(self, *args, **kwargs):
+                    return self
+
+                def events(self):
+                    return self
+
+                def insert(self, *args, **kwargs):
+                    return self
+
+            return MockGCalResource()
+
+        mock_gcal_builder.side_effect = [fake_gcal_builder_fn()]
+
+        # Create company
+        company = db.create(
+            Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg', country='GB')
+        )
+
+        # Create contact
+        contact = db.create(Contact(first_name='John', last_name='Doe', email='john@test.com', company_id=company.id))
+
+        # Create only LOST deal
+        lost_deal = db.create(
+            Deal(
+                name='Lost Deal',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_LOST,
+            )
+        )
+
+        # Book sales call
+        r = client.post(
+            client.app.url_path_for('book-sales-call'),
+            json={
+                'admin_id': test_admin.id,
+                'name': 'John Doe',
+                'email': 'john@test.com',
+                'company_id': company.id,
+                'company_name': 'Test Company',
+                'website': 'https://test.com',
+                'country': 'GB',
+                'estimated_income': 1000,
+                'currency': 'GBP',
+                'price_plan': 'payg',
+                'meeting_dt': '2026-07-03T09:00:00Z',
+            },
+        )
+
+        assert r.status_code == 200
+
+        # Verify new OPEN deal was created
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 2  # Lost + new Open
+
+        open_deals = [d for d in all_deals if d.status == Deal.STATUS_OPEN]
+        assert len(open_deals) == 1
+
+        meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
+        assert meeting.deal_id == open_deals[0].id
+
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_webhook_does_not_create_duplicate_when_multiple_deals_exist(
+        self, mock_request, client, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test TC2 webhook returns existing deal when multiple deals exist (avoids MultipleResultsFound error)"""
+        from tests.helpers import create_mock_response
+
+        mock_response = create_mock_response({'data': {'id': 999}})
+        mock_request.return_value = mock_response
+
+        # Create company via TC2 webhook
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'active'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+
+        # Manually create multiple deals with different statuses
+        deal1 = db.create(
+            Deal(
+                name='Deal 1',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_OPEN,
+            )
+        )
+
+        deal2 = db.create(
+            Deal(
+                name='Deal 2',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_LOST,
+            )
+        )
+
+        deal3 = db.create(
+            Deal(
+                name='Deal 3',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_WON,
+            )
+        )
+
+        # Send TC2 webhook that would trigger deal creation
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        # This should NOT crash with MultipleResultsFound error
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        # Verify no additional deals were created
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 3  # Still only 3 deals
+
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    @patch('fastapi.BackgroundTasks.add_task')
+    async def test_callbooker_multiple_open_deals_returns_first_open(
+        self, mock_add_task, mock_gcal_builder, client, db, test_admin, test_config
+    ):
+        """Test callbooker returns first OPEN deal when multiple OPEN deals exist"""
+
+        def fake_gcal_builder_fn():
+            class MockGCalResource:
+                def execute(self):
+                    return {'calendars': {test_admin.email: {'busy': []}}}
+
+                def query(self, body: dict):
+                    return self
+
+                def freebusy(self, *args, **kwargs):
+                    return self
+
+                def events(self):
+                    return self
+
+                def insert(self, *args, **kwargs):
+                    return self
+
+            return MockGCalResource()
+
+        mock_gcal_builder.side_effect = [fake_gcal_builder_fn()]
+
+        # Create company
+        company = db.create(
+            Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg', country='GB')
+        )
+
+        # Create contact
+        contact = db.create(Contact(first_name='John', last_name='Doe', email='john@test.com', company_id=company.id))
+
+        # Create multiple OPEN deals
+        open_deal1 = db.create(
+            Deal(
+                name='Open Deal 1',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_OPEN,
+            )
+        )
+
+        open_deal2 = db.create(
+            Deal(
+                name='Open Deal 2',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_config.payg_pipeline_id,
+                stage_id=1,
+                status=Deal.STATUS_OPEN,
+            )
+        )
+
+        # Book sales call
+        r = client.post(
+            client.app.url_path_for('book-sales-call'),
+            json={
+                'admin_id': test_admin.id,
+                'name': 'John Doe',
+                'email': 'john@test.com',
+                'company_id': company.id,
+                'company_name': 'Test Company',
+                'website': 'https://test.com',
+                'country': 'GB',
+                'estimated_income': 1000,
+                'currency': 'GBP',
+                'price_plan': 'payg',
+                'meeting_dt': '2026-07-03T09:00:00Z',
+            },
+        )
+
+        assert r.status_code == 200
+
+        # Verify meeting linked to first open deal, no new deal created
+        meeting = db.exec(select(Meeting).where(Meeting.company_id == company.id)).first()
+        assert meeting.deal_id == open_deal1.id
+
+        all_deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert len(all_deals) == 2  # Still only 2 deals
