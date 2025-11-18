@@ -15,12 +15,12 @@ from app.callbooker.process import (
     book_meeting,
     get_or_create_contact,
     get_or_create_contact_company,
-    get_or_create_deal,
 )
 from app.common.utils import get_bearer, sign_args
 from app.core.config import settings
 from app.core.database import DBSession, get_db
-from app.main_app.models import Admin, Company
+from app.main_app.common import get_or_create_deal
+from app.main_app.models import Admin, Company, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive, sync_meeting_to_pipedrive
 from app.tc2.process import get_or_create_company_from_tc2
 
@@ -37,7 +37,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
     """
     try:
         company, contact = await get_or_create_contact_company(event, db)
-        deal = await get_or_create_deal(company, contact, db)
+        deal = await get_or_create_deal(company, contact, db, status=Deal.STATUS_OPEN)
         meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
         meeting.deal_id = deal.id
         db.add(meeting)

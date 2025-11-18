@@ -132,48 +132,6 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     return company, contact
 
 
-async def get_or_create_deal(company: Company, contact: Contact, db: DBSession) -> Deal:
-    """Get or create an Open deal for the company"""
-    deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).one_or_none()
-
-    if not deal:
-        # Get config - must exist
-        config = db.exec(select(Config)).one_or_none()
-        if not config:
-            raise MeetingBookingError('System configuration not found')
-
-        # Get pipeline based on price plan
-        match company.price_plan:
-            case Company.PP_PAYG:
-                pipeline = db.get(Pipeline, config.payg_pipeline_id)
-            case Company.PP_STARTUP:
-                pipeline = db.get(Pipeline, config.startup_pipeline_id)
-            case Company.PP_ENTERPRISE:
-                pipeline = db.get(Pipeline, config.enterprise_pipeline_id)
-
-        if not pipeline:
-            raise MeetingBookingError('No pipeline configured')
-
-        # Get default entry stage from pipeline
-        stage = db.get(Stage, pipeline.dft_entry_stage_id)
-        if not stage:
-            raise MeetingBookingError('No stage configured for pipeline')
-
-        deal = Deal(
-            company_id=company.id,
-            contact_id=contact.id,
-            name=company.name,
-            pipeline_id=pipeline.id,
-            admin_id=company.sales_person_id,
-            stage_id=stage.id,
-        )
-        db.add(deal)
-        db.commit()
-        db.refresh(deal)
-
-    return deal
-
-
 async def book_meeting(
     company: Company, contact: Contact, event: CBSalesCall | CBSupportCall, db: DBSession
 ) -> Meeting:
