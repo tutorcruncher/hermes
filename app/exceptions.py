@@ -1,8 +1,3 @@
-"""
-Custom exceptions for Hermes application.
-"""
-
-
 class MeetingBookingError(Exception):
     """Raised when a meeting cannot be booked"""
 
