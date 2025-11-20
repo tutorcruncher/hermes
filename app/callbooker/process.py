@@ -11,15 +11,10 @@ from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.utils import iso_8601_to_datetime
 from app.core.config import settings
 from app.core.database import DBSession
+from app.exceptions import MeetingBookingError
 from app.main_app.models import Admin, Company, Contact, Meeting
 
 logger = logging.getLogger('hermes.callbooker')
-
-
-class MeetingBookingError(Exception):
-    """Raised when a meeting cannot be booked"""
-
-    pass
 
 
 async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall, db: DBSession) -> Contact:

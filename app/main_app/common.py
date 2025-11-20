@@ -3,15 +3,10 @@ import logging
 from sqlmodel import select
 
 from app.core.database import DBSession
+from app.exceptions import DealCreationError
 from app.main_app.models import Company, Config, Contact, Deal, Pipeline, Stage
 
 logger = logging.getLogger('hermes.main_app')
-
-
-class DealCreationError(Exception):
-    """Raised when deal cannot be created due to configuration errors"""
-
-    pass
 
 
 async def get_or_create_deal(company: Company, contact: Contact, db: DBSession, **filters):

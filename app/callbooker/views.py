@@ -11,7 +11,6 @@ from starlette.responses import JSONResponse
 from app.callbooker.availability import get_admin_available_slots
 from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.process import (
-    MeetingBookingError,
     book_meeting,
     get_or_create_contact,
     get_or_create_contact_company,
@@ -19,7 +18,8 @@ from app.callbooker.process import (
 from app.common.utils import get_bearer, sign_args
 from app.core.config import settings
 from app.core.database import DBSession, get_db
-from app.main_app.common import DealCreationError, get_or_create_deal
+from app.exceptions import DealCreationError, MeetingBookingError
+from app.main_app.common import get_or_create_deal
 from app.main_app.models import Admin, Company, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive, sync_meeting_to_pipedrive
 from app.tc2.process import get_or_create_company_from_tc2
