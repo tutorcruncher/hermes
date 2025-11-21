@@ -847,8 +847,6 @@ class TestTC2DealCreation:
     async def test_deal_uses_correct_pipeline_for_startup(self, db, test_admin, sample_tc_client_data):
         """Test that startup companies get deals in startup pipeline"""
 
-        from app.main_app.models import Config, Pipeline, Stage
-
         # Create stage first
         stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
 
@@ -880,8 +878,6 @@ class TestTC2DealCreation:
 
     async def test_deal_uses_correct_pipeline_for_enterprise(self, db, test_admin, sample_tc_client_data):
         """Test that enterprise companies get deals in enterprise pipeline"""
-
-        from app.main_app.models import Config, Pipeline, Stage
 
         # Create stage first
         stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
