@@ -9,6 +9,7 @@ from pytz import utc
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from tests.helpers import fake_gcal_builder
 
 CB_MEETING_DATA = {
     'name': 'Brain Junes',
@@ -31,36 +32,6 @@ def get_pipedrive_call_data(mock_pipedrive, endpoint: str, method: str):
         if call.args[0] == endpoint and call.kwargs.get('method') == method
     ]
     return calls[0] if calls else None
-
-
-def fake_gcal_builder(error=False, start_dt: datetime | None = None, meeting_dur_mins: int = 90):
-    """Mock Google Calendar resource"""
-
-    def as_iso_8601(dt: datetime):
-        return dt.isoformat().replace('+00:00', 'Z')
-
-    class MockGCalResource:
-        def execute(self):
-            start = start_dt or datetime(2026, 7, 8, 11, tzinfo=utc)
-            end = start + timedelta(minutes=meeting_dur_mins)
-            return {
-                'calendars': {'climan@example.com': {'busy': [{'start': as_iso_8601(start), 'end': as_iso_8601(end)}]}}
-            }
-
-        def query(self, body: dict):
-            self.body = body
-            return self
-
-        def freebusy(self, *args, **kwargs):
-            return self
-
-        def events(self):
-            return self
-
-        def insert(self, *args, **kwargs):
-            return self
-
-    return MockGCalResource
 
 
 class TestSalesCallBooking:

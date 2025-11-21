@@ -8,10 +8,11 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import select
 
-from app.main_app.models import Admin, Company, Contact, Deal, Meeting
+from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
-from tests.helpers import create_mock_response
+from tests.helpers import create_mock_gcal_resource, create_mock_response
 
 
 @pytest.fixture
@@ -1512,7 +1513,6 @@ class TestTC2SyncableFields:
 
     async def test_narc_company_closes_open_deals(self, client, db, test_admin, sample_tc_client_data):
         """Test that marking company as NARC closes all open deals"""
-        from app.main_app.models import Config, Pipeline, Stage
 
         # Create stage and pipeline for deal creation
         stage = db.create(Stage(name='Test Stage', pd_stage_id=999))
@@ -1621,8 +1621,6 @@ class TestTC2SyncableFields:
         self, mock_api, client, db, test_admin, sample_tc_client_data
     ):
         """Test that company updated via webhook can be synced to Pipedrive without errors"""
-        from app.pipedrive.tasks import sync_company_to_pipedrive
-
         # Mock all Pipedrive API calls (including background tasks)
         mock_api.return_value = {'data': {'id': 999}}
 
@@ -1704,28 +1702,6 @@ class TestTC2SyncableFields:
         pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
         assert pd_field_id in custom_fields
         assert custom_fields[pd_field_id] == 'active'
-
-
-def create_mock_gcal_resource(admin_email: str):
-    """Factory function to create MockGCalResource with specific admin email"""
-
-    class MockGCalResource:
-        def execute(self):
-            return {'calendars': {admin_email: {'busy': []}}}
-
-        def query(self, body: dict):
-            return self
-
-        def freebusy(self, *args, **kwargs):
-            return self
-
-        def events(self):
-            return self
-
-        def insert(self, *args, **kwargs):
-            return self
-
-    return MockGCalResource()
 
 
 class TestGetOrCreateDealConsolidation:

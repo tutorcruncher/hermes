@@ -11,36 +11,7 @@ from sqlmodel import select
 from app.callbooker.models import CBSalesCall
 from app.callbooker.process import book_meeting
 from app.main_app.models import Config, Deal, Pipeline, Stage
-
-
-def fake_gcal_builder(error=False, start_dt: datetime | None = None, meeting_dur_mins: int = 90):
-    """Mock Google Calendar resource"""
-
-    def as_iso_8601(dt: datetime):
-        return dt.isoformat().replace('+00:00', 'Z')
-
-    class MockGCalResource:
-        def execute(self):
-            start = start_dt or datetime(2026, 7, 8, 11, tzinfo=utc)
-            end = start + timedelta(minutes=meeting_dur_mins)
-            return {
-                'calendars': {'climan@example.com': {'busy': [{'start': as_iso_8601(start), 'end': as_iso_8601(end)}]}}
-            }
-
-        def query(self, body: dict):
-            self.body = body
-            return self
-
-        def freebusy(self, *args, **kwargs):
-            return self
-
-        def events(self):
-            return self
-
-        def insert(self, *args, **kwargs):
-            return self
-
-    return MockGCalResource
+from tests.helpers import fake_gcal_builder
 
 
 class TestCallbookerProcessEdgeCases:
