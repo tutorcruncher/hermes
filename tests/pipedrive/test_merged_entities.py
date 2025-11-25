@@ -38,9 +38,10 @@ class TestPipedriveWebhookMergedEntities:
         assert company1.name == 'Merged Company'
         assert company1.pd_org_id == 100
 
-        # Company 2 should still exist (no deletion)
+        # Company 2 should be marked as deleted
         db.refresh(company2)
-        assert company2.id is not None
+        assert company2.pd_org_id is None
+        assert company2.is_deleted is True
 
     async def test_person_merged_with_comma_separated_hermes_ids(self, client, db, test_company):
         """Test that merged persons with comma-separated hermes_ids are handled"""
@@ -86,7 +87,7 @@ class TestPipedriveWebhookMergedEntities:
         assert contact1.first_name == 'Jane'
         assert contact1.pd_person_id == 400
 
-        # Contact 2 should still exist
+        # Contact 2 should still exist (no deletion)
         db.refresh(contact2)
         assert contact2.id is not None
 

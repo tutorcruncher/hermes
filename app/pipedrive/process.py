@@ -49,6 +49,8 @@ class PipedriveObjProcessor:
         if hermes_obj:
             if self.hermes_model == Deal:
                 hermes_obj.status = Deal.STATUS_DELETED
+            if self.hermes_model == Company:
+                hermes_obj.is_deleted = True
             setattr(hermes_obj, self.pd_id_field, None)
             self.db.add(hermes_obj)
             self.db.commit()
@@ -77,9 +79,23 @@ class PipedriveObjProcessor:
         else:
             if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
                 if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
+                    hermes_ids = [int(id.strip()) for id in str(new_pd_obj.hermes_id).split(',')]
+                    winner_id = hermes_ids[0]
+                    loser_ids = hermes_ids[1:]
+
                     # Take the first ID from comma-separated list (primary entity after merge)
-                    new_pd_obj.hermes_id = int(str(new_pd_obj.hermes_id).split(',')[0].strip())
+                    new_pd_obj.hermes_id = winner_id
                     logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
+
+                    if self.hermes_model == Company:
+                        for loser_id in loser_ids:
+                            loser_obj = self.db.get(Company, loser_id)
+                            if loser_obj:
+                                loser_obj.is_deleted = True
+                                loser_obj.pd_org_id = None
+                                self.db.add(loser_obj)
+
+                        self.db.commit()
 
                 hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
                 if hermes_obj:

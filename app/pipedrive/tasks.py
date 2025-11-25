@@ -54,6 +54,9 @@ async def sync_organization(company_id: int):
         company = db.get(Company, company_id)
         if not company:
             return
+        if company.is_deleted:
+            logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+            return
         org_data = _company_to_org_data(company)
         pd_org_id = company.pd_org_id
 
