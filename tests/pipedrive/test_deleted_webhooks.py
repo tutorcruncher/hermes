@@ -11,8 +11,11 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 
 
 @pytest.fixture
-def sample_tc_webhook_data(test_company):
+def sample_tc_webhook_data(test_company, test_admin):
     """Sample TC2 webhook data for testing"""
+    test_company.tc2_cligency_id = test_company.tc2_cligency_id or 123
+    test_company.tc2_agency_id = test_company.tc2_agency_id or 456
+
     return {
         'events': [
             {
@@ -24,12 +27,19 @@ def sample_tc_webhook_data(test_company):
                         'id': test_company.tc2_agency_id,
                         'name': test_company.name,
                         'status': 'active',
-                        'country': test_company.country or 'GB',
-                        'website': test_company.website,
+                        'country': 'United Kingdom (GB)',
+                        'website': test_company.website or 'https://example.com',
                         'paid_invoice_count': test_company.paid_invoice_count or 0,
                         'created': '2024-01-01T00:00:00Z',
                         'price_plan': 'monthly-payg',
                         'narc': False,
+                        'pay0_dt': None,
+                        'pay1_dt': None,
+                        'pay3_dt': None,
+                        'card_saved_dt': None,
+                        'email_confirmed_dt': None,
+                        'gclid': None,
+                        'gclid_expiry_dt': None,
                     },
                     'user': {
                         'first_name': 'John',
@@ -38,7 +48,7 @@ def sample_tc_webhook_data(test_company):
                         'phone': '+1234567890',
                     },
                     'status': 'active',
-                    'sales_person': {'id': test_company.sales_person.tc2_admin_id},
+                    'sales_person': {'id': test_admin.tc2_admin_id},
                     'paid_recipients': [
                         {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
                     ],
@@ -255,3 +265,156 @@ class TestPipedriveOrganizationMergeDeletion:
         db.refresh(company)
         assert company.pd_org_id is None
         assert company.is_deleted is True
+
+
+class TestNewCompanyCreationFlow:
+    """Test that new companies are created with is_deleted=False and sync properly"""
+
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    async def test_tc2_callback_creates_new_company_not_deleted(
+        self, mock_create_deal, mock_create_person, mock_create_org, client, db, test_admin
+    ):
+        """Test TC2 callback creates new company with is_deleted=False"""
+        webhook_data = {
+            'events': [
+                {
+                    'action': 'CREATE',
+                    'subject': {
+                        'model': 'Client',
+                        'id': 999,
+                        'meta_agency': {
+                            'id': 888,
+                            'name': 'New Signup Company',
+                            'status': 'trial',
+                            'country': 'United Kingdom (GB)',
+                            'website': 'https://newsignup.com',
+                            'paid_invoice_count': 0,
+                            'created': '2024-01-01T00:00:00Z',
+                            'price_plan': 'monthly-payg',
+                            'narc': False,
+                        },
+                        'user': {
+                            'first_name': 'New',
+                            'last_name': 'User',
+                            'email': 'new@newsignup.com',
+                            'phone': '+1234567890',
+                        },
+                        'status': 'trial',
+                        'sales_person': {'id': test_admin.tc2_admin_id},
+                        'paid_recipients': [
+                            {'id': 777, 'first_name': 'New', 'last_name': 'User', 'email': 'new@newsignup.com'},
+                        ],
+                        'extra_attrs': [],
+                    },
+                }
+            ]
+        }
+
+        mock_create_org.return_value = {'data': {'id': 3000}}
+        mock_create_person.return_value = {'data': {'id': 4000}}
+        mock_create_deal.return_value = {'data': {'id': 5000}}
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        from sqlmodel import select
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 999)).one()
+
+        assert company.name == 'New Signup Company'
+        assert company.is_deleted is False
+        assert company.pd_org_id == 3000
+        assert company.tc2_status == 'trial'
+
+        mock_create_org.assert_called_once()
+        mock_create_person.assert_called_once()
+
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_tc2_callback_updates_existing_company_preserves_not_deleted(
+        self,
+        mock_get_org,
+        mock_update_org,
+        mock_create_org,
+        client,
+        db,
+        test_admin,
+        test_company,
+        sample_tc_webhook_data,
+    ):
+        """Test TC2 callback updating existing company preserves is_deleted=False"""
+        test_company.pd_org_id = 1500
+        test_company.is_deleted = False
+        test_company.paid_invoice_count = 5
+        db.add(test_company)
+        db.commit()
+
+        sample_tc_webhook_data['events'][0]['subject']['meta_agency']['paid_invoice_count'] = 10
+
+        mock_get_org.return_value = {
+            'data': {
+                'id': 1500,
+                'name': test_company.name,
+                COMPANY_PD_FIELD_MAP['paid_invoice_count']: 5,
+            }
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+
+        assert r.status_code == 200
+
+        db.refresh(test_company)
+        assert test_company.is_deleted is False
+        assert test_company.paid_invoice_count == 10
+        assert test_company.pd_org_id == 1500
+
+        mock_get_org.assert_called_once()
+        mock_update_org.assert_called_once()
+
+    async def test_company_model_defaults_is_deleted_false(self, db, test_admin):
+        """Test that Company model defaults is_deleted to False"""
+        company = Company(
+            name='Test Default Company',
+            sales_person_id=test_admin.id,
+            tc2_cligency_id=12345,
+            tc2_agency_id=54321,
+        )
+
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        assert company.is_deleted is False
+
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_first_time_sync_creates_org_for_non_deleted_company(
+        self, mock_create_org, client, db, test_admin, sample_tc_webhook_data
+    ):
+        """Test that first-time sync creates org in Pipedrive for non-deleted companies"""
+        company = db.create(
+            Company(
+                name='Never Synced Company',
+                sales_person_id=test_admin.id,
+                tc2_cligency_id=123,
+                tc2_agency_id=456,
+                pd_org_id=None,
+                is_deleted=False,
+            )
+        )
+
+        mock_create_org.return_value = {'data': {'id': 6000}}
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+
+        assert r.status_code == 200
+
+        mock_create_org.assert_called_once()
+
+        db.refresh(company)
+        assert company.pd_org_id == 6000
+        assert company.is_deleted is False

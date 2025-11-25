@@ -154,6 +154,8 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return Company(**kwargs)
 
     async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
+        hermes_obj.is_deleted = False
+
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
             hermes_obj.name = pd_obj.name[:255]
         if pd_obj.address_country and hermes_obj.country != pd_obj.address_country:
