@@ -133,7 +133,7 @@ class OrganisationProcessor(PipedriveObjProcessor):
     def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
         for loser_id in loser_ids:
             loser_obj = self.db.get(Company, loser_id)
-            if loser_obj:
+            if loser_obj and not loser_obj.is_deleted:
                 loser_obj.is_deleted = True
                 loser_obj.pd_org_id = None
                 self.db.add(loser_obj)

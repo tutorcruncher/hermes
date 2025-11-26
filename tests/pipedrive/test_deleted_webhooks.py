@@ -5,58 +5,61 @@ Tests for Pipedrive deletion webhooks and recreation prevention.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlmodel import select
 
 from app.main_app.models import Company
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 
 
 @pytest.fixture
-def sample_tc_webhook_data(test_company, test_admin):
+def sample_tc_webhook_data(test_admin, db):
     """Sample TC2 webhook data for testing"""
-    test_company.tc2_cligency_id = test_company.tc2_cligency_id or 123
-    test_company.tc2_agency_id = test_company.tc2_agency_id or 456
+    def _make_webhook(tc2_cligency_id=9999, tc2_agency_id=8888):
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)).one_or_none()
 
-    return {
-        'events': [
-            {
-                'action': 'UPDATE',
-                'subject': {
-                    'model': 'Client',
-                    'id': test_company.tc2_cligency_id,
-                    'meta_agency': {
-                        'id': test_company.tc2_agency_id,
-                        'name': test_company.name,
+        return {
+            'events': [
+                {
+                    'action': 'UPDATE',
+                    'subject': {
+                        'model': 'Client',
+                        'id': tc2_cligency_id,
+                        'meta_agency': {
+                            'id': tc2_agency_id,
+                            'name': company.name if company else 'Test Company',
+                            'status': 'active',
+                            'country': 'United Kingdom (GB)',
+                            'website': 'https://example.com',
+                            'paid_invoice_count': 0,
+                            'created': '2024-01-01T00:00:00Z',
+                            'price_plan': 'monthly-payg',
+                            'narc': False,
+                            'pay0_dt': None,
+                            'pay1_dt': None,
+                            'pay3_dt': None,
+                            'card_saved_dt': None,
+                            'email_confirmed_dt': None,
+                            'gclid': None,
+                            'gclid_expiry_dt': None,
+                        },
+                        'user': {
+                            'first_name': 'John',
+                            'last_name': 'Doe',
+                            'email': 'john@example.com',
+                            'phone': '+1234567890',
+                        },
                         'status': 'active',
-                        'country': 'United Kingdom (GB)',
-                        'website': test_company.website or 'https://example.com',
-                        'paid_invoice_count': test_company.paid_invoice_count or 0,
-                        'created': '2024-01-01T00:00:00Z',
-                        'price_plan': 'monthly-payg',
-                        'narc': False,
-                        'pay0_dt': None,
-                        'pay1_dt': None,
-                        'pay3_dt': None,
-                        'card_saved_dt': None,
-                        'email_confirmed_dt': None,
-                        'gclid': None,
-                        'gclid_expiry_dt': None,
+                        'sales_person': {'id': test_admin.tc2_admin_id},
+                        'paid_recipients': [
+                            {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
+                        ],
+                        'extra_attrs': [],
                     },
-                    'user': {
-                        'first_name': 'John',
-                        'last_name': 'Doe',
-                        'email': 'john@example.com',
-                        'phone': '+1234567890',
-                    },
-                    'status': 'active',
-                    'sales_person': {'id': test_admin.tc2_admin_id},
-                    'paid_recipients': [
-                        {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
-                    ],
-                    'extra_attrs': [],
-                },
-            }
-        ]
-    }
+                }
+            ]
+        }
+
+    return _make_webhook
 
 
 class TestPipedriveOrganizationDeletion:
@@ -94,12 +97,15 @@ class TestPipedriveOrganizationDeletion:
         self, mock_create_deal, mock_create_person, mock_create_org, client, db, test_company, sample_tc_webhook_data
     ):
         """Test that TC2 callback after deletion does not recreate org in Pipedrive"""
+        test_company.tc2_cligency_id = 1001
+        test_company.tc2_agency_id = 2001
         test_company.pd_org_id = None
         test_company.is_deleted = True
         db.add(test_company)
         db.commit()
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1001, tc2_agency_id=2001)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -114,6 +120,8 @@ class TestPipedriveOrganizationDeletion:
         self, mock_get_org, mock_update_org, client, db, test_company, sample_tc_webhook_data
     ):
         """Test that TC2 callback after deletion does not update org fields in Pipedrive"""
+        test_company.tc2_cligency_id = 1002
+        test_company.tc2_agency_id = 2002
         test_company.pd_org_id = 999
         test_company.is_deleted = True
         db.add(test_company)
@@ -123,7 +131,8 @@ class TestPipedriveOrganizationDeletion:
             'data': {'id': 999, 'name': 'Old Name', COMPANY_PD_FIELD_MAP['paid_invoice_count']: 5}
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1002, tc2_agency_id=2002)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -133,6 +142,8 @@ class TestPipedriveOrganizationDeletion:
 
     async def test_deletion_then_update_webhook_stays_deleted(self, client, db, test_company):
         """Test that update webhook after deletion doesn't clear is_deleted flag"""
+        test_company.tc2_cligency_id = 1003
+        test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
@@ -265,6 +276,43 @@ class TestPipedriveOrganizationMergeDeletion:
         db.refresh(company)
         assert company.pd_org_id is None
         assert company.is_deleted is True
+
+    async def test_merge_loser_only_processed_once(self, client, db, test_admin):
+        """Test that merged losers are only marked deleted once, not on subsequent callbacks"""
+        company1 = db.create(
+            Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100)
+        )
+        company2 = db.create(
+            Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200)
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 100,
+                COMPANY_PD_FIELD_MAP['hermes_id']: f'{company1.id}, {company2.id}',
+                'name': 'Merged Company',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(company2)
+        assert company2.is_deleted is True
+        assert company2.pd_org_id is None
+
+        webhook_data['data']['name'] = 'Updated Merged Company'
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(company1)
+        assert company1.name == 'Updated Merged Company'
+
+        db.refresh(company2)
+        assert company2.is_deleted is True
+        assert company2.pd_org_id is None
 
 
 class TestNewCompanyCreationFlow:
