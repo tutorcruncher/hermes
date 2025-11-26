@@ -14,6 +14,7 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 @pytest.fixture
 def sample_tc_webhook_data(test_admin, db):
     """Sample TC2 webhook data for testing"""
+
     def _make_webhook(tc2_cligency_id=9999, tc2_agency_id=8888):
         company = db.exec(select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)).one_or_none()
 
@@ -140,7 +141,7 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_stays_deleted(self, client, db, test_company):
+    async def test_deletion_then_update_webhook_stays_deleted(self, client, db, test_company, test_admin):
         """Test that update webhook after deletion doesn't clear is_deleted flag"""
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
@@ -163,7 +164,12 @@ class TestPipedriveOrganizationDeletion:
 
         update_webhook = {
             'meta': {'entity': 'organization', 'action': 'updated'},
-            'data': {'id': 1000, COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id, 'name': 'Updated Name'},
+            'data': {
+                'id': 1000,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Updated Name',
+                'owner_id': test_admin.pd_owner_id,
+            },
             'previous': None,
         }
 
@@ -180,6 +186,8 @@ class TestPipedriveOrganizationDeletion:
         self, mock_create_org, client, db, test_company, sample_tc_webhook_data
     ):
         """Test normal flow: org with pd_org_id but NOT deleted recreates on 404"""
+        test_company.tc2_cligency_id = 1004
+        test_company.tc2_agency_id = 2004
         test_company.pd_org_id = 999
         test_company.is_deleted = False
         db.add(test_company)
@@ -187,7 +195,8 @@ class TestPipedriveOrganizationDeletion:
 
         mock_create_org.return_value = {'data': {'id': 1001}}
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1004, tc2_agency_id=2004)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
 
@@ -200,6 +209,8 @@ class TestPipedriveOrganizationDeletion:
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_normal_flow_creates_new_org(self, mock_create_org, client, db, test_company, sample_tc_webhook_data):
         """Test normal flow: company without pd_org_id and NOT deleted creates new org"""
+        test_company.tc2_cligency_id = 1005
+        test_company.tc2_agency_id = 2005
         test_company.pd_org_id = None
         test_company.is_deleted = False
         db.add(test_company)
@@ -207,7 +218,8 @@ class TestPipedriveOrganizationDeletion:
 
         mock_create_org.return_value = {'data': {'id': 2000}}
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1005, tc2_agency_id=2005)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
 
@@ -262,12 +274,13 @@ class TestPipedriveOrganizationMergeDeletion:
                 price_plan='payg',
                 pd_org_id=None,
                 is_deleted=True,
-                tc2_cligency_id=123,
-                tc2_agency_id=456,
+                tc2_cligency_id=1006,
+                tc2_agency_id=2006,
             )
         )
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1006, tc2_agency_id=2006)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
 
@@ -279,12 +292,8 @@ class TestPipedriveOrganizationMergeDeletion:
 
     async def test_merge_loser_only_processed_once(self, client, db, test_admin):
         """Test that merged losers are only marked deleted once, not on subsequent callbacks"""
-        company1 = db.create(
-            Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100)
-        )
-        company2 = db.create(
-            Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200)
-        )
+        company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
 
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
@@ -396,13 +405,16 @@ class TestNewCompanyCreationFlow:
         sample_tc_webhook_data,
     ):
         """Test TC2 callback updating existing company preserves is_deleted=False"""
+        test_company.tc2_cligency_id = 1007
+        test_company.tc2_agency_id = 2007
         test_company.pd_org_id = 1500
         test_company.is_deleted = False
         test_company.paid_invoice_count = 5
         db.add(test_company)
         db.commit()
 
-        sample_tc_webhook_data['events'][0]['subject']['meta_agency']['paid_invoice_count'] = 10
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1007, tc2_agency_id=2007)
+        webhook_data['events'][0]['subject']['meta_agency']['paid_invoice_count'] = 10
 
         mock_get_org.return_value = {
             'data': {
@@ -412,7 +424,7 @@ class TestNewCompanyCreationFlow:
             }
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
 
@@ -448,8 +460,8 @@ class TestNewCompanyCreationFlow:
             Company(
                 name='Never Synced Company',
                 sales_person_id=test_admin.id,
-                tc2_cligency_id=123,
-                tc2_agency_id=456,
+                tc2_cligency_id=1008,
+                tc2_agency_id=2008,
                 pd_org_id=None,
                 is_deleted=False,
             )
@@ -457,7 +469,8 @@ class TestNewCompanyCreationFlow:
 
         mock_create_org.return_value = {'data': {'id': 6000}}
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1008, tc2_agency_id=2008)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
 
