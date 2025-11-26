@@ -82,7 +82,7 @@ class PipedriveObjProcessor:
         else:
             if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
                 if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
-                    hermes_ids = [int(id.strip()) for id in str(new_pd_obj.hermes_id).split(',')]
+                    hermes_ids = list(map(int, map(lambda x: x.strip(), str(new_pd_obj.hermes_id).split(','))))
                     winner_id = hermes_ids[0]
                     loser_ids = hermes_ids[1:]
 
