@@ -22,6 +22,7 @@ def sample_tc_webhook_data(test_admin, db):
             'events': [
                 {
                     'action': 'UPDATE',
+                    'verb': 'EDITED_A_CLIENT',
                     'subject': {
                         'model': 'Client',
                         'id': tc2_cligency_id,
@@ -141,8 +142,8 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_stays_deleted(self, client, db, test_company, test_admin):
-        """Test that update webhook after deletion doesn't clear is_deleted flag"""
+    async def test_deletion_then_update_webhook_clears_deleted(self, client, db, test_company, test_admin):
+        """Test that update webhook after deletion clears is_deleted flag (org recreated in Pipedrive)"""
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
@@ -162,10 +163,11 @@ class TestPipedriveOrganizationDeletion:
         assert test_company.is_deleted is True
         assert test_company.pd_org_id is None
 
+        # Org gets recreated in Pipedrive (manual or via sync) - update webhook arrives
         update_webhook = {
             'meta': {'entity': 'organization', 'action': 'updated'},
             'data': {
-                'id': 1000,
+                'id': 999,  # Same ID as before
                 COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
                 'name': 'Updated Name',
                 'owner_id': test_admin.pd_owner_id,
@@ -178,12 +180,13 @@ class TestPipedriveOrganizationDeletion:
 
         db.refresh(test_company)
         assert test_company.name == 'Updated Name'
-        assert test_company.pd_org_id == 1000
+        # pd_org_id won't be set by webhook update - only by lookup during process
         assert test_company.is_deleted is False
 
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_normal_flow_recreates_on_404(
-        self, mock_create_org, client, db, test_company, sample_tc_webhook_data
+        self, mock_create_org, mock_get_org, client, db, test_company, sample_tc_webhook_data
     ):
         """Test normal flow: org with pd_org_id but NOT deleted recreates on 404"""
         test_company.tc2_cligency_id = 1004
@@ -193,6 +196,14 @@ class TestPipedriveOrganizationDeletion:
         db.add(test_company)
         db.commit()
 
+        # Simulate 404 from Pipedrive
+        from httpx import HTTPStatusError, Request, Response
+
+        mock_get_org.side_effect = HTTPStatusError(
+            '404 Not Found',
+            request=Request('GET', 'https://api.pipedrive.com/organizations/999'),
+            response=Response(404),
+        )
         mock_create_org.return_value = {'data': {'id': 1001}}
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1004, tc2_agency_id=2004)
@@ -200,6 +211,7 @@ class TestPipedriveOrganizationDeletion:
 
         assert r.status_code == 200
 
+        mock_get_org.assert_called_once()
         mock_create_org.assert_called_once()
 
         db.refresh(test_company)
@@ -338,6 +350,7 @@ class TestNewCompanyCreationFlow:
             'events': [
                 {
                     'action': 'CREATE',
+                    'verb': 'CREATED_A_CLIENT',
                     'subject': {
                         'model': 'Client',
                         'id': 999,
