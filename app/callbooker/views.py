@@ -71,8 +71,6 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
     except (MeetingBookingError, DealCreationError) as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
-    # Queue background tasks to sync to Pipedrive
-    background_tasks.add_task(sync_company_to_pipedrive, company.id)
     return {'status': 'ok'}
 
 
