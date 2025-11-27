@@ -24,6 +24,9 @@ async def sync_company_to_pipedrive(company_id: int):
                 if not company:
                     logger.warning(f'Company {company_id} not found, skipping sync')
                     return
+                if company.is_deleted:
+                    logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                    return
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
                 deal_ids = [
                     d.id
@@ -53,9 +56,6 @@ async def sync_organization(company_id: int):
     with get_session() as db:
         company = db.get(Company, company_id)
         if not company:
-            return
-        if company.is_deleted:
-            logger.info(f'Company {company_id} is marked as deleted, skipping sync')
             return
         org_data = _company_to_org_data(company)
         pd_org_id = company.pd_org_id
