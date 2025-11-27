@@ -24,6 +24,9 @@ async def sync_company_to_pipedrive(company_id: int):
                 if not company:
                     logger.warning(f'Company {company_id} not found, skipping sync')
                     return
+                if company.is_deleted:
+                    logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                    return
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
                 deal_ids = [
                     d.id

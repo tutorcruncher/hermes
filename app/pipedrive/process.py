@@ -49,6 +49,8 @@ class PipedriveObjProcessor:
         if hermes_obj:
             if self.hermes_model == Deal:
                 hermes_obj.status = Deal.STATUS_DELETED
+            if self.hermes_model == Company:
+                hermes_obj.is_deleted = True
             setattr(hermes_obj, self.pd_id_field, None)
             self.db.add(hermes_obj)
             self.db.commit()
@@ -59,6 +61,9 @@ class PipedriveObjProcessor:
                 hermes_obj.id,
             )
         return None
+
+    def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
+        pass
 
     async def _update_obj(
         self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal
@@ -77,9 +82,15 @@ class PipedriveObjProcessor:
         else:
             if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
                 if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
+                    hermes_ids = list(map(int, map(lambda x: x.strip(), str(new_pd_obj.hermes_id).split(','))))
+                    winner_id = hermes_ids[0]
+                    loser_ids = hermes_ids[1:]
+
                     # Take the first ID from comma-separated list (primary entity after merge)
-                    new_pd_obj.hermes_id = int(str(new_pd_obj.hermes_id).split(',')[0].strip())
+                    new_pd_obj.hermes_id = winner_id
                     logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
+
+                    self._mark_merged_losers_deleted(loser_ids)
 
                 hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
                 if hermes_obj:
@@ -119,6 +130,15 @@ class OrganisationProcessor(PipedriveObjProcessor):
             if f not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url']
         ]
 
+    def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
+        for loser_id in loser_ids:
+            loser_obj = self.db.get(Company, loser_id)
+            if loser_obj and not loser_obj.is_deleted:
+                loser_obj.is_deleted = True
+                loser_obj.pd_org_id = None
+                self.db.add(loser_obj)
+        self.db.commit()
+
     async def _add_obj(self, pd_obj: Organisation) -> Company:
         kwargs = {
             'name': pd_obj.name[:255],
@@ -134,6 +154,8 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return Company(**kwargs)
 
     async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
+        hermes_obj.is_deleted = False
+
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
             hermes_obj.name = pd_obj.name[:255]
         if pd_obj.address_country and hermes_obj.country != pd_obj.address_country:

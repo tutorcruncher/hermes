@@ -696,7 +696,7 @@ class TestSyncMeetingToPipedrive:
         assert r.json() == {'status': 'ok'}
 
         call_args = [call.args[0].__name__ for call in mock_add_task.call_args_list]
-        assert 'sync_company_to_pipedrive' in call_args
+        assert 'sync_company_to_pipedrive' not in call_args
         assert 'sync_meeting_to_pipedrive' not in call_args
 
 

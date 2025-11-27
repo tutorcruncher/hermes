@@ -11,15 +11,10 @@ from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.utils import iso_8601_to_datetime
 from app.core.config import settings
 from app.core.database import DBSession
-from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.exceptions import MeetingBookingError
+from app.main_app.models import Admin, Company, Contact, Meeting
 
 logger = logging.getLogger('hermes.callbooker')
-
-
-class MeetingBookingError(Exception):
-    """Raised when a meeting cannot be booked"""
-
-    pass
 
 
 async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupportCall, db: DBSession) -> Contact:
@@ -130,48 +125,6 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     db.commit()
 
     return company, contact
-
-
-async def get_or_create_deal(company: Company, contact: Contact, db: DBSession) -> Deal:
-    """Get or create an Open deal for the company"""
-    deal = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).one_or_none()
-
-    if not deal:
-        # Get config - must exist
-        config = db.exec(select(Config)).one_or_none()
-        if not config:
-            raise MeetingBookingError('System configuration not found')
-
-        # Get pipeline based on price plan
-        match company.price_plan:
-            case Company.PP_PAYG:
-                pipeline = db.get(Pipeline, config.payg_pipeline_id)
-            case Company.PP_STARTUP:
-                pipeline = db.get(Pipeline, config.startup_pipeline_id)
-            case Company.PP_ENTERPRISE:
-                pipeline = db.get(Pipeline, config.enterprise_pipeline_id)
-
-        if not pipeline:
-            raise MeetingBookingError('No pipeline configured')
-
-        # Get default entry stage from pipeline
-        stage = db.get(Stage, pipeline.dft_entry_stage_id)
-        if not stage:
-            raise MeetingBookingError('No stage configured for pipeline')
-
-        deal = Deal(
-            company_id=company.id,
-            contact_id=contact.id,
-            name=company.name,
-            pipeline_id=pipeline.id,
-            admin_id=company.sales_person_id,
-            stage_id=stage.id,
-        )
-        db.add(deal)
-        db.commit()
-        db.refresh(deal)
-
-    return deal
 
 
 async def book_meeting(
