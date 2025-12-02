@@ -269,6 +269,11 @@ class TestTC2Integration:
         db.refresh(deal)
 
         assert deal.pd_deal_id == 888
+        for call in mock_request.call_args_list:
+            kwargs = call.kwargs
+            method = kwargs.get('method')
+            url = kwargs.get('url', '')
+            assert not (method == 'POST' and 'deals' in url), 'create_deal should not be called when update returns 404'
 
     async def test_narc_company_not_synced_to_pipedrive(self, db, test_admin, sample_tc_client_data):
         """Test that NARC companies are purged from Pipedrive"""
