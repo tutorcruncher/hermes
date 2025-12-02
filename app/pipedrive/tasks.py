@@ -156,8 +156,6 @@ async def sync_deal(deal_id: int):
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
-                pd_deal_id = None
 
     if not pd_deal_id:
         if not settings.sync_create_deals:
