@@ -29,7 +29,7 @@ async def sync_company_to_pipedrive(company_id: int):
                     return
 
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
-                if company.paid_inv_count == 0:
+                if company.paid_invoice_count == 0:
                     # sync deals only when the agency has no paid invoices
                     deal_ids = [
                         d.id
