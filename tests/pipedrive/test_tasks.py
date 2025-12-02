@@ -261,24 +261,23 @@ class TestSyncPerson:
 class TestSyncDeal:
     """Test sync_deal function"""
 
-    @patch('app.core.config.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_sync_deal_update_404_then_create(self, mock_get, mock_create, mock_get_session, db, test_deal):
-        """Test deal update getting 404 then creates new"""
+    async def test_sync_deal_update_404_keeps_pd_id(self, mock_get, mock_create, mock_get_session, db, test_deal):
+        """Test deal update getting 404 preserves existing pd_deal_id"""
         test_deal.pd_deal_id = 999
         db.add(test_deal)
         db.commit()
 
         mock_get_session.return_value = SessionMock(db)
         mock_get.side_effect = Exception('404 Not Found')
-        mock_create.return_value = {'data': {'id': 3333}}
 
         await sync_deal(test_deal.id)
 
         db.refresh(test_deal)
-        assert test_deal.pd_deal_id == 3333
+        assert test_deal.pd_deal_id == 999
+        mock_create.assert_not_called()
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
