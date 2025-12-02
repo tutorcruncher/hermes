@@ -280,6 +280,24 @@ class TestSyncDeal:
         mock_create.assert_not_called()
 
     @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    async def test_sync_deal_does_not_reopen_closed_deal(self, mock_get, mock_update, mock_get_session, db, test_deal):
+        """Test that sync_deal skips updates if remote deal is no longer open"""
+        test_deal.pd_deal_id = 999
+        db.add(test_deal)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'status': 'won'}}
+
+        await sync_deal(test_deal.id)
+
+        mock_update.assert_not_called()
+        db.refresh(test_deal)
+        assert test_deal.pd_deal_id == 999
+
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
     async def test_sync_deal_update_non_404_error(self, mock_get, mock_get_session, db, test_deal):
         """Test deal update with non-404 error logs but doesn't clear ID"""

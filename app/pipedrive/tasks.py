@@ -156,6 +156,19 @@ async def sync_deal(deal_id: int):
             current_data = pd_deal.get('data', {})
             changed_fields = api.get_changed_fields(current_data, deal_data)
 
+            pd_status = current_data.get('status')
+            hermes_status = deal_data.get('status')
+
+            # only update deals when an 'open' deal on hermes is actually 'open' on PD
+            if (
+                pd_status
+                and pd_status != Deal.STATUS_OPEN
+                and hermes_status == Deal.STATUS_OPEN
+                and 'status' in changed_fields
+            ):
+                logger.info(f'Skipping update for deal {deal_id} because PipeDrive status {pd_status} is not open')
+                return
+
             if changed_fields:
                 await api.update_deal(pd_deal_id, changed_fields)
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
