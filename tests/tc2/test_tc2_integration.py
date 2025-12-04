@@ -136,16 +136,17 @@ class TestTC2Integration:
                 country='GB',
             )
         )
+        user_email = 'contactless@example.com'
         db.create(
             Contact(
                 first_name='Amanda',
                 last_name='Koistan',
-                email='amanda@sennurtureandbloom.co.uk',
+                email=user_email,
                 company_id=company.id,
             )
         )
 
-        sample_tc_client_data['user']['email'] = 'amanda@sennurtureandbloom.co.uk'
+        sample_tc_client_data['user']['email'] = user_email
         for recipient in sample_tc_client_data['paid_recipients']:
             recipient['email'] = None
 
