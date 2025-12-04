@@ -96,6 +96,66 @@ class TestTC2Integration:
         assert updated_company.paid_invoice_count == 10  # paid_invoice_count IS syncable
         assert updated_company.price_plan == 'startup'  # price_plan IS syncable
 
+    async def test_process_tc_client_reuses_company_by_contact_email(self, db, test_admin, sample_tc_client_data):
+        """Test that TC2 client reuses company created via callbooker contact email"""
+        company = db.create(
+            Company(
+                name='Callbooker Co',
+                sales_person_id=test_admin.id,
+                price_plan=Company.PP_PAYG,
+                country='GB',
+            )
+        )
+        db.create(
+            Contact(
+                first_name='John',
+                last_name='Doe',
+                email='john@example.com',
+                company_id=company.id,
+            )
+        )
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        assert updated_company.id == company.id
+        assert updated_company.tc2_cligency_id == 123
+        assert updated_company.tc2_agency_id == 456
+        assert updated_company.paid_invoice_count == 5
+        assert len(db.exec(select(Company)).all()) == 1
+
+    async def test_process_tc_client_uses_user_email_when_recipients_missing(
+        self, db, test_admin, sample_tc_client_data
+    ):
+        """Test that TC2 client falls back to user email when recipients have no email"""
+        company = db.create(
+            Company(
+                name='Contactless Co',
+                sales_person_id=test_admin.id,
+                price_plan=Company.PP_PAYG,
+                country='GB',
+            )
+        )
+        db.create(
+            Contact(
+                first_name='Amanda',
+                last_name='Koistan',
+                email='amanda@sennurtureandbloom.co.uk',
+                company_id=company.id,
+            )
+        )
+
+        sample_tc_client_data['user']['email'] = 'amanda@sennurtureandbloom.co.uk'
+        for recipient in sample_tc_client_data['paid_recipients']:
+            recipient['email'] = None
+
+        tc_client = TCClient(**sample_tc_client_data)
+        updated_company = await process_tc_client(tc_client, db)
+
+        assert updated_company.id == company.id
+        assert updated_company.tc2_cligency_id == 123
+        assert updated_company.tc2_agency_id == 456
+
     @patch('httpx.AsyncClient.request')
     async def test_tc2_webhook_triggers_pipedrive_sync(
         self, mock_request, client, db, test_admin, sample_tc_client_data

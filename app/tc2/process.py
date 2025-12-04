@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.core.database import DBSession
@@ -24,6 +25,45 @@ COMPANY_SYNCABLE_FIELDS = {
     'narc',
     'paid_invoice_count',
 }
+
+
+def _find_company_from_recipients(tc_client: TCClient, db: DBSession) -> Company | None:
+    """return an existing company if any recipient email matches a contact created."""
+
+    emails = {recipient.email.lower() for recipient in tc_client.paid_recipients if recipient.email}
+    if tc_client.user.email:
+        emails.add(tc_client.user.email.lower())
+
+    if not emails:
+        return None
+
+    contact = db.exec(select(Contact).where(func.lower(Contact.email).in_(emails)).order_by(Contact.id.desc())).first()
+
+    if not contact:
+        return None
+
+    company = db.get(Company, contact.company_id)
+    return company
+
+
+def _attach_company_to_tc_client(
+    company: Company,
+    tc_client: TCClient,
+    sales_person: Admin,
+    support_person: Admin | None,
+    bdr_person: Admin | None,
+    db: DBSession,
+):
+    """Link an existing company (typically from callbooker) to TC2 identifiers."""
+
+    company.tc2_agency_id = tc_client.meta_agency.id
+    company.tc2_cligency_id = tc_client.id
+    company.sales_person_id = sales_person.id
+    company.support_person_id = support_person.id if support_person else None
+    company.bdr_person_id = bdr_person.id if bdr_person else None
+    db.add(company)
+    db.commit()
+    db.refresh(company)
 
 
 def _update_syncable_fields(company: Company, tc_client: TCClient):
@@ -88,6 +128,8 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
     """
     # Get or create company
     company = db.exec(select(Company).where(Company.tc2_cligency_id == tc_client.id)).one_or_none()
+    if not company:
+        company = _find_company_from_recipients(tc_client, db)
 
     # Get admin relationships
     sales_person = None
@@ -124,10 +166,12 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
+        if not company.tc2_cligency_id:
+            _attach_company_to_tc_client(company, tc_client, sales_person, support_person, bdr_person, db)
+
         _update_syncable_fields(company, tc_client)
         _close_open_deals_if_narc_or_terminated(company, db)
 
-        # handle extra attrs
         if 'utm_source' in extra_attrs_dict:
             company.utm_source = extra_attrs_dict['utm_source']
         if 'utm_campaign' in extra_attrs_dict:
