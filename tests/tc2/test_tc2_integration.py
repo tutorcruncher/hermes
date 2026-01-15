@@ -1699,6 +1699,138 @@ class TestTC2SyncableFields:
         assert pd_field_id in custom_fields
         assert custom_fields[pd_field_id] == 'active'
 
+    async def test_signup_questionnaire_from_meta_agency_new_company(self, client, db, test_admin, sample_tc_client_data):
+        """Test that signup_questionnaire dict from meta_agency is stored as JSON string for new company"""
+        import json
+
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Search engine (Google, Bing, etc.)',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'Students can view a list of Tutors',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Entirely one to one',
+            'how-many-students-are-currently-actively-using-your-service': 5,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Entirely upfront',
+        }
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Verify signup_questionnaire is stored as JSON string
+        assert company.signup_questionnaire is not None
+        assert isinstance(company.signup_questionnaire, str)
+
+        # Verify it can be parsed back to the original dict
+        parsed = json.loads(company.signup_questionnaire)
+        assert parsed['how-did-you-hear-about-us'] == 'Search engine (Google, Bing, etc.)'
+        assert parsed['how-many-students-are-currently-actively-using-your-service'] == 5
+
+    async def test_signup_questionnaire_from_meta_agency_existing_company(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire dict from meta_agency updates existing company"""
+        import json
+
+        # Create company without signup_questionnaire
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = None
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.signup_questionnaire is None
+
+        # Now update with signup_questionnaire dict
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Word of mouth',
+            'how-many-students-are-currently-actively-using-your-service': 10,
+        }
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Verify signup_questionnaire is updated and stored as JSON string
+        assert updated_company.signup_questionnaire is not None
+        parsed = json.loads(updated_company.signup_questionnaire)
+        assert parsed['how-did-you-hear-about-us'] == 'Word of mouth'
+        assert parsed['how-many-students-are-currently-actively-using-your-service'] == 10
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_signup_questionnaire_sent_to_pipedrive(self, mock_api, client, db, test_admin, sample_tc_client_data):
+        """Test that signup_questionnaire JSON is correctly sent to Pipedrive"""
+        import json
+
+        from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Search engine',
+            'students-count': 25,
+        }
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Reset mock to track only the explicit sync call
+        mock_api.reset_mock()
+
+        # Sync to Pipedrive
+        await sync_company_to_pipedrive(company.id)
+
+        # Find the organization call
+        org_call = None
+        for call in mock_api.call_args_list:
+            first_arg = call.args[0] if call.args else call.kwargs.get('url', '')
+            method = call.kwargs.get('method', '')
+            if 'organizations' in first_arg and method in ('POST', 'PATCH'):
+                org_call = call
+                break
+
+        assert org_call is not None, 'Organization API call should have been made'
+        call_data = org_call.kwargs['data']
+
+        # Verify signup_questionnaire is in custom_fields as JSON string
+        custom_fields = call_data['custom_fields']
+        pd_field_id = COMPANY_PD_FIELD_MAP['signup_questionnaire']
+        assert pd_field_id in custom_fields
+
+        # Verify the value is a JSON string that can be parsed
+        signup_q_value = custom_fields[pd_field_id]
+        assert isinstance(signup_q_value, str)
+        parsed = json.loads(signup_q_value)
+        assert parsed['how-did-you-hear-about-us'] == 'Search engine'
+        assert parsed['students-count'] == 25
+
 
 class TestGetOrCreateDealConsolidation:
     """Test consolidated get_or_create_deal function with filters"""
