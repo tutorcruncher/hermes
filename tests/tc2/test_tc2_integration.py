@@ -256,19 +256,25 @@ class TestTC2Integration:
 
         assert updated_company.gclid == 'NEW_GCLID'
 
-    async def test_process_client_updates_signup_questionnaire_extra_attr(self, db, test_admin, sample_tc_client_data):
-        """Test that signup_questionnaire extra attribute IS updated for existing company (syncable field)"""
-        sample_tc_client_data['extra_attrs'] = [{'machine_name': 'signup_questionnaire', 'value': 'initial_data'}]
+    async def test_process_client_updates_signup_questionnaire_from_meta_agency(
+        self, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire from meta_agency IS updated for existing company (syncable field)"""
+        import json
+
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'question': 'initial_answer'}
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
 
-        assert company.signup_questionnaire == 'initial_data'
+        assert company.signup_questionnaire == json.dumps({'question': 'initial_answer'})
 
-        sample_tc_client_data['extra_attrs'] = [{'machine_name': 'signup_questionnaire', 'value': 'updated_data'}]
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'question': 'updated_answer'}
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
-        assert updated_company.signup_questionnaire == 'updated_data'  # IS updated (syncable field)
+        assert updated_company.signup_questionnaire == json.dumps(
+            {'question': 'updated_answer'}
+        )  # IS updated (syncable field)
 
     async def test_process_client_updates_estimated_income_extra_attr(self, db, test_admin, sample_tc_client_data):
         """Test that estimated_monthly_income extra attribute IS updated for existing company (syncable field)"""
@@ -1147,11 +1153,11 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-11-01T09:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid_123'
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2025-12-01T00:00:00Z'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'source': 'questionnaire_data'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
             {'machine_name': 'utm_campaign', 'value': 'summer2024'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'questionnaire_data'},
         ]
         sample_tc_client_data['paid_recipients'] = [
             {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
@@ -1188,7 +1194,7 @@ class TestTC2SyncableFields:
         assert company.email_confirmed_dt == datetime(2025, 11, 1, 9)
         assert company.gclid == 'test_gclid_123'
         assert company.gclid_expiry_dt == datetime(2025, 12, 1, 0)
-        assert company.signup_questionnaire == 'questionnaire_data'
+        assert company.signup_questionnaire == '{"source": "questionnaire_data"}'
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
         assert company.estimated_income == '5000'
@@ -1216,11 +1222,11 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-09-25T11:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'new_gclid_456'
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2026-01-01T00:00:00Z'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'source': 'new_questionnaire_data'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2025'},
             {'machine_name': 'estimated_monthly_income', 'value': '10000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'new_questionnaire_data'},
         ]
 
         webhook_data = {
@@ -1251,7 +1257,7 @@ class TestTC2SyncableFields:
         assert updated_company.email_confirmed_dt == datetime(2025, 9, 25, 11)
         assert updated_company.gclid == 'new_gclid_456'
         assert updated_company.gclid_expiry_dt == datetime(2026, 1, 1, 0)
-        assert updated_company.signup_questionnaire == 'new_questionnaire_data'
+        assert updated_company.signup_questionnaire == '{"source": "new_questionnaire_data"}'
         assert updated_company.utm_source == 'facebook'
         assert updated_company.utm_campaign == 'winter2025'
         assert updated_company.estimated_income == '10000'
@@ -1352,10 +1358,10 @@ class TestTC2SyncableFields:
         # Create company with initial values
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'initial_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'initial_source'},
             {'machine_name': 'utm_campaign', 'value': 'initial_campaign'},
-            {'machine_name': 'signup_questionnaire', 'value': 'initial_questionnaire'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
         ]
 
@@ -1370,15 +1376,15 @@ class TestTC2SyncableFields:
         assert company.paid_invoice_count == 5
         assert company.utm_source == 'initial_source'
         assert company.utm_campaign == 'initial_campaign'
-        assert company.signup_questionnaire == 'initial_questionnaire'
+        assert company.signup_questionnaire == '{"data": "initial_questionnaire"}'
         assert company.estimated_income == '5000'
 
         # Try to update non-syncable fields (and one syncable field for comparison)
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 100  # This IS syncable
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'changed_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'changed_source'},
             {'machine_name': 'utm_campaign', 'value': 'changed_campaign'},
-            {'machine_name': 'signup_questionnaire', 'value': 'changed_questionnaire'},
             {'machine_name': 'estimated_monthly_income', 'value': '50000'},
         ]
 
@@ -1394,7 +1400,9 @@ class TestTC2SyncableFields:
 
         # Syncable fields should update
         assert updated_company.paid_invoice_count == 100  # IS syncable - should update
-        assert updated_company.signup_questionnaire == 'changed_questionnaire'  # IS syncable - should update
+        assert (
+            updated_company.signup_questionnaire == '{"data": "changed_questionnaire"}'
+        )  # IS syncable - should update
         assert updated_company.utm_source == 'changed_source'  # IS syncable - should update
         assert updated_company.utm_campaign == 'changed_campaign'  # IS syncable - should update
         assert updated_company.estimated_income == '50000'  # IS syncable - should update
@@ -1567,9 +1575,9 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-11-01T10:00:00Z'
         sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-11-02T12:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'original_gclid'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'initial_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
-            {'machine_name': 'signup_questionnaire', 'value': 'initial_questionnaire'},
         ]
 
         webhook_data = {
@@ -1584,13 +1592,14 @@ class TestTC2SyncableFields:
         assert company.paid_invoice_count == 5
         assert company.gclid == 'original_gclid'
         assert company.utm_source == 'google'
-        assert company.signup_questionnaire == 'initial_questionnaire'
+        assert company.signup_questionnaire == '{"data": "initial_questionnaire"}'
 
-        # Now send update with MISSING optional fields (gclid, extra_attrs)
+        # Now send update with MISSING optional fields (gclid, signup_questionnaire)
         sample_tc_client_data['meta_agency']['status'] = 'active'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
         sample_tc_client_data['meta_agency']['gclid'] = None  # TC2 might send None
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = None
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = None  # Missing in update
         sample_tc_client_data['extra_attrs'] = []  # No extra attrs in this update
 
         webhook_data = {
@@ -1608,9 +1617,11 @@ class TestTC2SyncableFields:
         assert updated_company.paid_invoice_count == 10
         assert updated_company.gclid is None  # Set to None
 
-        # Fields not in update extra_attrs should keep their values
+        # Fields not in update should keep their values
         assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
-        assert updated_company.signup_questionnaire == 'initial_questionnaire'  # Not in extra_attrs, keeps original
+        assert (
+            updated_company.signup_questionnaire == '{"data": "initial_questionnaire"}'
+        )  # None in update, keeps original
 
     @patch('app.pipedrive.api.pipedrive_request')
     async def test_updated_company_is_compatible_with_pipedrive_sync(
@@ -1626,9 +1637,9 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
         sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'test_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
-            {'machine_name': 'signup_questionnaire', 'value': 'test_questionnaire'},
         ]
 
         webhook_data = {
