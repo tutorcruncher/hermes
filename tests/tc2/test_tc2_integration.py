@@ -195,15 +195,15 @@ class TestTC2Integration:
         assert r.status_code == 200
 
     async def test_extra_attrs_mapped_to_company_fields(self, db, test_admin, sample_tc_client_data):
-        """Test that TC2 extra_attrs are correctly mapped to Company fields"""
+        """Test that TC2 extra_attrs and meta_agency fields are correctly mapped to Company fields"""
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2024'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'some_data'},
         ]
-        # gclid comes from meta_agency, not extra_attrs
+        # gclid and signup_questionnaire come from meta_agency, not extra_attrs
         sample_tc_client_data['meta_agency']['gclid'] = 'ABC123'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'some_data'}
 
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -212,7 +212,7 @@ class TestTC2Integration:
         assert company.utm_campaign == 'winter2024'
         assert company.gclid == 'ABC123'
         assert company.estimated_income == '5000'
-        assert company.signup_questionnaire == 'some_data'
+        assert company.signup_questionnaire == '{"data": "some_data"}'
 
     async def test_process_client_with_support_and_bdr_persons(self, db, sample_tc_client_data):
         """Test processing client with support and BDR persons"""
