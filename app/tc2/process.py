@@ -162,7 +162,9 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),
-            signup_questionnaire=json.dumps(tc_client.meta_agency.signup_questionnaire) if tc_client.meta_agency.signup_questionnaire else None,
+            signup_questionnaire=json.dumps(tc_client.meta_agency.signup_questionnaire)
+            if tc_client.meta_agency.signup_questionnaire
+            else None,
             estimated_income=extra_attrs_dict.get('estimated_monthly_income'),
             created=tc_client.meta_agency.created,
             sales_person_id=sales_person.id,

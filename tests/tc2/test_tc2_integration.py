@@ -1699,7 +1699,9 @@ class TestTC2SyncableFields:
         assert pd_field_id in custom_fields
         assert custom_fields[pd_field_id] == 'active'
 
-    async def test_signup_questionnaire_from_meta_agency_new_company(self, client, db, test_admin, sample_tc_client_data):
+    async def test_signup_questionnaire_from_meta_agency_new_company(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
         """Test that signup_questionnaire dict from meta_agency is stored as JSON string for new company"""
         import json
 
@@ -1777,7 +1779,9 @@ class TestTC2SyncableFields:
         assert parsed['how-many-students-are-currently-actively-using-your-service'] == 10
 
     @patch('app.pipedrive.api.pipedrive_request')
-    async def test_signup_questionnaire_sent_to_pipedrive(self, mock_api, client, db, test_admin, sample_tc_client_data):
+    async def test_signup_questionnaire_sent_to_pipedrive(
+        self, mock_api, client, db, test_admin, sample_tc_client_data
+    ):
         """Test that signup_questionnaire JSON is correctly sent to Pipedrive"""
         import json
 
