@@ -1617,11 +1617,11 @@ class TestTC2SyncableFields:
         assert updated_company.paid_invoice_count == 10
         assert updated_company.gclid is None  # Set to None
 
-        # Fields not in update should keep their values
+        # Non-syncable fields keep their values
         assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
-        assert (
-            updated_company.signup_questionnaire == '{"data": "initial_questionnaire"}'
-        )  # None in update, keeps original
+
+        # Syncable fields update to None when TC2 sends None (TC2 is source of truth)
+        assert updated_company.signup_questionnaire is None
 
     @patch('app.pipedrive.api.pipedrive_request')
     async def test_updated_company_is_compatible_with_pipedrive_sync(

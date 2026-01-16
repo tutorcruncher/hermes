@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -37,8 +36,6 @@ def _update_syncable_fields(company: Company, tc_client: TCClient):
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
         value = getattr(tc_client.meta_agency, tc2_field)
-        if field == 'signup_questionnaire' and value is not None:
-            value = json.dumps(value)
         setattr(company, field, value)
 
 
@@ -163,9 +160,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),
-            signup_questionnaire=json.dumps(tc_client.meta_agency.signup_questionnaire)
-            if tc_client.meta_agency.signup_questionnaire
-            else None,
+            signup_questionnaire=tc_client.meta_agency.signup_questionnaire,
             estimated_income=extra_attrs_dict.get('estimated_monthly_income'),
             created=tc_client.meta_agency.created,
             sales_person_id=sales_person.id,
