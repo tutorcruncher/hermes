@@ -24,6 +24,7 @@ COMPANY_SYNCABLE_FIELDS = {
     'tc2_status',
     'narc',
     'paid_invoice_count',
+    'signup_questionnaire',
 }
 
 
@@ -36,6 +37,8 @@ def _update_syncable_fields(company: Company, tc_client: TCClient):
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
         value = getattr(tc_client.meta_agency, tc2_field)
+        if field == 'signup_questionnaire' and value is not None:
+            value = json.dumps(value)
         setattr(company, field, value)
 
 
@@ -133,8 +136,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             company.utm_source = extra_attrs_dict['utm_source']
         if 'utm_campaign' in extra_attrs_dict:
             company.utm_campaign = extra_attrs_dict['utm_campaign']
-        if tc_client.meta_agency.signup_questionnaire:
-            company.signup_questionnaire = json.dumps(tc_client.meta_agency.signup_questionnaire)
         if 'estimated_monthly_income' in extra_attrs_dict:
             company.estimated_income = extra_attrs_dict['estimated_monthly_income']
 
