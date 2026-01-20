@@ -2,6 +2,7 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import patch
 
