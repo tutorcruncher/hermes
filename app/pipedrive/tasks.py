@@ -27,16 +27,21 @@ async def sync_company_to_pipedrive(company_id: int):
                 if company.is_deleted:
                     logger.info(f'Company {company_id} is marked as deleted, skipping sync')
                     return
+
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
-                deal_ids = [
-                    d.id
-                    for d in db.exec(
-                        select(Deal).where(
-                            Deal.company_id == company_id,
-                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN),
-                        )
-                    ).all()
-                ]
+                if not company.paid_invoice_count:
+                    # sync deals only when the agency has no paid invoices
+                    deal_ids = [
+                        d.id
+                        for d in db.exec(
+                            select(Deal).where(
+                                Deal.company_id == company_id,
+                                (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN),
+                            )
+                        ).all()
+                    ]
+                else:
+                    deal_ids = []
 
             await sync_organization(company_id)
 
@@ -151,13 +156,24 @@ async def sync_deal(deal_id: int):
             current_data = pd_deal.get('data', {})
             changed_fields = api.get_changed_fields(current_data, deal_data)
 
+            pd_status = current_data.get('status')
+            hermes_status = deal_data.get('status')
+
+            # only update deals when an 'open' deal on hermes is actually 'open' on PD
+            if (
+                pd_status
+                and pd_status != Deal.STATUS_OPEN
+                and hermes_status == Deal.STATUS_OPEN
+                and 'status' in changed_fields
+            ):
+                logger.info(f'Skipping update for deal {deal_id} because PipeDrive status {pd_status} is not open')
+                return
+
             if changed_fields:
                 await api.update_deal(pd_deal_id, changed_fields)
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
-                pd_deal_id = None
 
     if not pd_deal_id:
         if not settings.sync_create_deals:

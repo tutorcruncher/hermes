@@ -3,7 +3,7 @@ Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlmodel import select
@@ -12,7 +12,7 @@ from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, 
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
-from tests.helpers import create_mock_gcal_resource, create_mock_response
+from tests.helpers import create_error_response, create_mock_gcal_resource, create_mock_response
 
 
 @pytest.fixture
@@ -120,6 +120,160 @@ class TestTC2Integration:
 
         assert company is not None
         assert company.name == 'Test Agency'
+
+    @patch('app.pipedrive.tasks.sync_deal', new_callable=AsyncMock)
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_webhook_skips_deal_sync_for_paying_agencies(
+        self,
+        mock_request,
+        mock_sync_deal,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        sample_tc_client_data,
+    ):
+        """Test that paying agencies do not trigger deal syncs"""
+        mock_request.return_value = create_mock_response({'data': {'id': 999}})
+        sample_tc_client_data['model'] = 'Client'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+        db.create(
+            Deal(
+                name='Legacy Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=555,
+            )
+        )
+
+        await sync_company_to_pipedrive(company.id)
+
+        mock_sync_deal.assert_not_called()
+
+    @patch('app.pipedrive.tasks.sync_deal', new_callable=AsyncMock)
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_webhook_syncs_deals_for_unpaid_agencies(
+        self,
+        mock_request,
+        mock_sync_deal,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        sample_tc_client_data,
+    ):
+        """Test that agencies without paid invoices trigger deal syncs"""
+        mock_request.return_value = create_mock_response({'data': {'id': 999}})
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+        deal = db.create(
+            Deal(
+                name='Trial Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=777,
+            )
+        )
+
+        await sync_company_to_pipedrive(company.id)
+
+        mock_sync_deal.assert_awaited_once_with(deal.id)
+
+    @patch('httpx.AsyncClient.request')
+    async def test_deal_pd_id_preserved_when_pipedrive_returns_404(
+        self,
+        mock_request,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        sample_tc_client_data,
+    ):
+        """Test that we keep pd_deal_id when Pipedrive returns 404 during update"""
+
+        async def request_side_effect(*args, **kwargs):
+            method = kwargs.get('method')
+            url = kwargs.get('url', '')
+            if method == 'PATCH' and 'deals' in url:
+                return create_error_response(status_code=404)
+            if method == 'GET' and 'deals' in url:
+                return create_mock_response({'data': {'title': 'Existing Deal'}})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = request_side_effect
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+        deal = db.create(
+            Deal(
+                name='Deal With PD',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=888,
+            )
+        )
+
+        await sync_company_to_pipedrive(company.id)
+        db.refresh(deal)
+
+        assert deal.pd_deal_id == 888
+        for call in mock_request.call_args_list:
+            kwargs = call.kwargs
+            method = kwargs.get('method')
+            url = kwargs.get('url', '')
+            assert not (method == 'POST' and 'deals' in url), 'create_deal should not be called when update returns 404'
 
     async def test_narc_company_not_synced_to_pipedrive(self, db, test_admin, sample_tc_client_data):
         """Test that NARC companies are purged from Pipedrive"""
