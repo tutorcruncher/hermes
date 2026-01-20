@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -62,8 +63,6 @@ class _TCAgency(BaseModel):
     @field_validator('signup_questionnaire', mode='before')
     @classmethod
     def serialize_signup_questionnaire(cls, v):
-        import json
-
         if v is None:
             return None
         if isinstance(v, dict):

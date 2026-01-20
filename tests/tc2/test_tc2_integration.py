@@ -9,6 +9,7 @@ import pytest
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
@@ -260,8 +261,6 @@ class TestTC2Integration:
         self, db, test_admin, sample_tc_client_data
     ):
         """Test that signup_questionnaire from meta_agency IS updated for existing company (syncable field)"""
-        import json
-
         sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'question': 'initial_answer'}
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -1714,8 +1713,6 @@ class TestTC2SyncableFields:
         self, client, db, test_admin, sample_tc_client_data
     ):
         """Test that signup_questionnaire dict from meta_agency is stored as JSON string for new company"""
-        import json
-
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
             'how-did-you-hear-about-us': 'Search engine (Google, Bing, etc.)',
@@ -1749,8 +1746,6 @@ class TestTC2SyncableFields:
         self, client, db, test_admin, sample_tc_client_data
     ):
         """Test that signup_questionnaire dict from meta_agency updates existing company"""
-        import json
-
         # Create company without signup_questionnaire
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['signup_questionnaire'] = None
@@ -1794,9 +1789,6 @@ class TestTC2SyncableFields:
         self, mock_api, client, db, test_admin, sample_tc_client_data
     ):
         """Test that signup_questionnaire JSON is correctly sent to Pipedrive"""
-        import json
-
-        from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 
         mock_api.return_value = {'data': {'id': 999}}
 
