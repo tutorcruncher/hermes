@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -35,7 +36,7 @@ class _TCAgency(BaseModel):
     created: datetime = Field(exclude=True)
     price_plan: str
     narc: Optional[bool] = False
-    signup_questionnaire: Optional[dict] = None
+    signup_questionnaire: Optional[str] = None
     pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None
     pay3_dt: Optional[datetime] = None
@@ -58,6 +59,15 @@ class _TCAgency(BaseModel):
     @classmethod
     def country_to_code(cls, v):
         return v.split(' ')[-1].strip('()')
+
+    @field_validator('signup_questionnaire', mode='before')
+    @classmethod
+    def serialize_signup_questionnaire(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return json.dumps(v)
+        return v
 
 
 class TCRecipient(_TCSimpleRole):

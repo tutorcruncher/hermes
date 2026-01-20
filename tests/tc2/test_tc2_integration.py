@@ -2,6 +2,7 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -9,6 +10,7 @@ import pytest
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
@@ -349,15 +351,15 @@ class TestTC2Integration:
         assert r.status_code == 200
 
     async def test_extra_attrs_mapped_to_company_fields(self, db, test_admin, sample_tc_client_data):
-        """Test that TC2 extra_attrs are correctly mapped to Company fields"""
+        """Test that TC2 extra_attrs and meta_agency fields are correctly mapped to Company fields"""
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2024'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'some_data'},
         ]
-        # gclid comes from meta_agency, not extra_attrs
+        # gclid and signup_questionnaire come from meta_agency, not extra_attrs
         sample_tc_client_data['meta_agency']['gclid'] = 'ABC123'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'some_data'}
 
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
@@ -366,7 +368,7 @@ class TestTC2Integration:
         assert company.utm_campaign == 'winter2024'
         assert company.gclid == 'ABC123'
         assert company.estimated_income == '5000'
-        assert company.signup_questionnaire == 'some_data'
+        assert company.signup_questionnaire == '{"data": "some_data"}'
 
     async def test_process_client_with_support_and_bdr_persons(self, db, sample_tc_client_data):
         """Test processing client with support and BDR persons"""
@@ -410,19 +412,23 @@ class TestTC2Integration:
 
         assert updated_company.gclid == 'NEW_GCLID'
 
-    async def test_process_client_updates_signup_questionnaire_extra_attr(self, db, test_admin, sample_tc_client_data):
-        """Test that signup_questionnaire extra attribute IS updated for existing company (syncable field)"""
-        sample_tc_client_data['extra_attrs'] = [{'machine_name': 'signup_questionnaire', 'value': 'initial_data'}]
+    async def test_process_client_updates_signup_questionnaire_from_meta_agency(
+        self, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire from meta_agency IS updated for existing company (syncable field)"""
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'question': 'initial_answer'}
         tc_client = TCClient(**sample_tc_client_data)
         company = await process_tc_client(tc_client, db)
 
-        assert company.signup_questionnaire == 'initial_data'
+        assert company.signup_questionnaire == json.dumps({'question': 'initial_answer'})
 
-        sample_tc_client_data['extra_attrs'] = [{'machine_name': 'signup_questionnaire', 'value': 'updated_data'}]
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'question': 'updated_answer'}
         tc_client = TCClient(**sample_tc_client_data)
         updated_company = await process_tc_client(tc_client, db)
 
-        assert updated_company.signup_questionnaire == 'updated_data'  # IS updated (syncable field)
+        assert updated_company.signup_questionnaire == json.dumps(
+            {'question': 'updated_answer'}
+        )  # IS updated (syncable field)
 
     async def test_process_client_updates_estimated_income_extra_attr(self, db, test_admin, sample_tc_client_data):
         """Test that estimated_monthly_income extra attribute IS updated for existing company (syncable field)"""
@@ -1301,11 +1307,11 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-11-01T09:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid_123'
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2025-12-01T00:00:00Z'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'source': 'questionnaire_data'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
             {'machine_name': 'utm_campaign', 'value': 'summer2024'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'questionnaire_data'},
         ]
         sample_tc_client_data['paid_recipients'] = [
             {'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
@@ -1342,7 +1348,7 @@ class TestTC2SyncableFields:
         assert company.email_confirmed_dt == datetime(2025, 11, 1, 9)
         assert company.gclid == 'test_gclid_123'
         assert company.gclid_expiry_dt == datetime(2025, 12, 1, 0)
-        assert company.signup_questionnaire == 'questionnaire_data'
+        assert company.signup_questionnaire == '{"source": "questionnaire_data"}'
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
         assert company.estimated_income == '5000'
@@ -1370,11 +1376,11 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['email_confirmed_dt'] = '2025-09-25T11:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'new_gclid_456'
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = '2026-01-01T00:00:00Z'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'source': 'new_questionnaire_data'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'facebook'},
             {'machine_name': 'utm_campaign', 'value': 'winter2025'},
             {'machine_name': 'estimated_monthly_income', 'value': '10000'},
-            {'machine_name': 'signup_questionnaire', 'value': 'new_questionnaire_data'},
         ]
 
         webhook_data = {
@@ -1405,7 +1411,7 @@ class TestTC2SyncableFields:
         assert updated_company.email_confirmed_dt == datetime(2025, 9, 25, 11)
         assert updated_company.gclid == 'new_gclid_456'
         assert updated_company.gclid_expiry_dt == datetime(2026, 1, 1, 0)
-        assert updated_company.signup_questionnaire == 'new_questionnaire_data'
+        assert updated_company.signup_questionnaire == '{"source": "new_questionnaire_data"}'
         assert updated_company.utm_source == 'facebook'
         assert updated_company.utm_campaign == 'winter2025'
         assert updated_company.estimated_income == '10000'
@@ -1506,10 +1512,10 @@ class TestTC2SyncableFields:
         # Create company with initial values
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'initial_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'initial_source'},
             {'machine_name': 'utm_campaign', 'value': 'initial_campaign'},
-            {'machine_name': 'signup_questionnaire', 'value': 'initial_questionnaire'},
             {'machine_name': 'estimated_monthly_income', 'value': '5000'},
         ]
 
@@ -1524,15 +1530,15 @@ class TestTC2SyncableFields:
         assert company.paid_invoice_count == 5
         assert company.utm_source == 'initial_source'
         assert company.utm_campaign == 'initial_campaign'
-        assert company.signup_questionnaire == 'initial_questionnaire'
+        assert company.signup_questionnaire == '{"data": "initial_questionnaire"}'
         assert company.estimated_income == '5000'
 
         # Try to update non-syncable fields (and one syncable field for comparison)
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 100  # This IS syncable
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'changed_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'changed_source'},
             {'machine_name': 'utm_campaign', 'value': 'changed_campaign'},
-            {'machine_name': 'signup_questionnaire', 'value': 'changed_questionnaire'},
             {'machine_name': 'estimated_monthly_income', 'value': '50000'},
         ]
 
@@ -1548,7 +1554,9 @@ class TestTC2SyncableFields:
 
         # Syncable fields should update
         assert updated_company.paid_invoice_count == 100  # IS syncable - should update
-        assert updated_company.signup_questionnaire == 'changed_questionnaire'  # IS syncable - should update
+        assert (
+            updated_company.signup_questionnaire == '{"data": "changed_questionnaire"}'
+        )  # IS syncable - should update
         assert updated_company.utm_source == 'changed_source'  # IS syncable - should update
         assert updated_company.utm_campaign == 'changed_campaign'  # IS syncable - should update
         assert updated_company.estimated_income == '50000'  # IS syncable - should update
@@ -1721,9 +1729,9 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['pay0_dt'] = '2025-11-01T10:00:00Z'
         sample_tc_client_data['meta_agency']['card_saved_dt'] = '2025-11-02T12:00:00Z'
         sample_tc_client_data['meta_agency']['gclid'] = 'original_gclid'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'initial_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
-            {'machine_name': 'signup_questionnaire', 'value': 'initial_questionnaire'},
         ]
 
         webhook_data = {
@@ -1738,13 +1746,14 @@ class TestTC2SyncableFields:
         assert company.paid_invoice_count == 5
         assert company.gclid == 'original_gclid'
         assert company.utm_source == 'google'
-        assert company.signup_questionnaire == 'initial_questionnaire'
+        assert company.signup_questionnaire == '{"data": "initial_questionnaire"}'
 
-        # Now send update with MISSING optional fields (gclid, extra_attrs)
+        # Now send update with MISSING optional fields (gclid, signup_questionnaire)
         sample_tc_client_data['meta_agency']['status'] = 'active'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
         sample_tc_client_data['meta_agency']['gclid'] = None  # TC2 might send None
         sample_tc_client_data['meta_agency']['gclid_expiry_dt'] = None
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = None  # Missing in update
         sample_tc_client_data['extra_attrs'] = []  # No extra attrs in this update
 
         webhook_data = {
@@ -1762,9 +1771,11 @@ class TestTC2SyncableFields:
         assert updated_company.paid_invoice_count == 10
         assert updated_company.gclid is None  # Set to None
 
-        # Fields not in update extra_attrs should keep their values
+        # Non-syncable fields keep their values
         assert updated_company.utm_source == 'google'  # Not in extra_attrs, keeps original
-        assert updated_company.signup_questionnaire == 'initial_questionnaire'  # Not in extra_attrs, keeps original
+
+        # Syncable fields update to None when TC2 sends None (TC2 is source of truth)
+        assert updated_company.signup_questionnaire is None
 
     @patch('app.pipedrive.api.pipedrive_request')
     async def test_updated_company_is_compatible_with_pipedrive_sync(
@@ -1780,9 +1791,9 @@ class TestTC2SyncableFields:
         sample_tc_client_data['meta_agency']['price_plan'] = 'payg'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 5
         sample_tc_client_data['meta_agency']['gclid'] = 'test_gclid'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'data': 'test_questionnaire'}
         sample_tc_client_data['extra_attrs'] = [
             {'machine_name': 'utm_source', 'value': 'google'},
-            {'machine_name': 'signup_questionnaire', 'value': 'test_questionnaire'},
         ]
 
         webhook_data = {
@@ -1852,6 +1863,135 @@ class TestTC2SyncableFields:
         pd_field_id = COMPANY_PD_FIELD_MAP['tc2_status']
         assert pd_field_id in custom_fields
         assert custom_fields[pd_field_id] == 'active'
+
+    async def test_signup_questionnaire_from_meta_agency_new_company(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire dict from meta_agency is stored as JSON string for new company"""
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Search engine (Google, Bing, etc.)',
+            'are-lessons-mostly-remote-or-in-person': 'Mostly in-person',
+            'how-do-you-currently-match-your-students-to-tutors': 'Students can view a list of Tutors',
+            'do-you-provide-mostly-one-to-one-lessons-or-group-classes': 'Entirely one to one',
+            'how-many-students-are-currently-actively-using-your-service': 5,
+            'do-you-take-payment-from-clients-upfront-or-after-the-lesson-takes-place': 'Entirely upfront',
+        }
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Verify signup_questionnaire is stored as JSON string
+        assert company.signup_questionnaire is not None
+        assert isinstance(company.signup_questionnaire, str)
+
+        # Verify it can be parsed back to the original dict
+        parsed = json.loads(company.signup_questionnaire)
+        assert parsed['how-did-you-hear-about-us'] == 'Search engine (Google, Bing, etc.)'
+        assert parsed['how-many-students-are-currently-actively-using-your-service'] == 5
+
+    async def test_signup_questionnaire_from_meta_agency_existing_company(
+        self, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire dict from meta_agency updates existing company"""
+        # Create company without signup_questionnaire
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = None
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.signup_questionnaire is None
+
+        # Now update with signup_questionnaire dict
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Word of mouth',
+            'how-many-students-are-currently-actively-using-your-service': 10,
+        }
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.expire_all()
+        updated_company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Verify signup_questionnaire is updated and stored as JSON string
+        assert updated_company.signup_questionnaire is not None
+        parsed = json.loads(updated_company.signup_questionnaire)
+        assert parsed['how-did-you-hear-about-us'] == 'Word of mouth'
+        assert parsed['how-many-students-are-currently-actively-using-your-service'] == 10
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_signup_questionnaire_sent_to_pipedrive(
+        self, mock_api, client, db, test_admin, sample_tc_client_data
+    ):
+        """Test that signup_questionnaire JSON is correctly sent to Pipedrive"""
+
+        mock_api.return_value = {'data': {'id': 999}}
+
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {
+            'how-did-you-hear-about-us': 'Search engine',
+            'students-count': 25,
+        }
+
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+
+        # Reset mock to track only the explicit sync call
+        mock_api.reset_mock()
+
+        # Sync to Pipedrive
+        await sync_company_to_pipedrive(company.id)
+
+        # Find the organization call
+        org_call = None
+        for call in mock_api.call_args_list:
+            first_arg = call.args[0] if call.args else call.kwargs.get('url', '')
+            method = call.kwargs.get('method', '')
+            if 'organizations' in first_arg and method in ('POST', 'PATCH'):
+                org_call = call
+                break
+
+        assert org_call is not None, 'Organization API call should have been made'
+        call_data = org_call.kwargs['data']
+
+        # Verify signup_questionnaire is in custom_fields as JSON string
+        custom_fields = call_data['custom_fields']
+        pd_field_id = COMPANY_PD_FIELD_MAP['signup_questionnaire']
+        assert pd_field_id in custom_fields
+
+        # Verify the value is a JSON string that can be parsed
+        signup_q_value = custom_fields[pd_field_id]
+        assert isinstance(signup_q_value, str)
+        parsed = json.loads(signup_q_value)
+        assert parsed['how-did-you-hear-about-us'] == 'Search engine'
+        assert parsed['students-count'] == 25
 
 
 class TestGetOrCreateDealConsolidation:

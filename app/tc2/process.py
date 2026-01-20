@@ -23,6 +23,7 @@ COMPANY_SYNCABLE_FIELDS = {
     'tc2_status',
     'narc',
     'paid_invoice_count',
+    'signup_questionnaire',
 }
 
 
@@ -132,8 +133,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             company.utm_source = extra_attrs_dict['utm_source']
         if 'utm_campaign' in extra_attrs_dict:
             company.utm_campaign = extra_attrs_dict['utm_campaign']
-        if 'signup_questionnaire' in extra_attrs_dict:
-            company.signup_questionnaire = extra_attrs_dict['signup_questionnaire']
         if 'estimated_monthly_income' in extra_attrs_dict:
             company.estimated_income = extra_attrs_dict['estimated_monthly_income']
 
@@ -161,7 +160,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),
-            signup_questionnaire=extra_attrs_dict.get('signup_questionnaire'),
+            signup_questionnaire=tc_client.meta_agency.signup_questionnaire,
             estimated_income=extra_attrs_dict.get('estimated_monthly_income'),
             created=tc_client.meta_agency.created,
             sales_person_id=sales_person.id,
