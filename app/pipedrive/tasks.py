@@ -11,7 +11,7 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_
 
 logger = logging.getLogger('hermes.pipedrive')
 
-SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']
+SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
 
 async def sync_company_to_pipedrive(company_id: int):
