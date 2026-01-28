@@ -11,7 +11,7 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_
 
 logger = logging.getLogger('hermes.pipedrive')
 
-SYNCABLE_DEAL_FIELDS = {'paid_invoice_count'}
+SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']
 
 
 async def sync_company_to_pipedrive(company_id: int):
@@ -140,19 +140,30 @@ async def sync_person(contact_id: int):
             logger.error(f'Error creating person for contact {contact_id}: {e}')
 
 
-def _filter_syncable_deal_fields(changed_fields: dict) -> dict:
-    """Filter changed_fields to only include SYNCABLE_DEAL_FIELDS."""
-    if 'custom_fields' not in changed_fields:
-        return {}
+async def partial_sync_deal_from_company(company: Company, deal: Deal):
+    """
+    Sets custom fields on a deal based on company data and only sends them to the PD via PATCH.
+    """
+    if not deal.pd_deal_id:
+        return
 
-    custom_fields = changed_fields['custom_fields']
-    filtered_custom = {}
-    for hermes_field in SYNCABLE_DEAL_FIELDS:
-        pd_field_id = DEAL_PD_FIELD_MAP.get(hermes_field)
-        if pd_field_id and pd_field_id in custom_fields:
-            filtered_custom[pd_field_id] = custom_fields[pd_field_id]
+    custom_fields = {}
+    for field in SYNCABLE_DEAL_FIELDS:
+        value = getattr(company, field, None)
+        if value is None:
+            continue
+        pd_field_id = DEAL_PD_FIELD_MAP.get(field)
+        if pd_field_id:
+            custom_fields[pd_field_id] = str(value) if isinstance(value, int) else value
 
-    return {'custom_fields': filtered_custom} if filtered_custom else {}
+    if not custom_fields:
+        return
+
+    try:
+        await api.update_deal(deal.pd_deal_id, {'custom_fields': custom_fields})
+        logger.info(f'Updated deal {deal.pd_deal_id}')
+    except Exception as e:
+        logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
 
 
 async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
@@ -161,21 +172,25 @@ async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
     """
     from app.core.config import settings
 
+    company = None
     with get_session() as db:
         deal = db.get(Deal, deal_id)
         if not deal:
             return
+        if only_sync_deal_fields:
+            company = db.get(Company, deal.company_id)
         deal_data = _deal_to_pd_data(deal, db)
         pd_deal_id = deal.pd_deal_id
+
+    if only_sync_deal_fields and company:
+        # this is spaghetti but we do this so we don't hold the db connection
+        return await partial_sync_deal_from_company(company, deal)
 
     if pd_deal_id:
         try:
             pd_deal = await api.get_deal(pd_deal_id)
             current_data = pd_deal.get('data', {})
             changed_fields = api.get_changed_fields(current_data, deal_data)
-
-            if only_sync_deal_fields:
-                changed_fields = _filter_syncable_deal_fields(changed_fields)
 
             pd_status = current_data.get('status')
             hermes_status = deal_data.get('status')
@@ -197,9 +212,6 @@ async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
 
     if not pd_deal_id:
-        if only_sync_deal_fields:
-            return  # Dont create deals in partial sync mode
-
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return
