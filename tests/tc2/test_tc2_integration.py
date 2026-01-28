@@ -125,7 +125,7 @@ class TestTC2Integration:
 
     @patch('app.pipedrive.tasks.sync_deal', new_callable=AsyncMock)
     @patch('httpx.AsyncClient.request')
-    async def test_tc2_webhook_skips_deal_sync_for_paying_agencies(
+    async def test_tc2_webhook_partial_syncs_deal_for_paying_agencies(
         self,
         mock_request,
         mock_sync_deal,
@@ -136,7 +136,7 @@ class TestTC2Integration:
         test_stage,
         sample_tc_client_data,
     ):
-        """Test that paying agencies do not trigger deal syncs"""
+        """Test that paying agencies trigger partial deal syncs (only_sync_deal_fields=True)"""
         mock_request.return_value = create_mock_response({'data': {'id': 999}})
         sample_tc_client_data['model'] = 'Client'
 
@@ -152,7 +152,7 @@ class TestTC2Integration:
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
         contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
-        db.create(
+        deal = db.create(
             Deal(
                 name='Legacy Deal',
                 company_id=company.id,
@@ -167,7 +167,8 @@ class TestTC2Integration:
 
         await sync_company_to_pipedrive(company.id)
 
-        mock_sync_deal.assert_not_called()
+        # Paying agencies get partial sync (only_sync_deal_fields=True)
+        mock_sync_deal.assert_awaited_once_with(deal.id, True)
 
     @patch('app.pipedrive.tasks.sync_deal', new_callable=AsyncMock)
     @patch('httpx.AsyncClient.request')
@@ -214,7 +215,8 @@ class TestTC2Integration:
 
         await sync_company_to_pipedrive(company.id)
 
-        mock_sync_deal.assert_awaited_once_with(deal.id)
+        # Unpaid agencies get full sync (only_sync_deal_fields=False)
+        mock_sync_deal.assert_awaited_once_with(deal.id, False)
 
     @patch('httpx.AsyncClient.request')
     async def test_deal_pd_id_preserved_when_pipedrive_returns_404(
@@ -2389,3 +2391,449 @@ class TestGetOrCreateDealConsolidation:
         db.refresh(open_deal2)
         assert open_deal1.status == Deal.STATUS_OPEN
         assert open_deal2.status == Deal.STATUS_OPEN
+
+
+class TestPartialDealSyncIntegration:
+    """
+    Integration tests for partial deal sync (paid_invoice_count only) from TC2 webhooks to Pipedrive.
+
+    Tests the full flow:
+    TC2 webhook -> process_tc_client -> sync_company_to_pipedrive -> partial_sync_deal_from_company -> PD API
+    """
+
+    def get_deal_patch_requests(self, requests_made: list) -> list:
+        """Extract deal PATCH requests from tracked requests."""
+        return [r for r in requests_made if r.get('method') == 'PATCH' and 'deals' in r.get('url', '')]
+
+    def get_deal_get_requests(self, requests_made: list) -> list:
+        """Extract deal GET requests from tracked requests."""
+        return [r for r in requests_made if r.get('method') == 'GET' and 'deals' in r.get('url', '')]
+
+    def assert_partial_sync_payload(self, payload: dict, expected_paid_invoice_count: str):
+        """Assert that a payload is a valid partial sync payload with only paid_invoice_count."""
+        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
+
+        assert 'custom_fields' in payload, 'Payload must contain custom_fields'
+        assert payload['custom_fields'] == {DEAL_PD_FIELD_MAP['paid_invoice_count']: expected_paid_invoice_count}, (
+            f'Expected only paid_invoice_count={expected_paid_invoice_count}, got {payload["custom_fields"]}'
+        )
+
+        # Verify no other top-level fields that would indicate full sync
+        assert 'status' not in payload, 'Partial sync should not include status'
+        assert 'title' not in payload, 'Partial sync should not include title'
+        assert 'org_id' not in payload, 'Partial sync should not include org_id'
+        assert 'person_id' not in payload, 'Partial sync should not include person_id'
+        assert 'pipeline_id' not in payload, 'Partial sync should not include pipeline_id'
+        assert 'stage_id' not in payload, 'Partial sync should not include stage_id'
+
+    @pytest.fixture
+    def paying_company_tc_data(self, test_admin):
+        """TC2 client data for a paying company (paid_invoice_count > 0)"""
+        return {
+            'id': 500,
+            'meta_agency': {
+                'id': 600,
+                'name': 'Paying Agency',
+                'country': 'United Kingdom (GB)',
+                'website': 'https://paying.com',
+                'status': 'active',
+                'paid_invoice_count': 15,
+                'created': '2024-01-01T00:00:00Z',
+                'price_plan': 'monthly-payg',
+                'narc': False,
+            },
+            'user': {'first_name': 'Jane', 'last_name': 'Payer', 'email': 'jane@paying.com', 'phone': '+1234567890'},
+            'status': 'active',
+            'sales_person': {'id': test_admin.tc2_admin_id},
+            'paid_recipients': [
+                {'id': 700, 'first_name': 'Jane', 'last_name': 'Payer', 'email': 'jane@paying.com'},
+            ],
+            'extra_attrs': [],
+        }
+
+    @patch('httpx.AsyncClient.request')
+    async def test_paying_company_sync_only_patches_deal_fields(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that for a paying company, sync_company_to_pipedrive only sends PATCH to deals
+        with paid_invoice_count, without GET-ing the deal first.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append(
+                {
+                    'method': kwargs.get('method', 'GET'),
+                    'url': kwargs.get('url', ''),
+                    'json': kwargs.get('json', {}),
+                }
+            )
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        assert company is not None
+        assert company.paid_invoice_count == 15
+
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+        db.create(
+            Deal(
+                name='Existing Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=8888,
+                paid_invoice_count=5,
+            )
+        )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        deal_get_requests = self.get_deal_get_requests(requests_made)
+        deal_patch_requests = self.get_deal_patch_requests(requests_made)
+
+        assert len(deal_get_requests) == 0, f'Should not GET deal for paying company, got: {deal_get_requests}'
+        assert len(deal_patch_requests) == 1, f'Should PATCH deal once, got: {deal_patch_requests}'
+
+        self.assert_partial_sync_payload(deal_patch_requests[0]['json'], '15')
+
+    @patch('httpx.AsyncClient.request')
+    async def test_paying_company_uses_fresh_company_value_not_stale_deal_value(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that partial sync uses paid_invoice_count from Company (fresh TC2 value),
+        not the stale value on the Deal record.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url'), 'json': kwargs.get('json')})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        db.create(
+            Deal(
+                name='Deal With Stale Data',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=7777,
+                paid_invoice_count=2,  # Stale value, company has 15
+            )
+        )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        deal_patch_requests = self.get_deal_patch_requests(requests_made)
+        assert len(deal_patch_requests) == 1
+
+        # Should use company's value (15), not deal's stale value (2)
+        self.assert_partial_sync_payload(deal_patch_requests[0]['json'], '15')
+
+    @patch('httpx.AsyncClient.request')
+    async def test_paying_company_deal_without_pd_deal_id_not_synced(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that deals without pd_deal_id are NOT synced for paying companies
+        (we don't create new deals, we only update existing ones).
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url')})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        # Create deal WITHOUT pd_deal_id
+        db.create(
+            Deal(
+                name='New Deal No PD ID',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=None,  # No PD ID
+            )
+        )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        # No deal requests should be made
+        deal_requests = [r for r in requests_made if 'deals' in r['url']]
+        assert len(deal_requests) == 0, f'Should not sync deals without pd_deal_id, got: {deal_requests}'
+
+    @patch('httpx.AsyncClient.request')
+    async def test_paying_company_closed_deal_not_synced(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that closed deals (won/lost) are NOT synced for paying companies,
+        only open deals get partial sync.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url')})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        # Create a WON deal (closed)
+        db.create(
+            Deal(
+                name='Won Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_WON,
+                pd_deal_id=9999,
+            )
+        )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        # No deal PATCH requests should be made for closed deals
+        deal_patch_requests = [r for r in requests_made if r['method'] == 'PATCH' and 'deals' in r['url']]
+        assert len(deal_patch_requests) == 0, f'Should not sync closed deals, got: {deal_patch_requests}'
+
+    @patch('httpx.AsyncClient.request')
+    async def test_non_paying_company_uses_full_sync_with_get(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that non-paying companies (paid_invoice_count=0) use full sync path,
+        which DOES call GET before PATCH.
+        """
+        from app.tc2.models import TCClient
+
+        # Modify to non-paying
+        paying_company_tc_data['meta_agency']['paid_invoice_count'] = 0
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url')})
+            return create_mock_response({'data': {'id': 999, 'status': 'open'}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        # Create deal with pd_deal_id
+        db.create(
+            Deal(
+                name='Trial Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=5555,
+            )
+        )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        # Should have GET request for deal (full sync path)
+        deal_get_requests = [r for r in requests_made if r['method'] == 'GET' and 'deals' in r['url']]
+        assert len(deal_get_requests) == 1, f'Should GET deal for non-paying company, got: {deal_get_requests}'
+
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_webhook_updates_paid_invoice_count_and_syncs_to_deal(
+        self, mock_request, client, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Full integration test: TC2 webhook updates paid_invoice_count,
+        which triggers sync_company_to_pipedrive, which partial-syncs to the deal.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url'), 'json': kwargs.get('json')})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        # First create company with initial paid_invoice_count = 5
+        paying_company_tc_data['meta_agency']['paid_invoice_count'] = 5
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        db.create(
+            Deal(
+                name='Existing Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=1234,
+                paid_invoice_count=5,
+            )
+        )
+
+        # Now simulate TC2 webhook with updated paid_invoice_count = 20
+        paying_company_tc_data['meta_agency']['paid_invoice_count'] = 20
+        paying_company_tc_data['model'] = 'Client'
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': paying_company_tc_data}],
+            '_request_time': 1234567890,
+        }
+
+        requests_made.clear()
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(company)
+        assert company.paid_invoice_count == 20
+
+        # Manually trigger sync (since webhook uses background tasks)
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        deal_patch_requests = self.get_deal_patch_requests(requests_made)
+        assert len(deal_patch_requests) == 1
+        self.assert_partial_sync_payload(deal_patch_requests[0]['json'], '20')
+
+    @patch('httpx.AsyncClient.request')
+    async def test_multiple_open_deals_all_get_partial_synced(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that when a paying company has multiple open deals with pd_deal_id,
+        ALL of them receive the partial sync.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def track_requests(*args, **kwargs):
+            requests_made.append({'method': kwargs.get('method'), 'url': kwargs.get('url'), 'json': kwargs.get('json')})
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = track_requests
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        for pd_deal_id in [1001, 1002, 1003]:
+            db.create(
+                Deal(
+                    name=f'Deal {pd_deal_id}',
+                    company_id=company.id,
+                    contact_id=contact.id,
+                    admin_id=test_admin.id,
+                    pipeline_id=test_pipeline.id,
+                    stage_id=test_stage.id,
+                    status=Deal.STATUS_OPEN,
+                    pd_deal_id=pd_deal_id,
+                )
+            )
+
+        requests_made.clear()
+        await sync_company_to_pipedrive(company.id)
+
+        deal_patch_requests = self.get_deal_patch_requests(requests_made)
+        assert len(deal_patch_requests) == 3, f'Expected 3 deal PATCHes, got {len(deal_patch_requests)}'
+
+        for req in deal_patch_requests:
+            self.assert_partial_sync_payload(req['json'], '15')
+
+    @patch('httpx.AsyncClient.request')
+    async def test_partial_sync_api_error_does_not_crash_flow(
+        self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
+    ):
+        """
+        Test that if the partial sync API call fails, it doesn't crash the entire sync flow.
+        The correct payload should still be attempted.
+        """
+        from app.tc2.models import TCClient
+
+        requests_made = []
+
+        async def failing_deal_request(*args, **kwargs):
+            request_data = {'method': kwargs.get('method'), 'url': kwargs.get('url', ''), 'json': kwargs.get('json')}
+            requests_made.append(request_data)
+            if 'deals' in request_data['url'] and request_data['method'] == 'PATCH':
+                raise Exception('Pipedrive API Error: 500')
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = failing_deal_request
+
+        tc_client = TCClient(**paying_company_tc_data)
+        company = await process_tc_client(tc_client, db)
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+
+        db.create(
+            Deal(
+                name='Deal',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=9999,
+            )
+        )
+
+        requests_made.clear()
+
+        # Should not raise - error is caught and logged
+        await sync_company_to_pipedrive(company.id)
+
+        # Verify the correct payload was attempted before the error
+        deal_patch_requests = self.get_deal_patch_requests(requests_made)
+        assert len(deal_patch_requests) == 1, 'Should have attempted one deal PATCH'
+        self.assert_partial_sync_payload(deal_patch_requests[0]['json'], '15')
