@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.main_app.models import Company
 from app.pipedrive.tasks import (
     _deal_to_pd_data,
     _meeting_to_activity_data,
@@ -899,8 +900,12 @@ class TestDealToPDData:
         test_deal.website = 'https://example.com'
         test_deal.utm_source = 'google'
         test_deal.utm_campaign = 'summer2024'
-        test_deal.paid_invoice_count = 5
         db.add(test_deal)
+
+        # paid_invoice_count comes from Company, not Deal
+        company = db.get(Company, test_deal.company_id)
+        company.paid_invoice_count = 5
+        db.add(company)
         db.commit()
 
         result = _deal_to_pd_data(test_deal, db)
