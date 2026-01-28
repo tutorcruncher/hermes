@@ -11,6 +11,8 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_
 
 logger = logging.getLogger('hermes.pipedrive')
 
+SYNCABLE_DEAL_FIELDS = {'paid_invoice_count'}
+
 
 async def sync_company_to_pipedrive(company_id: int):
     """
@@ -29,19 +31,18 @@ async def sync_company_to_pipedrive(company_id: int):
                     return
 
                 contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+
+                deal_query = select(Deal).where(Deal.company_id == company_id)
                 if not company.paid_invoice_count:
-                    # sync deals only when the agency has no paid invoices
-                    deal_ids = [
-                        d.id
-                        for d in db.exec(
-                            select(Deal).where(
-                                Deal.company_id == company_id,
-                                (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN),
-                            )
-                        ).all()
-                    ]
+                    # Full sync for non-paying companies (update existing + create new open deals)
+                    deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
+                    only_sync_deal_fields = False
                 else:
-                    deal_ids = []
+                    # Only sync fields for paying companies' existing open deals
+                    deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                    only_sync_deal_fields = True
+
+                deal_ids = [d.id for d in db.exec(deal_query).all()]
 
             await sync_organization(company_id)
 
@@ -49,7 +50,7 @@ async def sync_company_to_pipedrive(company_id: int):
                 await sync_person(contact_id)
 
             for deal_id in deal_ids:
-                await sync_deal(deal_id)
+                await sync_deal(deal_id, only_sync_deal_fields)
 
             logger.info(f'Successfully synced company {company_id} to Pipedrive')
         except Exception as e:
@@ -139,8 +140,25 @@ async def sync_person(contact_id: int):
             logger.error(f'Error creating person for contact {contact_id}: {e}')
 
 
-async def sync_deal(deal_id: int):
-    """Sync a single deal to Pipedrive"""
+def _filter_syncable_deal_fields(changed_fields: dict) -> dict:
+    """Filter changed_fields to only include SYNCABLE_DEAL_FIELDS."""
+    if 'custom_fields' not in changed_fields:
+        return {}
+
+    custom_fields = changed_fields['custom_fields']
+    filtered_custom = {}
+    for hermes_field in SYNCABLE_DEAL_FIELDS:
+        pd_field_id = DEAL_PD_FIELD_MAP.get(hermes_field)
+        if pd_field_id and pd_field_id in custom_fields:
+            filtered_custom[pd_field_id] = custom_fields[pd_field_id]
+
+    return {'custom_fields': filtered_custom} if filtered_custom else {}
+
+
+async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
+    """
+    Sync a single deal to Pipedrive.
+    """
     from app.core.config import settings
 
     with get_session() as db:
@@ -155,6 +173,9 @@ async def sync_deal(deal_id: int):
             pd_deal = await api.get_deal(pd_deal_id)
             current_data = pd_deal.get('data', {})
             changed_fields = api.get_changed_fields(current_data, deal_data)
+
+            if only_sync_deal_fields:
+                changed_fields = _filter_syncable_deal_fields(changed_fields)
 
             pd_status = current_data.get('status')
             hermes_status = deal_data.get('status')
@@ -176,6 +197,9 @@ async def sync_deal(deal_id: int):
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
 
     if not pd_deal_id:
+        if only_sync_deal_fields:
+            return  # Dont create deals in partial sync mode
+
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return
@@ -325,6 +349,8 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         elif field_name == 'tc2_cligency_url':
             # Get from company
             value = company.tc2_cligency_url if company else None
+        elif field_name == 'paid_invoice_count':
+            value = company.paid_invoice_count if company else None
         else:
             value = getattr(deal, field_name, None)
 
