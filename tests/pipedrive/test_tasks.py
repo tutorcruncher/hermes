@@ -727,10 +727,9 @@ class TestSyncDealPartialSync:
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_partial_sync_company_not_found_falls_through_to_full_sync(
+    async def test_partial_sync_company_not_found_does_not_full_sync(
         self, mock_get_deal, mock_update_deal, mock_get_session, db, test_deal
     ):
-        """Test that if company is not found, it falls through to full sync path"""
         test_deal.pd_deal_id = 5555
         test_deal.company_id = 999999  # Non-existent company
         db.add(test_deal)
@@ -741,12 +740,11 @@ class TestSyncDealPartialSync:
 
         await sync_deal(test_deal.id, only_sync_deal_fields=True)
 
-        # Should fall through to full sync and call get_deal
-        mock_get_deal.assert_called_once_with(5555)
+        # we don't want to do a full sync
+        mock_get_deal.assert_not_called()
 
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     async def test_partial_sync_deal_from_company_directly(self, mock_update_deal, db, test_deal, test_company):
-        """Test partial_sync_deal_from_company function directly"""
         from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
 
         test_deal.pd_deal_id = 7777
@@ -765,7 +763,6 @@ class TestSyncDealPartialSync:
 
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     async def test_partial_sync_deal_from_company_no_pd_deal_id(self, mock_update_deal, db, test_deal, test_company):
-        """Test partial_sync_deal_from_company returns early without pd_deal_id"""
         test_deal.pd_deal_id = None
         test_company.paid_invoice_count = 25
         db.add(test_deal)
@@ -780,7 +777,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_deal_from_company_no_syncable_values(
         self, mock_update_deal, db, test_deal, test_company
     ):
-        """Test partial_sync_deal_from_company returns early if all syncable fields are None"""
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = None
         db.add(test_deal)
@@ -796,7 +792,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_does_not_hold_session_during_api_call(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync closes DB session before making API calls"""
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 10
         db.add(test_deal)
@@ -831,7 +826,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_does_not_create_deal(
         self, mock_create_deal, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync never creates a new deal even if pd_deal_id is None"""
         test_deal.pd_deal_id = None
         test_company.paid_invoice_count = 10
         db.add(test_deal)
