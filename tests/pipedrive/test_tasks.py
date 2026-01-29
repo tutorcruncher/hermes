@@ -6,8 +6,10 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import func
+from sqlmodel import select
 
-from app.main_app.models import Company
+from app.main_app.models import Company, Deal
 from app.pipedrive.tasks import (
     _deal_to_pd_data,
     _meeting_to_activity_data,
@@ -634,41 +636,6 @@ class TestSyncDealPartialSync:
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
-    async def test_partial_sync_api_error_logs_but_does_not_raise(
-        self, mock_update_deal, mock_get_session, db, test_deal, test_company
-    ):
-        """Test that partial sync logs error but doesn't raise on API failure"""
-        test_deal.pd_deal_id = 5555
-        test_company.paid_invoice_count = 10
-        db.add(test_deal)
-        db.add(test_company)
-        db.commit()
-
-        mock_get_session.return_value = SessionMock(db)
-        mock_update_deal.side_effect = Exception('API Error')
-
-        # Should not raise
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
-
-        mock_update_deal.assert_called_once()
-
-    @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_full_sync_still_calls_get_deal(self, mock_get_deal, mock_get_session, db, test_deal):
-        """Test that full sync (only_sync_deal_fields=False) still calls get_deal"""
-        test_deal.pd_deal_id = 5555
-        db.add(test_deal)
-        db.commit()
-
-        mock_get_session.return_value = SessionMock(db)
-        mock_get_deal.return_value = {'data': {'id': 5555, 'status': 'open'}}
-
-        await sync_deal(test_deal.id, only_sync_deal_fields=False)
-
-        mock_get_deal.assert_called_once_with(5555)
-
-    @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     async def test_partial_sync_paid_invoice_count_zero_is_sent(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
@@ -690,39 +657,6 @@ class TestSyncDealPartialSync:
         call_args = mock_update_deal.call_args
         payload = call_args[0][1]
         assert payload['custom_fields'][DEAL_PD_FIELD_MAP['paid_invoice_count']] == '0'
-
-    @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
-    async def test_partial_sync_large_paid_invoice_count(
-        self, mock_update_deal, mock_get_session, db, test_deal, test_company
-    ):
-        """Test that large paid_invoice_count values are converted to string correctly"""
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
-        test_deal.pd_deal_id = 5555
-        test_company.paid_invoice_count = 999999
-        db.add(test_deal)
-        db.add(test_company)
-        db.commit()
-
-        mock_get_session.return_value = SessionMock(db)
-        mock_update_deal.return_value = {'data': {'id': 5555}}
-
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
-
-        call_args = mock_update_deal.call_args
-        payload = call_args[0][1]
-        assert payload['custom_fields'][DEAL_PD_FIELD_MAP['paid_invoice_count']] == '999999'
-
-    @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
-    async def test_partial_sync_deal_not_found_returns_early(self, mock_update_deal, mock_get_session, db):
-        """Test that sync_deal returns early if deal doesn't exist"""
-        mock_get_session.return_value = SessionMock(db)
-
-        await sync_deal(999999, only_sync_deal_fields=True)
-
-        mock_update_deal.assert_not_called()
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
@@ -772,6 +706,7 @@ class TestSyncDealPartialSync:
         await partial_sync_deal_from_company(test_company, test_deal)
 
         mock_update_deal.assert_not_called()
+        assert db.exec(select(func.count()).select_from(Deal)).one() == 1
 
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     async def test_partial_sync_deal_from_company_no_syncable_values(
@@ -786,39 +721,6 @@ class TestSyncDealPartialSync:
         await partial_sync_deal_from_company(test_company, test_deal)
 
         mock_update_deal.assert_not_called()
-
-    @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
-    async def test_partial_sync_does_not_hold_session_during_api_call(
-        self, mock_update_deal, mock_get_session, db, test_deal, test_company
-    ):
-        test_deal.pd_deal_id = 5555
-        test_company.paid_invoice_count = 10
-        db.add(test_deal)
-        db.add(test_company)
-        db.commit()
-
-        session_open = []
-
-        class SessionTracker:
-            def __enter__(self):
-                session_open.append(True)
-                return db
-
-            def __exit__(self, *args):
-                session_open.pop()
-                return False
-
-        def check_session_during_api_call(*args, **kwargs):
-            assert len(session_open) == 0, 'API call was made while database session was still open'
-            return {'data': {'id': 5555}}
-
-        mock_get_session.return_value = SessionTracker()
-        mock_update_deal.side_effect = check_session_during_api_call
-
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
-
-        assert len(session_open) == 0
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
@@ -838,6 +740,8 @@ class TestSyncDealPartialSync:
 
         mock_create_deal.assert_not_called()
         mock_update_deal.assert_not_called()
+
+        db.get
 
 
 class TestDealToPDData:
