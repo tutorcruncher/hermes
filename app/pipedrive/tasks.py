@@ -36,11 +36,11 @@ async def sync_company_to_pipedrive(company_id: int):
                 if not company.paid_invoice_count:
                     # Full sync for non-paying companies (update existing + create new open deals)
                     deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
-                    only_sync_deal_fields = False
+                    only_syncable_deal_fields = False
                 else:
                     # Only sync fields for paying companies' existing open deals
                     deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
-                    only_sync_deal_fields = True
+                    only_syncable_deal_fields = True
 
                 deal_ids = [d.id for d in db.exec(deal_query).all()]
 
@@ -50,7 +50,7 @@ async def sync_company_to_pipedrive(company_id: int):
                 await sync_person(contact_id)
 
             for deal_id in deal_ids:
-                await sync_deal(deal_id, only_sync_deal_fields)
+                await sync_deal(deal_id, only_syncable_deal_fields)
 
             logger.info(f'Successfully synced company {company_id} to Pipedrive')
         except Exception as e:
@@ -166,7 +166,7 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
         logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
 
 
-async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
+async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
     """
     Sync a single deal to Pipedrive.
     """
@@ -177,13 +177,13 @@ async def sync_deal(deal_id: int, only_sync_deal_fields: bool = False):
         deal = db.get(Deal, deal_id)
         if not deal:
             return
-        if only_sync_deal_fields:
+        if only_syncable_deal_fields:
             company = db.get(Company, deal.company_id)
         deal_data = _deal_to_pd_data(deal, db)
         pd_deal_id = deal.pd_deal_id
 
-    if only_sync_deal_fields:
-        # this is spaghetti but we do this so we don't hold the db connection
+    if only_syncable_deal_fields:
+        # we do this so we don't hold the db connection
         return await partial_sync_deal_from_company(company, deal)
 
     if pd_deal_id:
