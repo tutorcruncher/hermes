@@ -10,7 +10,7 @@ import pytest
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
@@ -136,7 +136,6 @@ class TestTC2Integration:
         test_stage,
         sample_tc_client_data,
     ):
-        """Test that paying agencies trigger partial deal syncs (only_sync_deal_fields=True)"""
         mock_request.return_value = create_mock_response({'data': {'id': 999}})
         sample_tc_client_data['model'] = 'Client'
 
@@ -2394,25 +2393,13 @@ class TestGetOrCreateDealConsolidation:
 
 
 class TestPartialDealSyncIntegration:
-    """
-    Integration tests for partial deal sync (paid_invoice_count only) from TC2 webhooks to Pipedrive.
-
-    Tests the full flow:
-    TC2 webhook -> process_tc_client -> sync_company_to_pipedrive -> partial_sync_deal_from_company -> PD API
-    """
-
     def get_deal_patch_requests(self, requests_made: list) -> list:
-        """Extract deal PATCH requests from tracked requests."""
         return [r for r in requests_made if r.get('method') == 'PATCH' and 'deals' in r.get('url', '')]
 
     def get_deal_get_requests(self, requests_made: list) -> list:
-        """Extract deal GET requests from tracked requests."""
         return [r for r in requests_made if r.get('method') == 'GET' and 'deals' in r.get('url', '')]
 
     def assert_partial_sync_payload(self, payload: dict, expected_paid_invoice_count: str):
-        """Assert that a payload is a valid partial sync payload with only paid_invoice_count."""
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         assert 'custom_fields' in payload, 'Payload must contain custom_fields'
         assert payload['custom_fields'] == {DEAL_PD_FIELD_MAP['paid_invoice_count']: expected_paid_invoice_count}, (
             f'Expected only paid_invoice_count={expected_paid_invoice_count}, got {payload["custom_fields"]}'
@@ -2428,7 +2415,6 @@ class TestPartialDealSyncIntegration:
 
     @pytest.fixture
     def paying_company_tc_data(self, test_admin):
-        """TC2 client data for a paying company (paid_invoice_count > 0)"""
         return {
             'id': 500,
             'meta_agency': {
@@ -2455,12 +2441,6 @@ class TestPartialDealSyncIntegration:
     async def test_paying_company_sync_only_patches_deal_fields(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that for a paying company, sync_company_to_pipedrive only sends PATCH to deals
-        with paid_invoice_count, without GET-ing the deal first.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2510,12 +2490,6 @@ class TestPartialDealSyncIntegration:
     async def test_paying_company_uses_fresh_company_value_not_stale_deal_value(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that partial sync uses paid_invoice_count from Company (fresh TC2 value),
-        not the stale value on the Deal record.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2555,12 +2529,6 @@ class TestPartialDealSyncIntegration:
     async def test_paying_company_deal_without_pd_deal_id_not_synced(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that deals without pd_deal_id are NOT synced for paying companies
-        (we don't create new deals, we only update existing ones).
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2598,12 +2566,6 @@ class TestPartialDealSyncIntegration:
     async def test_paying_company_closed_deal_not_synced(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that closed deals (won/lost) are NOT synced for paying companies,
-        only open deals get partial sync.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2641,12 +2603,6 @@ class TestPartialDealSyncIntegration:
     async def test_non_paying_company_uses_full_sync_with_get(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that non-paying companies (paid_invoice_count=0) use full sync path,
-        which DOES call GET before PATCH.
-        """
-        from app.tc2.models import TCClient
-
         # Modify to non-paying
         paying_company_tc_data['meta_agency']['paid_invoice_count'] = 0
 
@@ -2687,12 +2643,6 @@ class TestPartialDealSyncIntegration:
     async def test_tc2_webhook_updates_paid_invoice_count_and_syncs_to_deal(
         self, mock_request, client, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Full integration test: TC2 webhook updates paid_invoice_count,
-        which triggers sync_company_to_pipedrive, which partial-syncs to the deal.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2749,12 +2699,6 @@ class TestPartialDealSyncIntegration:
     async def test_multiple_open_deals_all_get_partial_synced(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that when a paying company has multiple open deals with pd_deal_id,
-        ALL of them receive the partial sync.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def track_requests(*args, **kwargs):
@@ -2794,12 +2738,6 @@ class TestPartialDealSyncIntegration:
     async def test_partial_sync_api_error_does_not_crash_flow(
         self, mock_request, db, test_admin, test_pipeline, test_stage, paying_company_tc_data
     ):
-        """
-        Test that if the partial sync API call fails, it doesn't crash the entire sync flow.
-        The correct payload should still be attempted.
-        """
-        from app.tc2.models import TCClient
-
         requests_made = []
 
         async def failing_deal_request(*args, **kwargs):

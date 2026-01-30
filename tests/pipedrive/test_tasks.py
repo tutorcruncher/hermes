@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from app.main_app.models import Company, Deal
+from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
     _deal_to_pd_data,
     _meeting_to_activity_data,
@@ -372,13 +373,7 @@ class TestSyncDeal:
         test_stage,
         test_config,
     ):
-        """Test that deals marked deleted are not included in company sync"""
-        from datetime import datetime
-
         from pytz import utc
-        from sqlmodel import select
-
-        from app.main_app.models import Company, Deal
 
         mock_gcal.return_value = MockGCalResource(test_admin.username)
         mock_create_org.return_value = {'data': {'id': 7777}}
@@ -432,9 +427,6 @@ class TestSyncDeal:
     async def test_tc2_closed_deal_synced_to_pipedrive(
         self, mock_get_deal, mock_update_deal, mock_sync_person, mock_sync_org, db, test_deal
     ):
-        """Test that deals closed by TC2 (with pd_deal_id) are still synced to Pipedrive"""
-        from app.main_app.models import Deal
-
         # Set up a deal that was closed by TC2 (NARC or terminated)
         test_deal.pd_deal_id = 5555
         test_deal.status = Deal.STATUS_LOST
@@ -474,13 +466,7 @@ class TestSyncDeal:
         test_stage,
         test_config,
     ):
-        """Test that open deals from callbooker are synced to Pipedrive"""
-        from datetime import datetime
-
         from pytz import utc
-        from sqlmodel import select
-
-        from app.main_app.models import Company, Deal
 
         mock_gcal.return_value = MockGCalResource(test_admin.username)
         mock_create_org.return_value = {'data': {'id': 7777}}
@@ -524,15 +510,12 @@ class TestSyncDeal:
 
 
 class TestSyncDealPartialSync:
-    """Test sync_deal with only_sync_deal_fields=True (partial sync path)"""
-
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
     async def test_partial_sync_updates_deal_without_get(
         self, mock_get_deal, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync calls update_deal directly without calling get_deal"""
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 10
         db.add(test_deal)
@@ -542,7 +525,7 @@ class TestSyncDealPartialSync:
         mock_get_session.return_value = SessionMock(db)
         mock_update_deal.return_value = {'data': {'id': 5555}}
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_get_deal.assert_not_called()
         mock_update_deal.assert_called_once()
@@ -552,9 +535,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_sends_only_syncable_fields(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync only sends SYNCABLE_DEAL_FIELDS from Company"""
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 42
         db.add(test_deal)
@@ -564,7 +544,7 @@ class TestSyncDealPartialSync:
         mock_get_session.return_value = SessionMock(db)
         mock_update_deal.return_value = {'data': {'id': 5555}}
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_update_deal.assert_called_once()
         call_args = mock_update_deal.call_args
@@ -579,9 +559,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_uses_company_value_not_deal_value(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync uses paid_invoice_count from Company, not stale Deal value"""
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         test_deal.pd_deal_id = 5555
         test_deal.paid_invoice_count = 5  # Stale value on deal
         test_company.paid_invoice_count = 99  # Fresh value on company
@@ -592,7 +569,7 @@ class TestSyncDealPartialSync:
         mock_get_session.return_value = SessionMock(db)
         mock_update_deal.return_value = {'data': {'id': 5555}}
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         call_args = mock_update_deal.call_args
         payload = call_args[0][1]
@@ -603,7 +580,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_no_pd_deal_id_returns_early(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync returns early if deal has no pd_deal_id"""
         test_deal.pd_deal_id = None
         test_company.paid_invoice_count = 10
         db.add(test_deal)
@@ -612,7 +588,7 @@ class TestSyncDealPartialSync:
 
         mock_get_session.return_value = SessionMock(db)
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_update_deal.assert_not_called()
 
@@ -621,7 +597,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_no_paid_invoice_count_no_api_call(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that partial sync makes no API call if paid_invoice_count is None"""
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = None
         db.add(test_deal)
@@ -630,7 +605,7 @@ class TestSyncDealPartialSync:
 
         mock_get_session.return_value = SessionMock(db)
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_update_deal.assert_not_called()
 
@@ -639,9 +614,6 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_paid_invoice_count_zero_is_sent(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
-        """Test that paid_invoice_count=0 is sent (0 is not None)"""
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 0
         db.add(test_deal)
@@ -651,7 +623,7 @@ class TestSyncDealPartialSync:
         mock_get_session.return_value = SessionMock(db)
         mock_update_deal.return_value = {'data': {'id': 5555}}
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_update_deal.assert_called_once()
         call_args = mock_update_deal.call_args
@@ -672,15 +644,13 @@ class TestSyncDealPartialSync:
         mock_get_session.return_value = SessionMock(db)
         mock_get_deal.return_value = {'data': {'id': 5555, 'status': 'open'}}
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         # we don't want to do a full sync
         mock_get_deal.assert_not_called()
 
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     async def test_partial_sync_deal_from_company_directly(self, mock_update_deal, db, test_deal, test_company):
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = 25
         db.add(test_deal)
@@ -736,7 +706,7 @@ class TestSyncDealPartialSync:
 
         mock_get_session.return_value = SessionMock(db)
 
-        await sync_deal(test_deal.id, only_sync_deal_fields=True)
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
 
         mock_create_deal.assert_not_called()
         mock_update_deal.assert_not_called()
@@ -811,9 +781,6 @@ class TestDealToPDData:
         assert 'custom_fields' in result
         custom_fields = result['custom_fields']
 
-        # Verify custom fields are present (exact field IDs depend on DEAL_PD_FIELD_MAP)
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
-
         # Check non-None fields are included
         assert DEAL_PD_FIELD_MAP['website'] in custom_fields
         assert custom_fields[DEAL_PD_FIELD_MAP['website']] == 'https://example.com'
@@ -837,8 +804,6 @@ class TestDealToPDData:
 
         assert 'custom_fields' in result
         custom_fields = result['custom_fields']
-
-        from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
 
         # None and empty string fields should not be in custom_fields
         assert DEAL_PD_FIELD_MAP['website'] not in custom_fields
