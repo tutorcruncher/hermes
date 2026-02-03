@@ -711,7 +711,8 @@ class TestSyncDealPartialSync:
         mock_create_deal.assert_not_called()
         mock_update_deal.assert_not_called()
 
-        db.get
+        deal_count = len(db.exec(select(Deal)).all())
+        assert deal_count == 1
 
 
 class TestDealToPDData:
