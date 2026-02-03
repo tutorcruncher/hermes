@@ -1688,7 +1688,7 @@ class TestTC2SyncableFields:
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
-        sample_tc_client_data['meta_agency']['created'] = '2025-11-01T00:00:00Z'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
 
         webhook_data = {
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
