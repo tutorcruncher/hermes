@@ -183,7 +183,6 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
             deal_data = _deal_to_pd_data(deal, db)
         pd_deal_id = deal.pd_deal_id
 
-
     if only_syncable_deal_fields:
         # we do this so we don't hold the db connection
         return await partial_sync_deal_from_company(company, deal)
