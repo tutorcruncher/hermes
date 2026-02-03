@@ -179,10 +179,10 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
             return
         if only_syncable_deal_fields:
             company = db.get(Company, deal.company_id)
-            pd_deal_id = deal.pd_deal_id
         else:
             deal_data = _deal_to_pd_data(deal, db)
-            pd_deal_id = deal.pd_deal_id
+        pd_deal_id = deal.pd_deal_id
+
 
     if only_syncable_deal_fields:
         # we do this so we don't hold the db connection
