@@ -243,6 +243,9 @@ class Contact(SQLModel, table=True):
     phone: Optional[str] = Field(default=None, max_length=255)
     country: Optional[str] = Field(default=None, max_length=255)
 
+    # Flags
+    is_deleted: bool = Field(default=False)
+
     # Foreign key
     company_id: int = Field(foreign_key='company.id')
 

@@ -2,6 +2,8 @@
 Tests for Pipedrive merged entities with comma-separated hermes_ids.
 """
 
+from unittest.mock import AsyncMock, patch
+
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline
@@ -87,9 +89,10 @@ class TestPipedriveWebhookMergedEntities:
         assert contact1.first_name == 'Jane'
         assert contact1.pd_person_id == 400
 
-        # Contact 2 should still exist (no deletion)
+        # Contact 2 should be marked as deleted
         db.refresh(contact2)
-        assert contact2.id is not None
+        assert contact2.pd_person_id is None
+        assert contact2.is_deleted is True
 
     async def test_deal_merged_with_comma_separated_hermes_ids(
         self, client, db, test_admin, test_company, test_pipeline, test_stage
@@ -393,6 +396,7 @@ class TestPipedriveWebhookEdgeCases:
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id is None
+        assert test_contact.is_deleted is True
 
     async def test_person_webhook_with_name_update(self, client, db, test_contact):
         """Test person webhook updates name fields"""
@@ -841,3 +845,341 @@ class TestPipedriveWebhookEdgeCases:
         db.refresh(deal)
         # tc2_cligency_url should now be populated by Pipedrive
         assert deal.tc2_cligency_url == 'https://secure.tutorcruncher.com/clients/99999/'
+
+
+class TestPipedrivePersonMergeDeletion:
+    """Test person merge scenarios with deletion"""
+
+    async def test_person_merge_marks_loser_deleted(self, client, db, test_company):
+        """Test that merged loser contacts are marked as deleted"""
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{contact1.id}, {contact2.id}',
+                'name': 'John Winner',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact1)
+        assert contact1.first_name == 'John'
+        assert contact1.pd_person_id == 400
+        assert contact1.is_deleted is False
+
+        db.refresh(contact2)
+        assert contact2.pd_person_id is None
+        assert contact2.is_deleted is True
+
+    async def test_person_merge_loser_only_processed_once(self, client, db, test_company):
+        """Test that merged losers are only marked deleted once, not on subsequent callbacks"""
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{contact1.id}, {contact2.id}',
+                'name': 'John Winner',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(contact2)
+        assert contact2.is_deleted is True
+        assert contact2.pd_person_id is None
+
+        # Send the same merge webhook again (e.g. another update to the winner)
+        webhook_data['data']['name'] = 'John Updated'
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(contact1)
+        assert contact1.first_name == 'John'
+
+        db.refresh(contact2)
+        assert contact2.is_deleted is True
+        assert contact2.pd_person_id is None
+
+    async def test_person_merge_with_multiple_losers(self, client, db, test_company):
+        """Test that merging three contacts marks both losers as deleted"""
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser1',
+                email='john.loser1@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+        contact3 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser2',
+                email='john.loser2@example.com',
+                pd_person_id=600,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{contact1.id}, {contact2.id}, {contact3.id}',
+                'name': 'John Winner',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact1)
+        assert contact1.pd_person_id == 400
+        assert contact1.is_deleted is False
+
+        db.refresh(contact2)
+        assert contact2.pd_person_id is None
+        assert contact2.is_deleted is True
+
+        db.refresh(contact3)
+        assert contact3.pd_person_id is None
+        assert contact3.is_deleted is True
+
+    async def test_person_merge_updates_org_link(self, client, db, test_admin):
+        """Test merge where winner gets new org_id, verify company_id is updated"""
+        company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
+
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=company1.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=500,
+                company_id=company2.id,
+            )
+        )
+
+        # Merge webhook where winner is now associated with company2's org
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'updated'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{contact1.id}, {contact2.id}',
+                'name': 'John Winner',
+                'email': ['john@example.com'],
+                'org_id': 200,  # Now linked to company2's org
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact1)
+        assert contact1.company_id == company2.id
+        assert contact1.is_deleted is False
+
+        db.refresh(contact2)
+        assert contact2.pd_person_id is None
+        assert contact2.is_deleted is True
+
+    async def test_person_deletion_marks_as_deleted(self, client, db, test_company):
+        """Test that deletion webhook sets is_deleted=True on Contact"""
+        contact = db.create(
+            Contact(
+                first_name='John',
+                last_name='Doe',
+                email='john@example.com',
+                pd_person_id=888,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'deleted'},
+            'data': None,
+            'previous': {
+                'id': 888,
+                CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+                'name': 'John Doe',
+            },
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact)
+        assert contact.pd_person_id is None
+        assert contact.is_deleted is True
+
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    async def test_tc2_callback_does_not_sync_deleted_contact(
+        self, mock_update_org, mock_get_org, mock_create_person, client, db, test_admin
+    ):
+        """Test that TC2 callback does not recreate a merged-deleted contact in Pipedrive"""
+        company = db.create(
+            Company(
+                name='Test Company',
+                sales_person_id=test_admin.id,
+                price_plan='payg',
+                pd_org_id=100,
+                tc2_cligency_id=9999,
+                tc2_agency_id=8888,
+            )
+        )
+        # Winner contact - still active
+        db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=company.id,
+            )
+        )
+        # Loser contact - marked as deleted from a merge
+        loser = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=company.id,
+            )
+        )
+
+        mock_get_org.return_value = {
+            'data': {'id': 100, 'name': 'Test Company', COMPANY_PD_FIELD_MAP['paid_invoice_count']: '0'}
+        }
+
+        # TC2 sends a webhook for this company
+        webhook_data = {
+            'events': [
+                {
+                    'action': 'UPDATE',
+                    'verb': 'EDITED_A_CLIENT',
+                    'subject': {
+                        'model': 'Client',
+                        'id': 9999,
+                        'meta_agency': {
+                            'id': 8888,
+                            'name': 'Test Company',
+                            'status': 'active',
+                            'country': 'United Kingdom (GB)',
+                            'website': 'https://example.com',
+                            'paid_invoice_count': 0,
+                            'created': '2024-01-01T00:00:00Z',
+                            'price_plan': 'monthly-payg',
+                            'narc': False,
+                            'pay0_dt': None,
+                            'pay1_dt': None,
+                            'pay3_dt': None,
+                            'card_saved_dt': None,
+                            'email_confirmed_dt': None,
+                            'gclid': None,
+                            'gclid_expiry_dt': None,
+                        },
+                        'user': {
+                            'first_name': 'John',
+                            'last_name': 'Doe',
+                            'email': 'john@example.com',
+                            'phone': '+1234567890',
+                        },
+                        'status': 'active',
+                        'sales_person': {'id': test_admin.tc2_admin_id},
+                        'paid_recipients': [],
+                        'extra_attrs': [],
+                    },
+                }
+            ]
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        # create_person should not have been called for the deleted loser contact
+        mock_create_person.assert_not_called()
+
+        # Loser should still be deleted
+        db.refresh(loser)
+        assert loser.is_deleted is True
+        assert loser.pd_person_id is None

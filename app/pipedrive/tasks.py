@@ -30,7 +30,12 @@ async def sync_company_to_pipedrive(company_id: int):
                     logger.info(f'Company {company_id} is marked as deleted, skipping sync')
                     return
 
-                contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+                contact_ids = [
+                    c.id
+                    for c in db.exec(
+                        select(Contact).where(Contact.company_id == company_id, Contact.is_deleted == False)  # noqa: E712
+                    ).all()
+                ]
 
                 deal_query = select(Deal).where(Deal.company_id == company_id)
                 if not company.paid_invoice_count:
@@ -105,6 +110,9 @@ async def sync_person(contact_id: int):
     with get_session() as db:
         contact = db.get(Contact, contact_id)
         if not contact:
+            return
+        if contact.is_deleted:
+            logger.info(f'Contact {contact_id} is marked as deleted, skipping sync')
             return
         person_data = _contact_to_person_data(contact, db)
         pd_person_id = contact.pd_person_id
