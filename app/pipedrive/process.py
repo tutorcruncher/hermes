@@ -133,6 +133,8 @@ class OrganisationProcessor(PipedriveObjProcessor):
         ]
 
     def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
+        """Mark merged loser companies as deleted and clear their Pipedrive org ID,
+        since the org no longer exists in Pipedrive after the merge."""
         for loser_id in loser_ids:
             loser_obj = self.db.get(Company, loser_id)
             if loser_obj and not loser_obj.is_deleted:
@@ -195,6 +197,8 @@ class PersonProcessor(PipedriveObjProcessor):
         return [f for f in list(CONTACT_PD_FIELD_MAP.keys()) if f != 'hermes_id']
 
     def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
+        """Mark merged loser contacts as deleted and clear their Pipedrive person ID,
+        since the person no longer exists in Pipedrive after the merge."""
         for loser_id in loser_ids:
             loser_obj = self.db.get(Contact, loser_id)
             if loser_obj and not loser_obj.is_deleted:
