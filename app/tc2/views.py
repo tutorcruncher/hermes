@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -12,6 +13,17 @@ from app.tc2.process import process_tc_client
 logger = logging.getLogger('hermes.tc2')
 
 router = APIRouter(prefix='/tc2', tags=['tc2'])
+
+# Per-cligency lock to serialise concurrent webhook processing for the same TC2 client.
+# Prevents duplicate Hermes Deal rows when CREATED_A_CLIENT and EDITED_A_CLIENT
+# arrive as near-simultaneous separate requests from TC2 batched webhooks.
+_cligency_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_cligency_lock(cligency_id: int) -> asyncio.Lock:
+    if cligency_id not in _cligency_locks:
+        _cligency_locks[cligency_id] = asyncio.Lock()
+    return _cligency_locks[cligency_id]
 
 
 @router.post('/callback/', name='tc2-callback')
@@ -38,17 +50,18 @@ async def tc2_callback(
                 continue
 
             try:
-                # Process the client (creates/updates Company and Contacts)
-                with get_session() as db:
-                    company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
+                async with _get_cligency_lock(event.subject.id):
+                    # Process the client (creates/updates Company and Contacts)
+                    with get_session() as db:
+                        company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
 
-                if company:
-                    # Queue background task to sync to Pipedrive
-                    if company.narc:
-                        # NARC companies are deleted/purged from Pipedrive
-                        background_tasks.add_task(purge_company_from_pipedrive, company.id)
-                    else:
-                        background_tasks.add_task(sync_company_to_pipedrive, company.id)
+                    if company:
+                        # Queue background task to sync to Pipedrive
+                        if company.narc:
+                            # NARC companies are deleted/purged from Pipedrive
+                            background_tasks.add_task(purge_company_from_pipedrive, company.id)
+                        else:
+                            background_tasks.add_task(sync_company_to_pipedrive, company.id)
 
             except Exception as e:
                 logger.error(f'Error processing TC2 client event: {e}', exc_info=True)

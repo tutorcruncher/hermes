@@ -2,6 +2,7 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -1282,6 +1283,29 @@ class TestTC2DealCreation:
         # Should not crash and should update successfully
         assert updated_company is not None
         assert updated_company.tc2_status == 'live'
+
+    async def test_concurrent_process_tc_client_creates_only_one_deal(
+        self, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that two concurrent process_tc_client calls for the same cligency
+        only create one deal, not two (the cligency lock serialises them)."""
+        from app.tc2.views import _get_cligency_lock
+
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        cligency_id = sample_tc_client_data['id']
+
+        async def locked_process():
+            async with _get_cligency_lock(cligency_id):
+                tc_client = TCClient(**sample_tc_client_data)
+                await process_tc_client(tc_client, db, create_deal=True)
+
+        await asyncio.gather(locked_process(), locked_process())
+
+        deals = db.exec(select(Deal).where(Deal.company_id.is_not(None))).all()
+        assert len(deals) == 1
 
 
 class TestTC2SyncableFields:

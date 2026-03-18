@@ -14,6 +14,9 @@ logger = logging.getLogger('hermes.pipedrive')
 
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
+# Per-company asyncio locks to serialise concurrent syncs for the same company.
+# Only valid because Hermes runs a single uvicorn worker (see Procfile).
+# Lock objects are tiny; unbounded growth is fine for the volume of companies we see.
 _company_sync_locks: dict[int, asyncio.Lock] = {}
 
 
@@ -45,7 +48,9 @@ async def sync_company_to_pipedrive(company_id: int):
                     deal_query = select(Deal).where(Deal.company_id == company_id)
                     if not company.paid_invoice_count:
                         # Full sync for non-paying companies (update existing + create new open deals)
-                        deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
+                        deal_query = deal_query.where(
+                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN)
+                        )
                         only_syncable_deal_fields = False
                     else:
                         # Only sync fields for paying companies' existing open deals
