@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -13,48 +14,57 @@ logger = logging.getLogger('hermes.pipedrive')
 
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
+_company_sync_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_company_lock(company_id: int) -> asyncio.Lock:
+    if company_id not in _company_sync_locks:
+        _company_sync_locks[company_id] = asyncio.Lock()
+    return _company_sync_locks[company_id]
+
 
 async def sync_company_to_pipedrive(company_id: int):
     """
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
     """
-    with logfire.span('sync_company_to_pipedrive'):
-        try:
-            with get_session() as db:
-                company = db.get(Company, company_id)
-                if not company:
-                    logger.warning(f'Company {company_id} not found, skipping sync')
-                    return
-                if company.is_deleted:
-                    logger.info(f'Company {company_id} is marked as deleted, skipping sync')
-                    return
+    async with _get_company_lock(company_id):
+        with logfire.span('sync_company_to_pipedrive'):
+            try:
+                with get_session() as db:
+                    company = db.get(Company, company_id)
+                    if not company:
+                        logger.warning(f'Company {company_id} not found, skipping sync')
+                        return
+                    if company.is_deleted:
+                        logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                        return
 
-                contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+                    contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
 
-                deal_query = select(Deal).where(Deal.company_id == company_id)
-                if not company.paid_invoice_count:
-                    # Full sync for non-paying companies (update existing + create new open deals)
-                    deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
-                    only_syncable_deal_fields = False
-                else:
-                    # Only sync fields for paying companies' existing open deals
-                    deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
-                    only_syncable_deal_fields = True
+                    deal_query = select(Deal).where(Deal.company_id == company_id)
+                    if not company.paid_invoice_count:
+                        # Full sync for non-paying companies (update existing + create new open deals)
+                        deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
+                        only_syncable_deal_fields = False
+                    else:
+                        # Only sync fields for paying companies' existing open deals
+                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                        only_syncable_deal_fields = True
 
-                deal_ids = [d.id for d in db.exec(deal_query).all()]
+                    deal_ids = [d.id for d in db.exec(deal_query).all()]
 
-            await sync_organization(company_id)
+                await sync_organization(company_id)
 
-            for contact_id in contact_ids:
-                await sync_person(contact_id)
+                for contact_id in contact_ids:
+                    await sync_person(contact_id)
 
-            for deal_id in deal_ids:
-                await sync_deal(deal_id, only_syncable_deal_fields)
+                for deal_id in deal_ids:
+                    await sync_deal(deal_id, only_syncable_deal_fields)
 
-            logger.info(f'Successfully synced company {company_id} to Pipedrive')
-        except Exception as e:
-            logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
+                logger.info(f'Successfully synced company {company_id} to Pipedrive')
+            except Exception as e:
+                logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
 
 
 async def sync_organization(company_id: int):
