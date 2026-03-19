@@ -1284,26 +1284,39 @@ class TestTC2DealCreation:
         assert updated_company is not None
         assert updated_company.tc2_status == 'live'
 
-    async def test_concurrent_process_tc_client_creates_only_one_deal(
-        self, db, test_admin, test_config, sample_tc_client_data
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_concurrent_webhooks_create_only_one_deal(
+        self, mock_sync, db, test_admin, test_config, sample_tc_client_data
     ):
-        """Test that two concurrent process_tc_client calls for the same cligency
-        only create one deal, not two (the cligency lock serialises them)."""
-        from app.tc2.views import _get_cligency_lock
+        """Test that two concurrent POST /tc2/callback/ requests for the same cligency
+        only create one deal, not two (exercises the real route with cligency lock)."""
+        from httpx import ASGITransport, AsyncClient
 
+        from app.main import app
+
+        sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
 
-        cligency_id = sample_tc_client_data['id']
+        webhook_data_1 = {
+            'events': [{'action': 'CREATED_A_CLIENT', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        webhook_data_2 = {
+            'events': [{'action': 'EDITED_A_CLIENT', 'verb': 'edit', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
 
-        async def locked_process():
-            async with _get_cligency_lock(cligency_id):
-                tc_client = TCClient(**sample_tc_client_data)
-                await process_tc_client(tc_client, db, create_deal=True)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            responses = await asyncio.gather(
+                ac.post('/tc2/callback/', json=webhook_data_1),
+                ac.post('/tc2/callback/', json=webhook_data_2),
+            )
 
-        await asyncio.gather(locked_process(), locked_process())
+        assert all(r.status_code == 200 for r in responses)
 
+        db.expire_all()
         deals = db.exec(select(Deal).where(Deal.company_id.is_not(None))).all()
         assert len(deals) == 1
 
