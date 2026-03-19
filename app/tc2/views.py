@@ -21,6 +21,10 @@ _cligency_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_cligency_lock(cligency_id: int) -> asyncio.Lock:
+    """
+    builds a dict of per cligency lock, so that concurrent action webhooks for the same cligency
+    utilise the locking mechanism. This avoids holding a global lock for unique cligency actions
+    """
     if cligency_id not in _cligency_locks:
         _cligency_locks[cligency_id] = asyncio.Lock()
     return _cligency_locks[cligency_id]
@@ -51,6 +55,8 @@ async def tc2_callback(
 
             try:
                 async with _get_cligency_lock(event.subject.id):
+                    # the cligency lock will prevent concurrrent WH requests from creating duplicate
+                    # companies in `process_tc_client` (case where WH1 and WH2 both creates a new company in the signup flow)
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
                         company = await process_tc_client(TCClient(**event.subject.model_dump()), db)

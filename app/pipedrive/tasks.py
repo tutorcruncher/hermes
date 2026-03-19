@@ -21,6 +21,10 @@ _company_sync_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_company_lock(company_id: int) -> asyncio.Lock:
+    """
+    same as `_get_cligency_lock` but this will be utilised in the sync `BackgroundTasks`
+    and will have a lock per company id supplied to background task
+    """
     if company_id not in _company_sync_locks:
         _company_sync_locks[company_id] = asyncio.Lock()
     return _company_sync_locks[company_id]
