@@ -16,7 +16,6 @@ SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from de
 
 # Per-company asyncio locks to serialise concurrent syncs for the same company.
 # Only valid because Hermes runs a single uvicorn worker (see Procfile).
-# Lock objects are tiny; unbounded growth is fine for the volume of companies we see.
 _company_sync_locks: dict[int, asyncio.Lock] = {}
 
 
