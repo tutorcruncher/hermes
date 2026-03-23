@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import datetime
 
@@ -6,6 +5,7 @@ import logfire
 from sqlmodel import select
 
 from app.core.database import get_session
+from app.core.locks import LockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
@@ -14,19 +14,9 @@ logger = logging.getLogger('hermes.pipedrive')
 
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
-# Per-company asyncio locks to serialise concurrent syncs for the same company.
+# Per-company locks to serialise concurrent syncs for the same company.
 # Only valid because Hermes runs a single uvicorn worker (see Procfile).
-_company_sync_locks: dict[int, asyncio.Lock] = {}
-
-
-def _get_company_lock(company_id: int) -> asyncio.Lock:
-    """
-    same as `_get_cligency_lock` but this will be utilised in the sync `BackgroundTasks`
-    and will have a lock per company id supplied to background task
-    """
-    if company_id not in _company_sync_locks:
-        _company_sync_locks[company_id] = asyncio.Lock()
-    return _company_sync_locks[company_id]
+_company_sync_locks = LockRegistry()
 
 
 async def sync_company_to_pipedrive(company_id: int):
@@ -34,45 +24,51 @@ async def sync_company_to_pipedrive(company_id: int):
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
     """
-    async with _get_company_lock(company_id):
-        with logfire.span('sync_company_to_pipedrive'):
-            try:
-                with get_session() as db:
-                    company = db.get(Company, company_id)
-                    if not company:
-                        logger.warning(f'Company {company_id} not found, skipping sync')
-                        return
-                    if company.is_deleted:
-                        logger.info(f'Company {company_id} is marked as deleted, skipping sync')
-                        return
+    lock = _company_sync_locks.get(company_id)
+    try:
+        async with lock:
+            with logfire.span('sync_company_to_pipedrive'):
+                try:
+                    with get_session() as db:
+                        company = db.get(Company, company_id)
+                        if not company:
+                            logger.warning(f'Company {company_id} not found, skipping sync')
+                            return
+                        if company.is_deleted:
+                            logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                            return
 
-                    contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+                        contact_ids = [
+                            c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()
+                        ]
 
-                    deal_query = select(Deal).where(Deal.company_id == company_id)
-                    if not company.paid_invoice_count:
-                        # Full sync for non-paying companies (update existing + create new open deals)
-                        deal_query = deal_query.where(
-                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN)
-                        )
-                        only_syncable_deal_fields = False
-                    else:
-                        # Only sync fields for paying companies' existing open deals
-                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
-                        only_syncable_deal_fields = True
+                        deal_query = select(Deal).where(Deal.company_id == company_id)
+                        if not company.paid_invoice_count:
+                            # Full sync for non-paying companies (update existing + create new open deals)
+                            deal_query = deal_query.where(
+                                (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN)
+                            )
+                            only_syncable_deal_fields = False
+                        else:
+                            # Only sync fields for paying companies' existing open deals
+                            deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                            only_syncable_deal_fields = True
 
-                    deal_ids = [d.id for d in db.exec(deal_query).all()]
+                        deal_ids = [d.id for d in db.exec(deal_query).all()]
 
-                await sync_organization(company_id)
+                    await sync_organization(company_id)
 
-                for contact_id in contact_ids:
-                    await sync_person(contact_id)
+                    for contact_id in contact_ids:
+                        await sync_person(contact_id)
 
-                for deal_id in deal_ids:
-                    await sync_deal(deal_id, only_syncable_deal_fields)
+                    for deal_id in deal_ids:
+                        await sync_deal(deal_id, only_syncable_deal_fields)
 
-                logger.info(f'Successfully synced company {company_id} to Pipedrive')
-            except Exception as e:
-                logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
+                    logger.info(f'Successfully synced company {company_id} to Pipedrive')
+                except Exception as e:
+                    logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
+    finally:
+        _company_sync_locks.release(company_id)
 
 
 async def sync_organization(company_id: int):

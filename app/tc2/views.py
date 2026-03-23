@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Optional
 
@@ -6,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Header
 
 from app.core.config import settings
 from app.core.database import get_session
+from app.core.locks import LockRegistry
 from app.pipedrive.tasks import purge_company_from_pipedrive, sync_company_to_pipedrive
 from app.tc2.models import TCClient, TCWebhook
 from app.tc2.process import process_tc_client
@@ -17,17 +17,7 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 # Per-cligency lock to serialise concurrent webhook processing for the same TC2 client.
 # Prevents duplicate Hermes Deal rows when CREATED_A_CLIENT and EDITED_A_CLIENT
 # arrive as near-simultaneous separate requests from TC2 batched webhooks.
-_cligency_locks: dict[int, asyncio.Lock] = {}
-
-
-def _get_cligency_lock(cligency_id: int) -> asyncio.Lock:
-    """
-    builds a dict of per cligency lock, so that concurrent action webhooks for the same cligency
-    utilise the locking mechanism. This avoids holding a global lock for unique cligency actions
-    """
-    if cligency_id not in _cligency_locks:
-        _cligency_locks[cligency_id] = asyncio.Lock()
-    return _cligency_locks[cligency_id]
+_cligency_locks = LockRegistry()
 
 
 @router.post('/callback/', name='tc2-callback')
@@ -53,10 +43,9 @@ async def tc2_callback(
                 logger.info('Ignoring AGREE_TERMS event')
                 continue
 
+            lock = _cligency_locks.get(event.subject.id)
             try:
-                async with _get_cligency_lock(event.subject.id):
-                    # the cligency lock will prevent concurrrent WH requests from creating duplicate
-                    # companies in `process_tc_client` (case where WH1 and WH2 both creates a new company in the signup flow)
+                async with lock:
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
                         company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
@@ -64,13 +53,14 @@ async def tc2_callback(
                     if company:
                         # Queue background task to sync to Pipedrive
                         if company.narc:
-                            # NARC companies are deleted/purged from Pipedrive
                             background_tasks.add_task(purge_company_from_pipedrive, company.id)
                         else:
                             background_tasks.add_task(sync_company_to_pipedrive, company.id)
 
             except Exception as e:
                 logger.error(f'Error processing TC2 client event: {e}', exc_info=True)
+            finally:
+                _cligency_locks.release(event.subject.id)
 
         else:
             logger.info(f'Ignoring event with subject model {event.subject.model}')
