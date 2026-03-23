@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
+from app.main import app
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
@@ -1290,10 +1292,6 @@ class TestTC2DealCreation:
     ):
         """Test that two concurrent POST /tc2/callback/ requests for the same cligency
         only create one deal, not two (exercises the real route with cligency lock)."""
-        from httpx import ASGITransport, AsyncClient
-
-        from app.main import app
-
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['status'] = 'trial'
         sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()

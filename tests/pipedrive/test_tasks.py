@@ -81,7 +81,6 @@ class TestSyncCompanyToPipedrive:
     ):
         """Test that two concurrent sync_company_to_pipedrive calls for the same company
         only create one PD deal, not two (the lock serializes them)."""
-        # Ensure no PD IDs are set so both would try to create
         test_company.pd_org_id = None
         test_contact.pd_person_id = None
         test_deal.pd_deal_id = None
@@ -94,14 +93,14 @@ class TestSyncCompanyToPipedrive:
         mock_create_person.return_value = {'data': {'id': 200}}
         mock_create_deal.return_value = {'data': {'id': 300}}
 
-        # Run two syncs concurrently — the lock should serialize them
+        # Run two syncs concurrently for the locks to serialise them
         await asyncio.gather(
             sync_company_to_pipedrive(test_company.id),
             sync_company_to_pipedrive(test_company.id),
         )
 
         # The first sync creates the deal; the second sync should see pd_deal_id already set
-        # and do a GET+PATCH (update) instead of POST (create)
+        # and do a GET+PATCH
         assert mock_create_deal.call_count == 1
 
 
