@@ -43,9 +43,8 @@ async def tc2_callback(
                 logger.info('Ignoring AGREE_TERMS event')
                 continue
 
-            lock = _cligency_locks.get(event.subject.id)
             try:
-                async with lock:
+                async with _cligency_locks.acquire(event.subject.id):
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
                         company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
@@ -59,8 +58,6 @@ async def tc2_callback(
 
             except Exception as e:
                 logger.error(f'Error processing TC2 client event: {e}', exc_info=True)
-            finally:
-                _cligency_locks.release(event.subject.id)
 
         else:
             logger.info(f'Ignoring event with subject model {event.subject.model}')

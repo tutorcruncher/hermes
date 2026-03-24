@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 
 
 class _RefCountedLock:
@@ -43,12 +44,21 @@ class LockRegistry:
     def __init__(self):
         self._locks: dict[int, _RefCountedLock] = {}
 
-    def get(self, key: int) -> _RefCountedLock:
+    def _get(self, key: int) -> _RefCountedLock:
         if key not in self._locks:
             self._locks[key] = _RefCountedLock()
         return self._locks[key]
 
-    def release(self, key: int) -> None:
+    def _release(self, key: int) -> None:
         lock = self._locks.get(key)
         if lock and not lock.in_use:
             self._locks.pop(key, None)
+
+    @asynccontextmanager
+    async def acquire(self, key: int):
+        lock = self._get(key)
+        try:
+            async with lock:
+                yield
+        finally:
+            self._release(key)

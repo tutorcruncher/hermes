@@ -13,38 +13,27 @@ class TestLockRegistry:
     async def test_cleanup_after_normal_completion(self):
         """Lock is removed from the registry after the work finishes normally."""
         registry = LockRegistry()
-        lock = registry.get(1)
-        async with lock:
+        async with registry.acquire(1):
             assert 1 in registry._locks
-        registry.release(1)
         assert 1 not in registry._locks
 
     async def test_cleanup_after_body_raises(self):
         """Lock is removed from the registry even when the body raises an exception."""
         registry = LockRegistry()
-        lock = registry.get(1)
         with pytest.raises(ValueError):
-            try:
-                async with lock:
-                    raise ValueError('boom')
-            finally:
-                registry.release(1)
+            async with registry.acquire(1):
+                raise ValueError('boom')
         assert 1 not in registry._locks
 
     async def test_cleanup_after_waiter_cancelled(self):
         """Lock is removed after a queued waiter is cancelled mid-wait."""
         registry = LockRegistry()
 
-        lock = registry.get(1)
-        async with lock:
-            # Start a second task that will wait on the same lock
+        async with registry.acquire(1):
+
             async def waiter():
-                wlock = registry.get(1)
-                try:
-                    async with wlock:
-                        pass
-                finally:
-                    registry.release(1)
+                async with registry.acquire(1):
+                    pass
 
             task = asyncio.create_task(waiter())
             # Let the waiter reach the acquire() and block
@@ -53,8 +42,6 @@ class TestLockRegistry:
             task.cancel()
             await asyncio.sleep(0)
 
-        # First holder exits, release its side
-        registry.release(1)
         assert 1 not in registry._locks
 
     async def test_lock_not_evicted_while_waiter_queued(self):
@@ -62,21 +49,15 @@ class TestLockRegistry:
         registry = LockRegistry()
         entered = asyncio.Event()
 
-        lock = registry.get(1)
-        async with lock:
+        async with registry.acquire(1):
 
             async def waiter():
-                wlock = registry.get(1)
-                try:
-                    async with wlock:
-                        entered.set()
-                finally:
-                    registry.release(1)
+                async with registry.acquire(1):
+                    entered.set()
 
             task = asyncio.create_task(waiter())
             await asyncio.sleep(0)
-            # Holder releases — should NOT evict because waiter is queued
-            registry.release(1)
+            # Waiter is queued, lock should still be in the registry
             assert 1 in registry._locks
 
         # Let waiter finish
@@ -90,14 +71,10 @@ class TestLockRegistry:
         order = []
 
         async def work(key, label):
-            lock = registry.get(key)
-            try:
-                async with lock:
-                    order.append(f'{label}_start')
-                    await asyncio.sleep(0)
-                    order.append(f'{label}_end')
-            finally:
-                registry.release(key)
+            async with registry.acquire(key):
+                order.append(f'{label}_start')
+                await asyncio.sleep(0)
+                order.append(f'{label}_end')
 
         await asyncio.gather(work(1, 'a'), work(2, 'b'))
         # Both should interleave since they use different keys

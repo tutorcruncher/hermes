@@ -73,11 +73,30 @@ class TestSyncCompanyToPipedrive:
         mock_sync_org.assert_not_called()
 
     @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_concurrent_sync_creates_only_one_deal(
-        self, mock_create_org, mock_create_person, mock_create_deal, db, test_company, test_contact, test_deal
+        self,
+        mock_create_org,
+        mock_get_org,
+        mock_update_org,
+        mock_create_person,
+        mock_get_person,
+        mock_update_person,
+        mock_create_deal,
+        mock_get_deal,
+        mock_update_deal,
+        db,
+        test_company,
+        test_contact,
+        test_deal,
     ):
         """Test that two concurrent sync_company_to_pipedrive calls for the same company
         only create one PD deal, not two (the lock serializes them)."""
@@ -90,8 +109,11 @@ class TestSyncCompanyToPipedrive:
         db.commit()
 
         mock_create_org.return_value = {'data': {'id': 100}}
+        mock_get_org.return_value = {'data': {'id': 100}}
         mock_create_person.return_value = {'data': {'id': 200}}
+        mock_get_person.return_value = {'data': {'id': 200}}
         mock_create_deal.return_value = {'data': {'id': 300}}
+        mock_get_deal.return_value = {'data': {'id': 300}}
 
         # Run two syncs concurrently for the locks to serialise them
         await asyncio.gather(
