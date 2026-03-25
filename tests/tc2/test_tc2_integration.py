@@ -2,13 +2,16 @@
 Integration tests for TC2 → Hermes → Pipedrive flow.
 """
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
+from app.main import app
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
@@ -1282,6 +1285,38 @@ class TestTC2DealCreation:
         # Should not crash and should update successfully
         assert updated_company is not None
         assert updated_company.tc2_status == 'live'
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_concurrent_webhooks_create_only_one_deal(
+        self, mock_sync, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """Test that two concurrent POST /tc2/callback/ requests for the same cligency
+        only create one deal, not two (exercises the real route with cligency lock)."""
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data_1 = {
+            'events': [{'action': 'CREATED_A_CLIENT', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        webhook_data_2 = {
+            'events': [{'action': 'EDITED_A_CLIENT', 'verb': 'edit', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            responses = await asyncio.gather(
+                ac.post('/tc2/callback/', json=webhook_data_1),
+                ac.post('/tc2/callback/', json=webhook_data_2),
+            )
+
+        assert all(r.status_code == 200 for r in responses)
+
+        db.expire_all()
+        deals = db.exec(select(Deal).where(Deal.company_id.is_not(None))).all()
+        assert len(deals) == 1
 
 
 class TestTC2SyncableFields:
