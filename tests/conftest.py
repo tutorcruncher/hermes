@@ -2,6 +2,7 @@ import os
 import tempfile
 from typing import Generator
 
+import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -21,6 +22,13 @@ engine = create_engine(
     connect_args={'check_same_thread': False},
 )
 TestingSessionLocal = sessionmaker(class_=DBSession, autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def use_fake_redis(monkeypatch):
+    """Replace the real Redis client with fakeredis for all tests."""
+    fake = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr('app.core.redis.redis_client', fake)
 
 
 @pytest.fixture(autouse=True)
