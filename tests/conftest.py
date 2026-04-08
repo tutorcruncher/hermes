@@ -26,8 +26,23 @@ TestingSessionLocal = sessionmaker(class_=DBSession, autocommit=False, autoflush
 
 @pytest.fixture(autouse=True)
 def use_fake_redis(monkeypatch):
-    """Replace the real Redis client with fakeredis for all tests."""
+    """Replace the real Redis client with fakeredis for all tests.
+
+    Overrides get_connection to always create a fresh connection instead of reusing
+    pooled ones. TestClient creates a new event loop per request, and pooled connections
+    carry an asyncio.Queue bound to the old loop — reusing them on a new loop raises
+    ``RuntimeError: <Queue ...> is bound to a different event loop``.
+    """
     fake = fakeredis.aioredis.FakeRedis()
+    pool = fake.connection_pool
+    _make = pool.make_connection
+
+    def get_connection(command_name, *keys, **options):
+        conn = _make()
+        pool._in_use_connections.add(conn)
+        return conn
+
+    pool.get_connection = get_connection
     monkeypatch.setattr('app.core.redis.redis_client', fake)
 
 
@@ -57,15 +72,8 @@ atexit.register(lambda: os.unlink(test_db_file.name))
 
 
 @pytest.fixture(name='client')
-def client_fixture(session: DBSession, use_fake_redis):
-    """
-    uses TestClient as a context manager so all requests share a single event loop because
-    without it, the client creates a new event loop per request, and the FakeRedis
-    connection pool reuses connections across those loops, causing flakiness
-
-    Depends on use_fake_redis explicitly to guarantee FakeRedis is patched before
-    the lifespan calls redis_client.ping().
-    """
+def client_fixture(session: DBSession):
+    """Create a test client"""
 
     def get_session_override():
         return session
@@ -74,8 +82,8 @@ def client_fixture(session: DBSession, use_fake_redis):
     from app.core.database import get_db
 
     app.dependency_overrides[get_db] = get_session_override
-    with TestClient(app) as client:
-        yield client
+    client = TestClient(app)
+    yield client
     app.dependency_overrides.clear()
 
 
