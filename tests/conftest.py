@@ -37,7 +37,7 @@ def use_fake_redis(monkeypatch):
     pool = fake.connection_pool
     _make = pool.make_connection
 
-    def get_connection(command_name, *keys, **options):
+    async def get_connection(command_name=None, *keys, **options):
         conn = _make()
         pool._in_use_connections.add(conn)
         return conn
