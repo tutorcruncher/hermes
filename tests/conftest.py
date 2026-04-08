@@ -57,8 +57,15 @@ atexit.register(lambda: os.unlink(test_db_file.name))
 
 
 @pytest.fixture(name='client')
-def client_fixture(session: DBSession):
-    """Create a test client"""
+def client_fixture(session: DBSession, use_fake_redis):
+    """
+    uses TestClient as a context manager so all requests share a single event loop because
+    without it, the client creates a new event loop per request, and the FakeRedis
+    connection pool reuses connections across those loops, causing flakiness
+
+    Depends on use_fake_redis explicitly to guarantee FakeRedis is patched before
+    the lifespan calls redis_client.ping().
+    """
 
     def get_session_override():
         return session
@@ -67,8 +74,8 @@ def client_fixture(session: DBSession):
     from app.core.database import get_db
 
     app.dependency_overrides[get_db] = get_session_override
-    client = TestClient(app)
-    yield client
+    with TestClient(app) as client:
+        yield client
     app.dependency_overrides.clear()
 
 
