@@ -15,7 +15,7 @@ logger = logging.getLogger('hermes.pipedrive')
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
 # Per-company locks to serialise concurrent syncs for the same company.
-_company_sync_locks = RedisLockRegistry('hermes:company_sync', timeout=60)
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', timeout=60)
 
 
 async def sync_company_to_pipedrive(company_id: int):

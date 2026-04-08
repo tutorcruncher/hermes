@@ -24,6 +24,9 @@ class RedisLockRegistry:
         key is created with a TTL. Hence if ``release()`` never runs,
         the key auto-expires and the lock becomes available again.
         """
+        # Lazy import: redis_client is created at module level in redis.py, but tests
+        # replace it with FakeRedis via monkeypatch. A top-level import here would
+        # capture the original client before the patch is applied.
         from app.core.redis import redis_client
 
         async with redis_client.lock(
