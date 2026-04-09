@@ -16,8 +16,8 @@ SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from de
 
 # Per-company locks to serialise concurrent syncs for the same company.
 # the p99 latency for company syncs on TC2 webhooks is ~745s
-# hence the lease_timeout is kept at 900s for headroom (max time a lock can be held for)
-_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout=900)
+# hence the lease_timeout is kept at 700s (max time a lock can be held for)
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout=700)
 
 
 async def sync_company_to_pipedrive(company_id: int):
