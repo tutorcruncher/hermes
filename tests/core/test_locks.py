@@ -2,6 +2,7 @@ import asyncio
 
 import fakeredis
 import pytest
+from redis.exceptions import LockError
 
 from app.core.locks import RedisLockRegistry
 
@@ -16,7 +17,7 @@ class TestRedisLockRegistry:
     @pytest.fixture
     def registry(self, redis_client, monkeypatch):
         monkeypatch.setattr('app.core.redis.redis_client', redis_client)
-        return RedisLockRegistry('test', timeout=10)
+        return RedisLockRegistry('test', lease_timeout=10)
 
     async def test_same_key_serialised(self, registry):
         """Two concurrent acquires on the same key run one at a time."""
@@ -80,3 +81,13 @@ class TestRedisLockRegistry:
         async with registry.acquire(1):
             ttl = await redis_client.ttl('test:1')
             assert ttl > 0
+
+    async def test_blocking_timeout_raises_lock_error(self, redis_client, monkeypatch):
+        """A waiter gives up after blocking_timeout and raises LockError."""
+        monkeypatch.setattr('app.core.redis.redis_client', redis_client)
+        registry = RedisLockRegistry('test', lease_timeout=10, blocking_timeout=0.5)
+
+        async with registry.acquire(1):
+            with pytest.raises(LockError):
+                async with registry.acquire(1):
+                    pass

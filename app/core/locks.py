@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from typing import Optional
 
 
 class RedisLockRegistry:
@@ -6,11 +7,15 @@ class RedisLockRegistry:
     Distributed per-ID lock via Redis. Works across multiple worker processes.
     Each ID gets its own Redis lock key so concurrent operations on different IDs
     run in parallel while operations on the same ID are serialised.
+
+    Here lease_timeout is the MAX time (seconds) a lock can be held.
+    blocking_timeout is the time (seconds) to wait for a lock to become available.
     """
 
-    def __init__(self, prefix: str, timeout: float = 30):
+    def __init__(self, prefix: str, lease_timeout: float, blocking_timeout: Optional[float] = None):
         self._prefix = prefix
-        self._timeout = timeout
+        self._lease_timeout = lease_timeout
+        self._blocking_timeout = blocking_timeout
 
     @asynccontextmanager
     async def acquire(self, key: int):
@@ -31,7 +36,8 @@ class RedisLockRegistry:
 
         async with redis_client.lock(
             f'{self._prefix}:{key}',
-            timeout=self._timeout,
-            sleep=0.2,
+            timeout=self._lease_timeout,
+            sleep=0.2,  # redis locks use a polling mechanism, polling every 200ms
+            blocking_timeout=self._blocking_timeout,
         ):
             yield
