@@ -17,7 +17,7 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 # Per-cligency lock to serialise concurrent webhook processing for the same TC2 client.
 # Prevents duplicate Hermes Deal rows when CREATED_A_CLIENT and EDITED_A_CLIENT
 # arrive as near-simultaneous separate requests from TC2 batched webhooks.
-_cligency_locks = RedisLockRegistry('hermes:cligency-lck', lease_timeout=10, blocking_timeout=5)
+_cligency_locks = RedisLockRegistry('hermes:cligency-lck', lease_timeout_seconds=10, blocking_timeout_seconds=10)
 
 
 @router.post('/callback/', name='tc2-callback')

@@ -12,10 +12,10 @@ class RedisLockRegistry:
     blocking_timeout is the time (seconds) to wait for a lock to become available.
     """
 
-    def __init__(self, prefix: str, lease_timeout: float, blocking_timeout: Optional[float] = None):
+    def __init__(self, prefix: str, lease_timeout_seconds: float, blocking_timeout_seconds: Optional[float] = None):
         self._prefix = prefix
-        self._lease_timeout = lease_timeout
-        self._blocking_timeout = blocking_timeout
+        self._lease_timeout = lease_timeout_seconds
+        self._blocking_timeout = blocking_timeout_seconds
 
     @asynccontextmanager
     async def acquire(self, key: int):

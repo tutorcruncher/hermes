@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600
 
     # Redis
-    redis_url: Optional[str] = Field(None, validation_alias='REDIS_URL')
+    redis_url: str = Field(validation_alias='REDIS_URL')
 
     # Sentry
     sentry_dsn: Optional[str] = None
