@@ -23,7 +23,7 @@ class RedisLockRegistry:
 
         The lock is released when the async block exits.
         Because `.lock()` returns a context manager where the ``__aexit__``
-        calls ``release()``, which deletes the Redis key .
+        calls ``release()``, which deletes the Redis key.
 
         As a safety net for hard crashes e.g. worker killed, the Redis
         key is created with a TTL. Hence if ``release()`` never runs,

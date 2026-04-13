@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600
 
     # Redis
-    redis_url: str = Field(validation_alias='REDIS_URL')
+    redis_url: str = Field(validation_alias='REDISCLOUD_URL')
 
     # Sentry
     sentry_dsn: Optional[str] = None
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # Pipedrive
     pd_api_key: str = 'test-key'
-    pd_base_url: str = 'https://tutorcruncher.pipedrive.com'
+    pd_base_url: str = 'https://tutorcruncher-test.pipedrive.com'
     sync_create_deals: bool = True
     pd_api_max_rate: int = 9
     pd_api_rate_period: int = 2  # seconds
