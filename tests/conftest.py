@@ -2,6 +2,7 @@ import os
 import tempfile
 from typing import Generator
 
+import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -21,6 +22,28 @@ engine = create_engine(
     connect_args={'check_same_thread': False},
 )
 TestingSessionLocal = sessionmaker(class_=DBSession, autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def use_fake_redis(monkeypatch):
+    """Replace the real Redis client with fakeredis for all tests.
+
+    Overrides get_connection to always create a fresh connection instead of reusing
+    pooled ones. TestClient creates a new event loop per request, and pooled connections
+    carry an asyncio.Queue bound to the old loop — reusing them on a new loop raises
+    ``RuntimeError: <Queue ...> is bound to a different event loop``.
+    """
+    fake = fakeredis.aioredis.FakeRedis()
+    pool = fake.connection_pool
+    _make = pool.make_connection
+
+    async def get_connection(command_name=None, *keys, **options):
+        conn = _make()
+        pool._in_use_connections.add(conn)
+        return conn
+
+    pool.get_connection = get_connection
+    monkeypatch.setattr('app.core.redis.redis_client', fake)
 
 
 @pytest.fixture(autouse=True)

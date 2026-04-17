@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     db_pool_pre_ping: bool = True
     db_pool_recycle: int = 3600
 
+    # Redis
+    redis_url: str = Field(validation_alias='REDISCLOUD_URL')
+
     # Sentry
     sentry_dsn: Optional[str] = None
 

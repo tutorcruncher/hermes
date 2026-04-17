@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Header
 
 from app.core.config import settings
 from app.core.database import get_session
-from app.core.locks import LockRegistry
+from app.core.locks import RedisLockRegistry
 from app.pipedrive.tasks import purge_company_from_pipedrive, sync_company_to_pipedrive
 from app.tc2.models import TCClient, TCWebhook
 from app.tc2.process import process_tc_client
@@ -17,7 +17,7 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 # Per-cligency lock to serialise concurrent webhook processing for the same TC2 client.
 # Prevents duplicate Hermes Deal rows when CREATED_A_CLIENT and EDITED_A_CLIENT
 # arrive as near-simultaneous separate requests from TC2 batched webhooks.
-_cligency_locks = LockRegistry()
+_cligency_locks = RedisLockRegistry('hermes:cligency-lck', lease_timeout_seconds=10, blocking_timeout_seconds=10)
 
 
 @router.post('/callback/', name='tc2-callback')

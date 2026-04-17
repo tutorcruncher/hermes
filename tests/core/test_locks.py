@@ -1,83 +1,93 @@
 import asyncio
 
+import fakeredis
 import pytest
+from redis.exceptions import LockError
 
-from app.core.locks import LockRegistry
+from app.core.locks import RedisLockRegistry
 
 
-class TestLockRegistry:
-    """Tests that the LockRegistry correctly removes locks from its internal dict
-    when they are no longer needed, and keeps them when they are still in use.
-    Covers normal completion, exceptions, cancellation, and concurrent use."""
+class TestRedisLockRegistry:
+    """Tests that RedisLockRegistry correctly serialises concurrent operations."""
 
-    async def test_cleanup_after_normal_completion(self):
-        """Lock is removed from the registry after the work finishes normally."""
-        registry = LockRegistry()
-        async with registry.acquire(1):
-            assert 1 in registry._locks
-        assert 1 not in registry._locks
+    @pytest.fixture
+    def redis_client(self):
+        return fakeredis.aioredis.FakeRedis()
 
-    async def test_cleanup_after_body_raises(self):
-        """Lock is removed from the registry even when the body raises an exception."""
-        registry = LockRegistry()
-        with pytest.raises(ValueError):
+    @pytest.fixture
+    def registry(self, redis_client, monkeypatch):
+        monkeypatch.setattr('app.core.redis.redis_client', redis_client)
+        return RedisLockRegistry('test', lease_timeout_seconds=10)
+
+    async def test_same_key_serialised(self, registry):
+        """Two concurrent acquires on the same key run one at a time."""
+        order = []
+
+        async def work(label):
             async with registry.acquire(1):
-                raise ValueError('boom')
-        assert 1 not in registry._locks
+                order.append(f'{label}_start')
+                await asyncio.sleep(0.01)
+                order.append(f'{label}_end')
 
-    async def test_cleanup_after_waiter_cancelled(self):
-        """Lock is removed after a queued waiter is cancelled mid-wait."""
-        registry = LockRegistry()
+        await asyncio.gather(work('a'), work('b'))
+        assert order == ['a_start', 'a_end', 'b_start', 'b_end']
 
-        async with registry.acquire(1):
-
-            async def waiter():
-                async with registry.acquire(1):
-                    pass
-
-            task = asyncio.create_task(waiter())
-            # Let the waiter reach the acquire() and block
-            await asyncio.sleep(0)
-            # Cancel it while it's waiting
-            task.cancel()
-            await asyncio.sleep(0)
-
-        assert 1 not in registry._locks
-
-    async def test_lock_not_evicted_while_waiter_queued(self):
-        """Lock stays in the registry while another coroutine is still waiting on it."""
-        registry = LockRegistry()
-        entered = asyncio.Event()
-
-        async with registry.acquire(1):
-
-            async def waiter():
-                async with registry.acquire(1):
-                    entered.set()
-
-            task = asyncio.create_task(waiter())
-            await asyncio.sleep(0)
-            # Waiter is queued, lock should still be in the registry
-            assert 1 in registry._locks
-
-        # Let waiter finish
-        await entered.wait()
-        await task
-        assert 1 not in registry._locks
-
-    async def test_different_keys_independent(self):
-        """Different keys run concurrently and both get cleaned up independently."""
-        registry = LockRegistry()
+    async def test_different_keys_concurrent(self, registry):
+        """Different keys run concurrently."""
         order = []
 
         async def work(key, label):
             async with registry.acquire(key):
                 order.append(f'{label}_start')
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.01)
                 order.append(f'{label}_end')
 
         await asyncio.gather(work(1, 'a'), work(2, 'b'))
-        # Both should interleave since they use different keys
         assert order == ['a_start', 'b_start', 'a_end', 'b_end']
-        assert 1 not in registry._locks
-        assert 2 not in registry._locks
+
+    async def test_lock_released_after_exception(self, registry):
+        """Lock is released even when the body raises."""
+        with pytest.raises(ValueError):
+            async with registry.acquire(1):
+                raise ValueError('boom')
+
+        # Should be able to acquire again immediately
+        async with registry.acquire(1):
+            pass
+
+    async def test_lock_released_after_cancellation(self, registry):
+        """Lock is released when a holder is cancelled."""
+        acquired = asyncio.Event()
+
+        async def holder():
+            async with registry.acquire(1):
+                acquired.set()
+                await asyncio.sleep(10)
+
+        task = asyncio.create_task(holder())
+        await acquired.wait()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Should be able to acquire again
+        async with registry.acquire(1):
+            pass
+
+    async def test_lock_key_has_ttl(self, registry, redis_client):
+        """The Redis key has a TTL so it auto-expires if the holder crashes."""
+        async with registry.acquire(1):
+            ttl = await redis_client.ttl('test:1')
+            assert ttl > 0
+
+    async def test_blocking_timeout_raises_lock_error(self, redis_client, monkeypatch):
+        """A waiter gives up after blocking_timeout and raises LockError."""
+        monkeypatch.setattr('app.core.redis.redis_client', redis_client)
+        registry = RedisLockRegistry('test', lease_timeout_seconds=10, blocking_timeout_seconds=0.5)
+
+        async with registry.acquire(1):
+            with pytest.raises(LockError):
+                async with registry.acquire(1):
+                    pass

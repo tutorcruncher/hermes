@@ -1,64 +1,43 @@
-import asyncio
 from contextlib import asynccontextmanager
+from typing import Optional
 
 
-class _RefCountedLock:
+class RedisLockRegistry:
     """
-    Lock wrapper to track how many coroutines are waiting on or holding the lock.
-    """
+    Distributed per-ID lock via Redis. Works across multiple worker processes.
+    Each ID gets its own Redis lock key so concurrent operations on different IDs
+    run in parallel while operations on the same ID are serialised.
 
-    def __init__(self):
-        self._lock = asyncio.Lock()
-        self._count = 0
-
-    async def __aenter__(self):
-        """
-        async enter called when entering the `async with` block
-        """
-        self._count += 1
-        try:
-            await self._lock.acquire()
-        except BaseException:
-            self._count -= 1
-            raise
-        return self
-
-    async def __aexit__(self, *exc):
-        """
-        called on exiting the async block
-        """
-        self._lock.release()
-        self._count -= 1
-
-    @property
-    def in_use(self):
-        return self._count > 0
-
-
-class LockRegistry:
-    """
-    Per ID lock for a safe cleanup. Each ID gets its own lock so concurrent operations on different IDs
-    run in parallel while the operations on the same ID are serialised.
+    Here lease_timeout is the MAX time (seconds) a lock can be held.
+    blocking_timeout is the time (seconds) to wait for a lock to become available.
     """
 
-    def __init__(self):
-        self._locks: dict[int, _RefCountedLock] = {}
-
-    def _get(self, key: int) -> _RefCountedLock:
-        if key not in self._locks:
-            self._locks[key] = _RefCountedLock()
-        return self._locks[key]
-
-    def _release(self, key: int) -> None:
-        lock = self._locks.get(key)
-        if lock and not lock.in_use:
-            self._locks.pop(key, None)
+    def __init__(self, prefix: str, lease_timeout_seconds: float, blocking_timeout_seconds: Optional[float] = None):
+        self._prefix = prefix
+        self._lease_timeout = lease_timeout_seconds
+        self._blocking_timeout = blocking_timeout_seconds
 
     @asynccontextmanager
     async def acquire(self, key: int):
-        lock = self._get(key)
-        try:
-            async with lock:
-                yield
-        finally:
-            self._release(key)
+        """Acquire a distributed lock for the given key, yielding while held.
+
+        The lock is released when the async block exits.
+        Because `.lock()` returns a context manager where the ``__aexit__``
+        calls ``release()``, which deletes the Redis key.
+
+        As a safety net for hard crashes e.g. worker killed, the Redis
+        key is created with a TTL. Hence if ``release()`` never runs,
+        the key auto-expires and the lock becomes available again.
+        """
+        # Lazy import: redis_client is created at module level in redis.py, but tests
+        # replace it with FakeRedis via monkeypatch. A top-level import here would
+        # capture the original client before the patch is applied.
+        from app.core.redis import redis_client
+
+        async with redis_client.lock(
+            f'{self._prefix}:{key}',
+            timeout=self._lease_timeout,
+            sleep=0.2,  # redis locks use a polling mechanism, polling every 200ms
+            blocking_timeout=self._blocking_timeout,
+        ):
+            yield

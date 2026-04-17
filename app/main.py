@@ -28,10 +28,14 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan (startup and shutdown)"""
     # Startup
     logger.info('Starting Hermes application')
-    # TODO: Initialize database connections, load config, etc.
+    from app.core.redis import redis_client
+
+    await redis_client.ping()
+    logger.info('Redis connected')
     yield
     # Shutdown
     logger.info('Shutting down Hermes application')
+    await redis_client.aclose()
 
 
 # Create FastAPI app

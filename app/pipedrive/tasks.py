@@ -5,7 +5,7 @@ import logfire
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.core.locks import LockRegistry
+from app.core.locks import RedisLockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
@@ -15,8 +15,9 @@ logger = logging.getLogger('hermes.pipedrive')
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
 # Per-company locks to serialise concurrent syncs for the same company.
-# Only valid because Hermes runs a single uvicorn worker (see Procfile).
-_company_sync_locks = LockRegistry()
+# the p99 latency for company syncs on TC2 webhooks is ~745s
+# hence the lease_timeout is kept at 800s (max time a lock can be held for)
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=800, blocking_timeout_seconds=800)
 
 
 async def sync_company_to_pipedrive(company_id: int):
