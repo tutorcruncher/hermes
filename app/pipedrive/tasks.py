@@ -134,10 +134,7 @@ async def sync_person(contact_id: int):
 
     if not pd_person_id:
         try:
-            # Pipedrive defaults new persons to marketing_status=no_consent, which blocks
-            # our automated campaigns. Set to subscribed only on create — never on update,
-            # because Pipedrive only allows each status transition once and we must not
-            # overwrite a user's manual unsubscribe.
+            # Only on create — PD allows each status transition once, don't overwrite manual unsubscribes.
             person_data['marketing_status'] = 'subscribed'
             result = await api.create_person(person_data)
             new_pd_person_id = result['data']['id']

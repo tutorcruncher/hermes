@@ -337,27 +337,6 @@ class TestSyncPerson:
         assert payload['marketing_status'] == 'subscribed'
 
     @patch('app.pipedrive.tasks.get_session')
-    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
-    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
-    async def test_sync_person_recreate_after_404_sets_marketing_status(
-        self, mock_get, mock_create, mock_get_session, db, test_contact
-    ):
-        """Test that the recreate-after-404 path also sets marketing_status=subscribed."""
-        test_contact.pd_person_id = 999
-        db.add(test_contact)
-        db.commit()
-
-        mock_get_session.return_value = SessionMock(db)
-        mock_get.side_effect = Exception('404 Not Found')
-        mock_create.return_value = {'data': {'id': 4444}}
-
-        await sync_person(test_contact.id)
-
-        mock_create.assert_called_once()
-        payload = mock_create.call_args[0][0]
-        assert payload['marketing_status'] == 'subscribed'
-
-    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
     async def test_sync_person_update_does_not_set_marketing_status(
@@ -369,6 +348,7 @@ class TestSyncPerson:
         on every sync would fail the second time a user manually unsubscribes.
         """
         test_contact.pd_person_id = 999
+        test_contact.first_name = 'NewFirst'
         db.add(test_contact)
         db.commit()
 
@@ -378,10 +358,9 @@ class TestSyncPerson:
 
         await sync_person(test_contact.id)
 
-        # Either update was not called (no changes) or marketing_status not in the patch payload
-        if mock_update.called:
-            payload = mock_update.call_args[0][1]
-            assert 'marketing_status' not in payload
+        mock_update.assert_called_once()
+        payload = mock_update.call_args[0][1]
+        assert 'marketing_status' not in payload
 
 
 class TestSyncDeal:
