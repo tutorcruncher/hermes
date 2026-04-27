@@ -316,6 +316,52 @@ class TestSyncPerson:
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 2222
 
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_create_sets_marketing_status_subscribed(
+        self, mock_create, mock_get_session, db, test_contact
+    ):
+        """Test that newly created persons have marketing_status=subscribed so
+        automated campaigns can send (otherwise PD defaults to no_consent)."""
+        test_contact.pd_person_id = None
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 3333}}
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_called_once()
+        payload = mock_create.call_args[0][0]
+        assert payload['marketing_status'] == 'subscribed'
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_update_does_not_set_marketing_status(
+        self, mock_get, mock_update, mock_get_session, db, test_contact
+    ):
+        """Test that updates to existing persons never send marketing_status.
+
+        Pipedrive only permits each status transition once; re-sending subscribed
+        on every sync would fail the second time a user manually unsubscribes.
+        """
+        test_contact.pd_person_id = 999
+        test_contact.first_name = 'NewFirst'
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name', 'marketing_status': 'unsubscribed'}}
+        mock_update.return_value = {'data': {'id': 999}}
+
+        await sync_person(test_contact.id)
+
+        mock_update.assert_called_once()
+        payload = mock_update.call_args[0][1]
+        assert 'marketing_status' not in payload
+
 
 class TestSyncDeal:
     """Test sync_deal function"""
