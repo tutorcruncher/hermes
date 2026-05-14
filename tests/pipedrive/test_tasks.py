@@ -2,6 +2,7 @@
 Tests for Pipedrive sync tasks.
 """
 
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -70,6 +71,59 @@ class TestSyncCompanyToPipedrive:
 
         # Should log warning, not call sync functions
         mock_sync_org.assert_not_called()
+
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_concurrent_sync_creates_only_one_deal(
+        self,
+        mock_create_org,
+        mock_get_org,
+        mock_update_org,
+        mock_create_person,
+        mock_get_person,
+        mock_update_person,
+        mock_create_deal,
+        mock_get_deal,
+        mock_update_deal,
+        db,
+        test_company,
+        test_contact,
+        test_deal,
+    ):
+        """Test that two concurrent sync_company_to_pipedrive calls for the same company
+        only create one PD deal, not two (the lock serializes them)."""
+        test_company.pd_org_id = None
+        test_contact.pd_person_id = None
+        test_deal.pd_deal_id = None
+        db.add(test_company)
+        db.add(test_contact)
+        db.add(test_deal)
+        db.commit()
+
+        mock_create_org.return_value = {'data': {'id': 100}}
+        mock_get_org.return_value = {'data': {'id': 100}}
+        mock_create_person.return_value = {'data': {'id': 200}}
+        mock_get_person.return_value = {'data': {'id': 200}}
+        mock_create_deal.return_value = {'data': {'id': 300}}
+        mock_get_deal.return_value = {'data': {'id': 300}}
+
+        # Run two syncs concurrently for the locks to serialise them
+        await asyncio.gather(
+            sync_company_to_pipedrive(test_company.id),
+            sync_company_to_pipedrive(test_company.id),
+        )
+
+        # The first sync creates the deal; the second sync should see pd_deal_id already set
+        # and do a GET+PATCH
+        assert mock_create_deal.call_count == 1
 
 
 class TestSyncOrganization:
@@ -261,6 +315,52 @@ class TestSyncPerson:
 
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 2222
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_create_sets_marketing_status_subscribed(
+        self, mock_create, mock_get_session, db, test_contact
+    ):
+        """Test that newly created persons have marketing_status=subscribed so
+        automated campaigns can send (otherwise PD defaults to no_consent)."""
+        test_contact.pd_person_id = None
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 3333}}
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_called_once()
+        payload = mock_create.call_args[0][0]
+        assert payload['marketing_status'] == 'subscribed'
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_update_does_not_set_marketing_status(
+        self, mock_get, mock_update, mock_get_session, db, test_contact
+    ):
+        """Test that updates to existing persons never send marketing_status.
+
+        Pipedrive only permits each status transition once; re-sending subscribed
+        on every sync would fail the second time a user manually unsubscribes.
+        """
+        test_contact.pd_person_id = 999
+        test_contact.first_name = 'NewFirst'
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name', 'marketing_status': 'unsubscribed'}}
+        mock_update.return_value = {'data': {'id': 999}}
+
+        await sync_person(test_contact.id)
+
+        mock_update.assert_called_once()
+        payload = mock_update.call_args[0][1]
+        assert 'marketing_status' not in payload
 
 
 class TestSyncDeal:

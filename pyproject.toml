@@ -19,6 +19,7 @@ dependencies = [
     'asyncpg==0.30.0',
     'httpx==0.28.1',
     'gunicorn==23.0.0',
+    'redis[hiredis]==7.4.0',
     'devtools==0.12.2',
     'google-api-python-client>=2.0.0',
     'google-auth>=2.0.0',
@@ -42,6 +43,7 @@ dev = [
     'toml==0.10.2',
     'factory-boy==3.3.3',
     'aiohttp==3.13.2',
+    'fakeredis[lua]==2.34.1',
 ]
 
 [tool.ruff]
@@ -81,6 +83,7 @@ env = [
     'TZ=UTC',
     'testing=True',
     'database_url=postgresql://postgres:postgres@localhost:5432/hermes_test',
+    'REDISCLOUD_URL=redis://localhost:6379',
     'LOGFIRE_IGNORE_NO_CONFIG=1',
 ]
 filterwarnings = [
@@ -99,5 +102,4 @@ packages = ["app"]
 [tool.alembic]
 script_location = 'migrations'
 file_template = '%%(year)s%%(month).2d%%(day).2d%%(hour).2d%%(minute).2d_%%(rev)s'
-
 

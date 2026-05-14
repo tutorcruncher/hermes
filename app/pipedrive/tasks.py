@@ -5,6 +5,7 @@ import logfire
 from sqlmodel import select
 
 from app.core.database import get_session
+from app.core.locks import RedisLockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
@@ -13,22 +14,28 @@ logger = logging.getLogger('hermes.pipedrive')
 
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
+# Per-company locks to serialise concurrent syncs for the same company.
+# the p99 latency for company syncs on TC2 webhooks is ~745s
+# hence the lease_timeout is kept at 800s (max time a lock can be held for)
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=800, blocking_timeout_seconds=800)
+
 
 async def sync_company_to_pipedrive(company_id: int):
     """
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
     """
-    with logfire.span('sync_company_to_pipedrive'):
-        try:
-            with get_session() as db:
-                company = db.get(Company, company_id)
-                if not company:
-                    logger.warning(f'Company {company_id} not found, skipping sync')
-                    return
-                if company.is_deleted:
-                    logger.info(f'Company {company_id} is marked as deleted, skipping sync')
-                    return
+    async with _company_sync_locks.acquire(company_id):
+        with logfire.span('sync_company_to_pipedrive'):
+            try:
+                with get_session() as db:
+                    company = db.get(Company, company_id)
+                    if not company:
+                        logger.warning(f'Company {company_id} not found, skipping sync')
+                        return
+                    if company.is_deleted:
+                        logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                        return
 
                 contact_ids = [
                     c.id
@@ -49,17 +56,17 @@ async def sync_company_to_pipedrive(company_id: int):
 
                 deal_ids = [d.id for d in db.exec(deal_query).all()]
 
-            await sync_organization(company_id)
+                await sync_organization(company_id)
 
-            for contact_id in contact_ids:
-                await sync_person(contact_id)
+                for contact_id in contact_ids:
+                    await sync_person(contact_id)
 
-            for deal_id in deal_ids:
-                await sync_deal(deal_id, only_syncable_deal_fields)
+                for deal_id in deal_ids:
+                    await sync_deal(deal_id, only_syncable_deal_fields)
 
-            logger.info(f'Successfully synced company {company_id} to Pipedrive')
-        except Exception as e:
-            logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
+                logger.info(f'Successfully synced company {company_id} to Pipedrive')
+            except Exception as e:
+                logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
 
 
 async def sync_organization(company_id: int):
@@ -133,6 +140,8 @@ async def sync_person(contact_id: int):
 
     if not pd_person_id:
         try:
+            # Only on create — PD allows each status transition once, don't overwrite manual unsubscribes.
+            person_data['marketing_status'] = 'subscribed'
             result = await api.create_person(person_data)
             new_pd_person_id = result['data']['id']
 
