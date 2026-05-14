@@ -37,24 +37,26 @@ async def sync_company_to_pipedrive(company_id: int):
                         logger.info(f'Company {company_id} is marked as deleted, skipping sync')
                         return
 
-                contact_ids = [
-                    c.id
-                    for c in db.exec(
-                        select(Contact).where(Contact.company_id == company_id, Contact.is_deleted == False)  # noqa: E712
-                    ).all()
-                ]
+                    contact_ids = [
+                        c.id
+                        for c in db.exec(
+                            select(Contact).where(Contact.company_id == company_id, Contact.is_deleted == False)  # noqa: E712
+                        ).all()
+                    ]
 
-                deal_query = select(Deal).where(Deal.company_id == company_id)
-                if not company.paid_invoice_count:
-                    # Full sync for non-paying companies (update existing + create new open deals)
-                    deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
-                    only_syncable_deal_fields = False
-                else:
-                    # Only sync fields for paying companies' existing open deals
-                    deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
-                    only_syncable_deal_fields = True
+                    deal_query = select(Deal).where(Deal.company_id == company_id)
+                    if not company.paid_invoice_count:
+                        # Full sync for non-paying companies (update existing + create new open deals)
+                        deal_query = deal_query.where(
+                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN)
+                        )
+                        only_syncable_deal_fields = False
+                    else:
+                        # Only sync fields for paying companies' existing open deals
+                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                        only_syncable_deal_fields = True
 
-                deal_ids = [d.id for d in db.exec(deal_query).all()]
+                    deal_ids = [d.id for d in db.exec(deal_query).all()]
 
                 await sync_organization(company_id)
 
