@@ -403,6 +403,29 @@ class TestSyncDeal:
         assert test_deal.pd_deal_id == 999
 
     @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    async def test_sync_deal_never_sends_stage_or_pipeline(
+        self, mock_get, mock_update, mock_get_session, db, test_deal
+    ):
+        """Syncing a deal must never overwrite stage_id or pipeline_id in Pipedrive (issue #399)"""
+        test_deal.pd_deal_id = 999
+        db.add(test_deal)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {
+            'data': {'title': 'Different Title', 'status': 'open', 'stage_id': 55, 'pipeline_id': 99}
+        }
+
+        await sync_deal(test_deal.id)
+
+        mock_update.assert_called_once()
+        changed_fields = mock_update.call_args[0][1]
+        assert 'stage_id' not in changed_fields
+        assert 'pipeline_id' not in changed_fields
+
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
     async def test_sync_deal_update_non_404_error(self, mock_get, mock_get_session, db, test_deal):
         """Test deal update with non-404 error logs but doesn't clear ID"""
@@ -849,6 +872,13 @@ class TestDealToPDData:
 
         # Custom fields
         assert 'custom_fields' in result
+
+    def test_deal_to_pd_data_excludes_stage_and_pipeline(self, db, test_deal):
+        """Hermes must never overwrite deal stage or pipeline in Pipedrive (issue #399)"""
+        result = _deal_to_pd_data(test_deal, db)
+
+        assert 'stage_id' not in result
+        assert 'pipeline_id' not in result
 
     def test_deal_to_pd_data_handles_missing_contact(self, db, test_deal):
         """Test that deal data handles deals without a contact"""
