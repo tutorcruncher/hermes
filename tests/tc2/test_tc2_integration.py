@@ -281,6 +281,79 @@ class TestTC2Integration:
             url = kwargs.get('url', '')
             assert not (method == 'POST' and 'deals' in url), 'create_deal should not be called when update returns 404'
 
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_sync_never_overwrites_deal_stage_or_pipeline(
+        self,
+        mock_request,
+        client,
+        db,
+        test_admin,
+        test_pipeline,
+        test_stage,
+        sample_tc_client_data,
+    ):
+        """
+        End-to-end: TC2 webhook for an unpaid agency triggers a full deal sync.
+        Even when PD reports a different stage_id/pipeline_id (i.e. sales moved the deal),
+        the PATCH to PD must never include stage_id or pipeline_id. (issue #399)
+        """
+        pd_deal_id = 888
+
+        async def request_side_effect(*args, **kwargs):
+            method = kwargs.get('method')
+            url = kwargs.get('url', '')
+            if method == 'GET' and 'deals' in url:
+                return create_mock_response(
+                    {
+                        'data': {
+                            'id': pd_deal_id,
+                            'title': 'Test Agency',
+                            'status': 'open',
+                            'stage_id': 55,
+                            'pipeline_id': 99,
+                        }
+                    }
+                )
+            return create_mock_response({'data': {'id': 999}})
+
+        mock_request.side_effect = request_side_effect
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
+        contact = db.exec(select(Contact).where(Contact.company_id == company.id)).first()
+        db.create(
+            Deal(
+                name='Test Agency',
+                company_id=company.id,
+                contact_id=contact.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                status=Deal.STATUS_OPEN,
+                pd_deal_id=pd_deal_id,
+            )
+        )
+
+        await sync_company_to_pipedrive(company.id)
+
+        for call in mock_request.call_args_list:
+            kwargs = call.kwargs
+            method = kwargs.get('method')
+            url = kwargs.get('url', '')
+            if method == 'PATCH' and 'deals' in url:
+                body = kwargs.get('json', {})
+                assert 'stage_id' not in body, 'Hermes must never overwrite deal stage in Pipedrive'
+                assert 'pipeline_id' not in body, 'Hermes must never overwrite deal pipeline in Pipedrive'
+
     async def test_narc_company_not_synced_to_pipedrive(self, db, test_admin, sample_tc_client_data):
         """Test that NARC companies are purged from Pipedrive"""
         sample_tc_client_data['meta_agency']['narc'] = True
