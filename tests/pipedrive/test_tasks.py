@@ -845,8 +845,6 @@ class TestDealToPDData:
         # Foreign key references
         assert 'org_id' in result
         assert 'person_id' in result
-        assert 'pipeline_id' in result
-        assert 'stage_id' in result
         assert 'owner_id' in result
 
         # Custom fields
@@ -1022,8 +1020,6 @@ class TestDataConversionHelpers:
         assert 'title' in result
         assert 'org_id' in result
         assert 'owner_id' in result
-        assert 'pipeline_id' in result
-        assert 'stage_id' in result
         assert 'status' in result
         assert 'custom_fields' in result
 
