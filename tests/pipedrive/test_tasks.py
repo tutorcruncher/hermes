@@ -452,6 +452,28 @@ class TestSyncDeal:
         assert test_deal.pd_deal_id == 4444
 
     @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    async def test_sync_deal_create_includes_pipeline_and_stage(self, mock_create, mock_get_session, db, test_deal):
+        """New deals sent to Pipedrive must include pipeline_id and stage_id
+        so they land in the correct pipeline (PAYG/Startup/Enterprise)."""
+        test_deal.pd_deal_id = None
+        db.add(test_deal)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 5555}}
+
+        await sync_deal(test_deal.id)
+
+        mock_create.assert_called_once()
+        payload = mock_create.call_args[0][0]
+        assert 'pipeline_id' in payload, 'create_deal payload must include pipeline_id'
+        assert payload['pipeline_id'] == test_deal.pipeline.pd_pipeline_id
+        assert 'stage_id' in payload, 'create_deal payload must include stage_id'
+        assert payload['stage_id'] == test_deal.stage.pd_stage_id
+
+    @patch('app.core.config.settings.sync_create_deals', True)
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)

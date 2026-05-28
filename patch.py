@@ -14,8 +14,8 @@ import click
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.pipedrive import api
 from app.main_app.models import Stage
+from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('hermes.patch')

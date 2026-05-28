@@ -345,14 +345,15 @@ class TestTC2Integration:
 
         await sync_company_to_pipedrive(company.id)
 
-        for call in mock_request.call_args_list:
-            kwargs = call.kwargs
-            method = kwargs.get('method')
-            url = kwargs.get('url', '')
-            if method == 'PATCH' and 'deals' in url:
-                body = kwargs.get('json', {})
-                assert 'stage_id' not in body, 'Hermes must never overwrite deal stage in Pipedrive'
-                assert 'pipeline_id' not in body, 'Hermes must never overwrite deal pipeline in Pipedrive'
+        deal_patches = [
+            call
+            for call in mock_request.call_args_list
+            if call.kwargs.get('method') == 'PATCH' and 'deals' in call.kwargs.get('url', '')
+        ]
+        assert len(deal_patches) == 1, f'Expected exactly 1 deal PATCH, got {len(deal_patches)}'
+        body = deal_patches[0].kwargs.get('json', {})
+        assert 'stage_id' not in body, 'Hermes must never overwrite deal stage in Pipedrive'
+        assert 'pipeline_id' not in body, 'Hermes must never overwrite deal pipeline in Pipedrive'
 
     async def test_narc_company_not_synced_to_pipedrive(self, db, test_admin, sample_tc_client_data):
         """Test that NARC companies are purged from Pipedrive"""
