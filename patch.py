@@ -582,13 +582,13 @@ async def insert_missing_stages(db):
     print(f'{len(existing)} stages already in Hermes')
 
     pipelines = await api.pipedrive_request('pipelines', method='GET')
-    pd_pipelines = pipelines.get('data', [])
+    pd_pipelines = pipelines.get('data') or []
     print(f'Found {len(pd_pipelines)} pipelines in Pipedrive')
 
     inserted = []
     for pd_pipeline in pd_pipelines:
         result = await api.pipedrive_request('stages', method='GET', query_params={'pipeline_id': pd_pipeline['id']})
-        pd_stages = result.get('data', [])
+        pd_stages = result.get('data') or []
 
         for pd_stage in pd_stages:
             if pd_stage['id'] not in existing:
