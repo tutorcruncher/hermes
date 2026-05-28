@@ -15,6 +15,7 @@ from sqlmodel import select
 
 from app.core.database import get_session
 from app.pipedrive import api
+from app.main_app.models import Stage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('hermes.patch')
@@ -561,6 +562,45 @@ async def reassign_deals_with_invalid_admin(db):
             deals_updated += 1
 
     print(f'Updated {deals_updated} deals')
+
+
+@command
+async def insert_missing_stages(db):
+    """
+    Fetch all stages from Pipedrive and insert any that are missing from Hermes.
+
+    Hermes only learns about stages via system_setup or PD stage-entity webhooks.
+    If a stage was created in PD after initial setup and no stage webhook was sent,
+    it won't exist in Hermes. Deal webhooks referencing that stage_id then silently
+    fail to update the deal's stage.
+
+    This patch fetches every stage across all pipelines from the PD API and inserts
+    any that don't already exist in the Hermes stage table.
+    """
+
+    existing = {s.pd_stage_id for s in db.exec(select(Stage)).all()}
+    print(f'{len(existing)} stages already in Hermes')
+
+    pipelines = await api.pipedrive_request('pipelines', method='GET')
+    pd_pipelines = pipelines.get('data', [])
+    print(f'Found {len(pd_pipelines)} pipelines in Pipedrive')
+
+    inserted = []
+    for pd_pipeline in pd_pipelines:
+        result = await api.pipedrive_request('stages', method='GET', query_params={'pipeline_id': pd_pipeline['id']})
+        pd_stages = result.get('data', [])
+
+        for pd_stage in pd_stages:
+            if pd_stage['id'] not in existing:
+                stage = Stage(pd_stage_id=pd_stage['id'], name=pd_stage['name'])
+                db.add(stage)
+                inserted.append((pd_stage['id'], pd_stage['name'], pd_pipeline['name']))
+                print(f'  INSERT stage {pd_stage["id"]}: {pd_stage["name"]} (pipeline: {pd_pipeline["name"]})')
+
+    if inserted:
+        print(f'\nInserted {len(inserted)} missing stages')
+    else:
+        print('\nNo missing stages found')
 
 
 @click.command()
