@@ -22,3 +22,6 @@ __pycache__
 
 /.logfire/
 *.egg-info
+
+# Claude Code local config (skills, hooks, settings)
+.claude/

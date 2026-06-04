@@ -38,7 +38,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
     try:
         company, contact = await get_or_create_contact_company(event, db)
         deal = await get_or_create_deal(company, contact, db, status=Deal.STATUS_OPEN)
-        meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
+        meeting = await book_meeting(company=company, contact=contact, event=event, db=db, deal=deal)
         meeting.deal_id = deal.id
         db.add(meeting)
         db.commit()

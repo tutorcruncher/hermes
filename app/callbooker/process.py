@@ -12,7 +12,7 @@ from app.callbooker.utils import iso_8601_to_datetime
 from app.core.config import settings
 from app.core.database import DBSession
 from app.exceptions import MeetingBookingError
-from app.main_app.models import Admin, Company, Contact, Meeting
+from app.main_app.models import Admin, Company, Contact, Deal, Meeting
 
 logger = logging.getLogger('hermes.callbooker')
 
@@ -128,7 +128,11 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
 
 async def book_meeting(
-    company: Company, contact: Contact, event: CBSalesCall | CBSupportCall, db: DBSession
+    company: Company,
+    contact: Contact,
+    event: CBSalesCall | CBSupportCall,
+    db: DBSession,
+    deal: Deal | None = None,
 ) -> Meeting:
     """
     Book a meeting after checking:
@@ -154,7 +158,7 @@ async def book_meeting(
     meeting = _create_meeting_record(company.id, contact.id, event, meeting_start, meeting_end, db)
 
     try:
-        await _create_google_calendar_event(meeting, company, contact, admin, db)
+        await _create_google_calendar_event(meeting, company, contact, admin, db, deal=deal)
     except Exception as e:
         _delete_meeting_on_calendar_failure(meeting.id, db)
         raise e
@@ -218,7 +222,9 @@ def _delete_meeting_on_calendar_failure(meeting_id: int, db: DBSession) -> None:
         logger.info(f'Deleted meeting {meeting_id} due to Google Calendar failure')
 
 
-def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admin, meeting_type: str) -> dict:
+def _build_meeting_template_vars(
+    company: Company, contact: Contact, admin: Admin, meeting_type: str, deal: Deal | None = None
+) -> dict:
     """Build template variables for meeting description"""
     template_vars = {
         'contact_first_name': contact.first_name or 'there',
@@ -235,7 +241,7 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
                 'contact_phone': contact.phone,
                 'company_estimated_monthly_revenue': company.estimated_income,
                 'company_country': company.country,
-                'crm_url': company.pd_org_url or '',
+                'crm_url': (deal.pd_deal_url if deal else None) or company.pd_org_url or '',
             }
         )
 
@@ -243,11 +249,11 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
 
 
 async def _create_google_calendar_event(
-    meeting: Meeting, company: Company, contact: Contact, admin: Admin, db: DBSession
+    meeting: Meeting, company: Company, contact: Contact, admin: Admin, db: DBSession, deal: Deal | None = None
 ) -> None:
     """Create Google Calendar event for the meeting"""
     meeting_template = MEETING_CONTENT_TEMPLATES[meeting.meeting_type]
-    template_vars = _build_meeting_template_vars(company, contact, admin, meeting.meeting_type)
+    template_vars = _build_meeting_template_vars(company, contact, admin, meeting.meeting_type, deal=deal)
 
     try:
         g_cal = AdminGoogleCalendar(admin_email=admin.email)

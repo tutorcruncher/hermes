@@ -306,6 +306,12 @@ class Deal(SQLModel, table=True):
     contact: Optional[Contact] = Relationship(back_populates='deals')
     meetings: List['Meeting'] = Relationship(back_populates='deal')
 
+    @property
+    def pd_deal_url(self):
+        if self.pd_deal_id:
+            return f'{settings.pd_base_url}/deal/{self.pd_deal_id}/'
+        return None
+
     def __str__(self):
         return self.name or f'Deal {self.id}'
 
