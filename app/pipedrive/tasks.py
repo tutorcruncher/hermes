@@ -200,6 +200,12 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
             company = db.get(Company, deal.company_id)
         else:
             deal_data = _deal_to_pd_data(deal, db)
+            # pipeline/stage are excluded from _deal_to_pd_data (issue #399) so that
+            # updates never overwrite stages set by sales in Pipedrive. But new deals
+            # still need them so PD places them in the correct pipeline. Captured here
+            # while the session is open so as to put into deal_data only on the create path.
+            pd_pipeline_id = deal.pipeline.pd_pipeline_id if deal.pipeline else None
+            pd_stage_id = deal.stage.pd_stage_id if deal.stage else None
         pd_deal_id = deal.pd_deal_id
 
     if only_syncable_deal_fields:
@@ -231,12 +237,16 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
         except Exception as e:
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
 
-    if not pd_deal_id:
+    else:
+        # We don't have a deal and creating one
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return
 
         try:
+            # Only include pipeline/stage for creation (see comment above)
+            deal_data['pipeline_id'] = pd_pipeline_id
+            deal_data['stage_id'] = pd_stage_id
             result = await api.create_deal(deal_data)
             new_pd_deal_id = result['data']['id']
 
@@ -366,8 +376,6 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         'org_id': company.pd_org_id if company else None,
         'person_id': contact.pd_person_id if contact else None,
         'owner_id': deal.admin.pd_owner_id if deal.admin else None,
-        'pipeline_id': deal.pipeline.pd_pipeline_id if deal.pipeline else None,
-        'stage_id': deal.stage.pd_stage_id if deal.stage else None,
         'status': deal.status,
     }
 
