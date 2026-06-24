@@ -36,6 +36,30 @@ class TestPipedriveWebhookEndpoint:
         assert test_company.name == 'Updated Name'
         assert test_company.paid_invoice_count == 15
 
+    async def test_pipedrive_callback_does_not_overwrite_marketing_consent(self, client, db, test_company):
+        """receive_marketing_emails is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.receive_marketing_emails = True
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Updated Name',
+                COMPANY_PD_FIELD_MAP['receive_marketing_emails']: 'No',
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(test_company)
+        assert test_company.receive_marketing_emails is True
+
     async def test_pipedrive_callback_organization_with_previous(self, client, db, test_company):
         """Test webhook for organization with previous data"""
         test_company.pd_org_id = 999

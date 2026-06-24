@@ -36,6 +36,7 @@ ORGANIZATION_FIELDS = [
     {'name': 'gclid_expiry_dt', 'field_type': 'date'},
     {'name': 'email_confirmed_dt', 'field_type': 'date'},
     {'name': 'card_saved_dt', 'field_type': 'date'},
+    {'name': 'receive_marketing_emails', 'field_type': 'text'},
 ]
 
 PERSON_FIELDS = [

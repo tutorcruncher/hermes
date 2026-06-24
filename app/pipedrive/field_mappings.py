@@ -37,6 +37,11 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'gclid_expiry_dt': '21685501a4a4fc347f609adcafc9908d774034f9',
     'email_confirmed_dt': '35d6e7ef145f1966d2a53fe7c02c87efd1455587',
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',
+    # Placeholder key: run `python create_pipedrive_fields.py` to create the organization field in
+    # Pipedrive, then `make setup-fields` to fetch its key into field_mappings_override.py, and
+    # replace this value. Until then _company_to_org_data skips any 'TODO_'-prefixed id, so it is
+    # never sent to Pipedrive.
+    'receive_marketing_emails': 'TODO_PD_FIELD_ID_receive_marketing_emails',
 }
 
 _DEFAULT_DEAL_PD_FIELD_MAP = {

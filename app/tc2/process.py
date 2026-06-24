@@ -22,6 +22,7 @@ COMPANY_SYNCABLE_FIELDS = {
     'gclid_expiry_dt',
     'tc2_status',
     'narc',
+    'receive_marketing_emails',
     'paid_invoice_count',
     'signup_questionnaire',
 }
@@ -36,6 +37,8 @@ def _update_syncable_fields(company: Company, tc_client: TCClient):
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
         value = getattr(tc_client.meta_agency, tc2_field)
+        if field in ('narc', 'receive_marketing_emails'):
+            value = bool(value)
         setattr(company, field, value)
 
 
@@ -151,6 +154,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             paid_invoice_count=tc_client.meta_agency.paid_invoice_count,
             price_plan=tc_client.meta_agency.price_plan,
             narc=tc_client.meta_agency.narc or False,
+            receive_marketing_emails=tc_client.meta_agency.receive_marketing_emails or False,
             pay0_dt=tc_client.meta_agency.pay0_dt,
             pay1_dt=tc_client.meta_agency.pay1_dt,
             pay3_dt=tc_client.meta_agency.pay3_dt,
