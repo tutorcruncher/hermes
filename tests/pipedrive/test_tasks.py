@@ -224,20 +224,15 @@ class TestSyncOrganization:
         db.refresh(test_company)
         assert test_company.pd_org_id == 888
 
-    async def test_company_to_org_data_skips_unprovisioned_marketing_field(self, db, test_company):
-        """A field whose Pipedrive id is still a TODO_ placeholder is not sent (avoids a Pipedrive 400)."""
-        test_company.receive_marketing_emails = True
-        custom_fields = _company_to_org_data(test_company)['custom_fields']
-        assert COMPANY_PD_FIELD_MAP['receive_marketing_emails'] not in custom_fields
-
-    @patch.dict('app.pipedrive.tasks.COMPANY_PD_FIELD_MAP', {'receive_marketing_emails': 'pd_marketing_field_key'})
     async def test_company_to_org_data_sends_receive_marketing_emails_as_yes_no(self, db, test_company):
-        """Once the Pipedrive field id is provisioned, receive_marketing_emails syncs as Yes/No text."""
+        """receive_marketing_emails syncs to Pipedrive as Yes/No text (Pipedrive has no boolean field type)."""
+        pd_field = COMPANY_PD_FIELD_MAP['receive_marketing_emails']
+
         test_company.receive_marketing_emails = True
-        assert _company_to_org_data(test_company)['custom_fields']['pd_marketing_field_key'] == 'Yes'
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 'Yes'
 
         test_company.receive_marketing_emails = False
-        assert _company_to_org_data(test_company)['custom_fields']['pd_marketing_field_key'] == 'No'
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 'No'
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)

@@ -320,10 +320,6 @@ def _company_to_org_data(company: Company) -> dict:
 
     # Map fields to Pipedrive field IDs
     for field_name, pd_field_id in COMPANY_PD_FIELD_MAP.items():
-        # Skip fields whose Pipedrive id has not been provisioned yet (placeholder). Sending an
-        # unknown custom-field key would make Pipedrive reject the whole organization sync.
-        if pd_field_id.startswith('TODO_'):
-            continue
         if field_name == 'hermes_id':
             value = company.id
         elif field_name == 'tc2_cligency_url':
@@ -331,12 +327,13 @@ def _company_to_org_data(company: Company) -> dict:
         else:
             value = getattr(company, field_name, None)
 
+        # Pipedrive has no native boolean field type, so store booleans as Yes/No text.
+        if isinstance(value, bool):
+            value = 'Yes' if value else 'No'
+
         if value is not None and value != '':
-            # Convert booleans to Yes/No text (Pipedrive has no native boolean field type)
-            if isinstance(value, bool):
-                value = 'Yes' if value else 'No'
             # Convert datetime to ISO date string
-            elif isinstance(value, datetime):
+            if isinstance(value, datetime):
                 value = value.date().isoformat()
             # Convert integers to strings for hermes_id and paid_invoice_count (text fields in Pipedrive)
             elif field_name in ('hermes_id', 'paid_invoice_count') and isinstance(value, int):

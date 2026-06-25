@@ -37,8 +37,6 @@ def _update_syncable_fields(company: Company, tc_client: TCClient):
     for field in COMPANY_SYNCABLE_FIELDS:
         tc2_field = 'status' if field == 'tc2_status' else field
         value = getattr(tc_client.meta_agency, tc2_field)
-        if field in ('narc', 'receive_marketing_emails'):
-            value = bool(value)
         setattr(company, field, value)
 
 
