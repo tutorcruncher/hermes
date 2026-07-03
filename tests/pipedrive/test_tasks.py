@@ -224,15 +224,22 @@ class TestSyncOrganization:
         db.refresh(test_company)
         assert test_company.pd_org_id == 888
 
-    async def test_company_to_org_data_sends_receive_marketing_emails_as_yes_no(self, db, test_company):
-        """receive_marketing_emails syncs to Pipedrive as Yes/No text (Pipedrive has no boolean field type)."""
+    async def test_company_to_org_data_sends_receive_marketing_emails_as_enum_option_ids(self, db, test_company, monkeypatch):
+        """receive_marketing_emails syncs to Pipedrive as enum option IDs (single-option field)."""
+        from app.pipedrive import field_mappings
+
+        monkeypatch.setitem(
+            field_mappings.COMPANY_PD_ENUM_OPTION_MAP,
+            'receive_marketing_emails',
+            {'yes': 101, 'no': 102},
+        )
         pd_field = COMPANY_PD_FIELD_MAP['receive_marketing_emails']
 
         test_company.receive_marketing_emails = True
-        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 'Yes'
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 101
 
         test_company.receive_marketing_emails = False
-        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 'No'
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 102
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)

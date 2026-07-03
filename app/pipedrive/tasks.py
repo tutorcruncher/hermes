@@ -8,7 +8,12 @@ from app.core.database import get_session
 from app.core.locks import RedisLockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+from app.pipedrive.field_mappings import (
+    COMPANY_PD_ENUM_OPTION_MAP,
+    COMPANY_PD_FIELD_MAP,
+    CONTACT_PD_FIELD_MAP,
+    DEAL_PD_FIELD_MAP,
+)
 
 logger = logging.getLogger('hermes.pipedrive')
 
@@ -303,6 +308,20 @@ async def purge_company_from_pipedrive(company_id: int):
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
 
 
+def _bool_to_pd_enum_option(field_name: str, value: bool) -> int | None:
+    """Map a Hermes bool to a Pipedrive single-option (enum) field option ID."""
+    options = COMPANY_PD_ENUM_OPTION_MAP.get(field_name)
+    if not options:
+        return None
+    if value:
+        option_id = options.get('yes')
+    else:
+        option_id = options.get('no')
+    if option_id is None:
+        return None
+    return int(option_id)
+
+
 def _company_to_org_data(company: Company) -> dict:
     """Convert Company model to Pipedrive organization data"""
     data = {
@@ -327,9 +346,12 @@ def _company_to_org_data(company: Company) -> dict:
         else:
             value = getattr(company, field_name, None)
 
-        # Pipedrive has no native boolean field type, so store booleans as Yes/No text.
+        # Pipedrive has no native boolean field type — use enum option IDs where configured.
         if isinstance(value, bool):
-            value = 'Yes' if value else 'No'
+            enum_option_id = _bool_to_pd_enum_option(field_name, value)
+            if enum_option_id is None:
+                continue
+            value = enum_option_id
 
         if value is not None and value != '':
             # Convert datetime to ISO date string

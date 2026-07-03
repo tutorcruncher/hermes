@@ -37,10 +37,15 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'gclid_expiry_dt': '21685501a4a4fc347f609adcafc9908d774034f9',
     'email_confirmed_dt': '35d6e7ef145f1966d2a53fe7c02c87efd1455587',
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',
-    # Placeholder key — MUST be replaced before deploy: run `python create_pipedrive_fields.py` to
-    # create the organization field in Pipedrive, then `make setup-fields` to fetch its key into
-    # field_mappings_override.py, and replace this value with the real key.
-    'receive_marketing_emails': 'TODO_PD_FIELD_ID_receive_marketing_emails',
+    'receive_marketing_emails': 'f96180f45c324d57c3dd42b02a9ec511311e9638',
+}
+
+# Pipedrive single-option (enum) IDs for bool fields — option IDs are per Pipedrive account.
+_DEFAULT_COMPANY_PD_ENUM_OPTION_MAP = {
+    'receive_marketing_emails': {
+        'yes': 505,
+        'no': 506,
+    },
 }
 
 _DEFAULT_DEAL_PD_FIELD_MAP = {
@@ -65,6 +70,7 @@ _DEFAULT_CONTACT_PD_FIELD_MAP = {
 COMPANY_PD_FIELD_MAP = _DEFAULT_COMPANY_PD_FIELD_MAP.copy()
 DEAL_PD_FIELD_MAP = _DEFAULT_DEAL_PD_FIELD_MAP.copy()
 CONTACT_PD_FIELD_MAP = _DEFAULT_CONTACT_PD_FIELD_MAP.copy()
+COMPANY_PD_ENUM_OPTION_MAP = {field: options.copy() for field, options in _DEFAULT_COMPANY_PD_ENUM_OPTION_MAP.items()}
 
 override_path = PROJECT_ROOT / 'field_mappings_override.py'
 
@@ -84,5 +90,12 @@ if os.path.exists(override_path):
 
         if hasattr(field_mappings_override, 'CONTACT_PD_FIELD_MAP'):
             CONTACT_PD_FIELD_MAP.update(field_mappings_override.CONTACT_PD_FIELD_MAP)
+
+        if hasattr(field_mappings_override, 'COMPANY_PD_ENUM_OPTION_MAP'):
+            for field_name, options in field_mappings_override.COMPANY_PD_ENUM_OPTION_MAP.items():
+                if field_name in COMPANY_PD_ENUM_OPTION_MAP:
+                    COMPANY_PD_ENUM_OPTION_MAP[field_name].update(options)
+                else:
+                    COMPANY_PD_ENUM_OPTION_MAP[field_name] = options.copy()
 
         logger.info(f'Loaded field mapping overrides from {override_path}')
