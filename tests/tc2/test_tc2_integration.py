@@ -2179,7 +2179,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 
@@ -2317,7 +2317,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 
@@ -2487,7 +2487,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 

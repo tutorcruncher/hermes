@@ -530,7 +530,7 @@ class TestSyncDeal:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -623,7 +623,7 @@ class TestSyncDeal:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -1009,7 +1009,7 @@ class TestSyncMeetingToPipedrive:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -1037,7 +1037,7 @@ class TestSyncMeetingToPipedrive:
             'company_id': test_company.id,
             'name': 'Test Person',
             'email': 'test@example.com',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-support-call'), json=meeting_data)
