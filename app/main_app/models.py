@@ -176,6 +176,7 @@ class Company(SQLModel, table=True):
     has_booked_call: bool = Field(default=False)
     has_signed_up: bool = Field(default=False)
     narc: bool = Field(default=False)
+    receive_marketing_emails: bool = Field(default=False)
     is_deleted: bool = Field(default=False)
 
     # Fields synced to/from Pipedrive

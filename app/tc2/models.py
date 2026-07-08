@@ -36,6 +36,7 @@ class _TCAgency(BaseModel):
     created: datetime = Field(exclude=True)
     price_plan: str
     narc: Optional[bool] = False
+    receive_marketing_emails: Optional[bool] = False
     signup_questionnaire: Optional[str] = None
     pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None

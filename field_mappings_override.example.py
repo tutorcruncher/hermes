@@ -28,6 +28,12 @@ COMPANY_PD_FIELD_MAP = {
     'gclid_expiry_dt': '21685501a4a4fc347f609adcafc9908d774034f9',  # GCLID Expiry Date
     'email_confirmed_dt': '35d6e7ef145f1966d2a53fe7c02c87efd1455587',  # Email Confirmed Date
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',  # Card Saved Date
+    'receive_marketing_emails': 'TODO_PD_FIELD_ID_receive_marketing_emails',  # Single option: Yes / No
+}
+
+# Enum option IDs for single-option fields (from Pipedrive organizationFields API)
+COMPANY_PD_ENUM_OPTION_MAP = {
+    'receive_marketing_emails': {'yes': None, 'no': None},
 }
 
 DEAL_PD_FIELD_MAP = {

@@ -36,6 +36,7 @@ ORGANIZATION_FIELDS = [
     {'name': 'gclid_expiry_dt', 'field_type': 'date'},
     {'name': 'email_confirmed_dt', 'field_type': 'date'},
     {'name': 'card_saved_dt', 'field_type': 'date'},
+    {'name': 'receive_marketing_emails', 'field_type': 'enum', 'options': [{'label': 'Yes'}, {'label': 'No'}]},
 ]
 
 PERSON_FIELDS = [
@@ -70,6 +71,8 @@ async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: 
         'name': field_data['name'],
         'field_type': field_data['field_type'],
     }
+    if field_data.get('options'):
+        payload['options'] = field_data['options']
 
     try:
         response = await client.post(url, json=payload, params=params)
@@ -79,6 +82,8 @@ async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: 
         if result.get('success'):
             field_id = result['data']['key']
             print(f'✓ Created {entity_type} field: {field_data["name"]} (ID: {field_id})')
+            for option in result['data'].get('options') or []:
+                print(f'    option "{option.get("label")}": id={option.get("id")}')
         else:
             print(f'✗ Failed to create {entity_type} field: {field_data["name"]} - {result}')
 

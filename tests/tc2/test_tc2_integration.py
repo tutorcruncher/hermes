@@ -35,6 +35,7 @@ def sample_tc_client_data(test_admin):
             'created': '2024-01-01T00:00:00Z',
             'price_plan': 'monthly-payg',
             'narc': False,
+            'receive_marketing_emails': True,
         },
         'user': {'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com', 'phone': '+1234567890'},
         'status': 'active',
@@ -67,6 +68,7 @@ class TestTC2Integration:
         assert company.price_plan == 'payg'
         assert company.utm_source == 'google'
         assert company.utm_campaign == 'summer2024'
+        assert company.receive_marketing_emails is True
         assert company.sales_person_id == test_admin.id
 
     async def test_process_tc_client_creates_contacts(self, db, test_admin, sample_tc_client_data):
@@ -100,6 +102,17 @@ class TestTC2Integration:
         assert updated_company.name == original_name  # name is NOT syncable
         assert updated_company.paid_invoice_count == 10  # paid_invoice_count IS syncable
         assert updated_company.price_plan == 'startup'  # price_plan IS syncable
+
+    async def test_process_tc_client_syncs_receive_marketing_emails(self, db, test_admin, sample_tc_client_data):
+        """receive_marketing_emails is syncable: a changed value from TC2 updates the existing company."""
+        company = await process_tc_client(TCClient(**sample_tc_client_data), db)
+        assert company.receive_marketing_emails is True
+
+        sample_tc_client_data['meta_agency']['receive_marketing_emails'] = False
+        updated_company = await process_tc_client(TCClient(**sample_tc_client_data), db)
+
+        assert updated_company.id == company.id
+        assert updated_company.receive_marketing_emails is False
 
     @patch('httpx.AsyncClient.request')
     async def test_tc2_webhook_triggers_pipedrive_sync(
@@ -2166,7 +2179,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 
@@ -2304,7 +2317,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 
@@ -2474,7 +2487,7 @@ class TestGetOrCreateDealConsolidation:
                 'estimated_income': 1000,
                 'currency': 'GBP',
                 'price_plan': 'payg',
-                'meeting_dt': '2026-07-03T09:00:00Z',
+                'meeting_dt': '2030-07-03T09:00:00Z',
             },
         )
 

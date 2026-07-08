@@ -20,7 +20,7 @@ CB_MEETING_DATA = {
     'estimated_income': 1000,
     'currency': 'GBP',
     'price_plan': Company.PP_PAYG,
-    'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+    'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
 }
 
 
@@ -122,7 +122,7 @@ class TestSalesCallBooking:
             Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id)
         )
 
-        meeting_time = datetime(2026, 7, 3, 9, tzinfo=utc)
+        meeting_time = datetime(2030, 7, 3, 9, tzinfo=utc)
         db.create(
             Meeting(
                 contact_id=contact.id,
@@ -154,7 +154,7 @@ class TestSalesCallBooking:
             Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id)
         )
 
-        existing_meeting_time = datetime(2026, 7, 3, 11, 0, tzinfo=utc)  # 11:00
+        existing_meeting_time = datetime(2030, 7, 3, 11, 0, tzinfo=utc)  # 11:00
         db.create(
             Meeting(
                 contact_id=contact.id,
@@ -168,7 +168,7 @@ class TestSalesCallBooking:
 
         # Try to book exactly 2 hours before (9:00, buffer window is 9:00-13:00)
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data['meeting_dt'] = datetime(2026, 7, 3, 9, 0, tzinfo=utc).isoformat()
+        meeting_data['meeting_dt'] = datetime(2030, 7, 3, 9, 0, tzinfo=utc).isoformat()
 
         r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
 
@@ -189,7 +189,7 @@ class TestSalesCallBooking:
             Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id)
         )
 
-        existing_meeting_time = datetime(2026, 7, 3, 13, 1, tzinfo=utc)  # 13:01
+        existing_meeting_time = datetime(2030, 7, 3, 13, 1, tzinfo=utc)  # 13:01
         db.create(
             Meeting(
                 contact_id=contact.id,
@@ -203,7 +203,7 @@ class TestSalesCallBooking:
 
         # Try to book at 9:00 (4+ hours before)
         meeting_data = CB_MEETING_DATA.copy()
-        meeting_data['meeting_dt'] = datetime(2026, 7, 3, 9, 0, tzinfo=utc).isoformat()
+        meeting_data['meeting_dt'] = datetime(2030, 7, 3, 9, 0, tzinfo=utc).isoformat()
 
         r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
 
@@ -935,7 +935,7 @@ class TestCallbookerValidation:
     ):
         """Test that admin busy check via Google Calendar freebusy API prevents booking"""
         # Mock admin as busy at the requested time
-        requested_time = datetime(2026, 7, 3, 10, 0, tzinfo=utc)
+        requested_time = datetime(2030, 7, 3, 10, 0, tzinfo=utc)
         mock_gcal_builder.side_effect = fake_gcal_builder(start_dt=requested_time, meeting_dur_mins=30)
 
         admin = db.create(Admin(first_name='Test', last_name='Admin', username='climan@example.com'))
@@ -1006,8 +1006,8 @@ class TestCallbookerValidation:
                 self.body = body
 
             def execute(self):
-                busy_start = datetime(2026, 7, 3, 10, 0, tzinfo=utc)
-                busy_end = datetime(2026, 7, 3, 11, 0, tzinfo=utc)
+                busy_start = datetime(2030, 7, 3, 10, 0, tzinfo=utc)
+                busy_end = datetime(2030, 7, 3, 11, 0, tzinfo=utc)
                 return {
                     'calendars': {
                         admin.username: {
@@ -1038,7 +1038,7 @@ class TestCallbookerValidation:
         mock_resource.events.return_value.insert.side_effect = MockEventInsert
 
         # Test 1: Attempt to book during busy time (10:00-10:30) - should fail
-        busy_time = datetime(2026, 7, 3, 10, 15, tzinfo=utc)
+        busy_time = datetime(2030, 7, 3, 10, 15, tzinfo=utc)
         meeting_data_busy = {
             'admin_id': admin.id,
             'name': 'John Smith',
@@ -1069,7 +1069,7 @@ class TestCallbookerValidation:
         assert len(event_creations) == 0
 
         # Test 2: Book during free time (14:00-14:30) - should succeed
-        free_time = datetime(2026, 7, 3, 14, 0, tzinfo=utc)
+        free_time = datetime(2030, 7, 3, 14, 0, tzinfo=utc)
         meeting_data_free = {
             'admin_id': admin.id,
             'name': 'Jane Doe',

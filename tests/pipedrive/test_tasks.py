@@ -11,8 +11,9 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from app.main_app.models import Company, Deal
-from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
+    _company_to_org_data,
     _deal_to_pd_data,
     _meeting_to_activity_data,
     partial_sync_deal_from_company,
@@ -222,6 +223,23 @@ class TestSyncOrganization:
         mock_create.assert_called_once()
         db.refresh(test_company)
         assert test_company.pd_org_id == 888
+
+    async def test_company_to_org_data_sends_receive_marketing_emails_as_enum_option_ids(self, db, test_company, monkeypatch):
+        """receive_marketing_emails syncs to Pipedrive as enum option IDs (single-option field)."""
+        from app.pipedrive import field_mappings
+
+        monkeypatch.setitem(
+            field_mappings.COMPANY_PD_ENUM_OPTION_MAP,
+            'receive_marketing_emails',
+            {'yes': 101, 'no': 102},
+        )
+        pd_field = COMPANY_PD_FIELD_MAP['receive_marketing_emails']
+
+        test_company.receive_marketing_emails = True
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 101
+
+        test_company.receive_marketing_emails = False
+        assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 102
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
@@ -512,7 +530,7 @@ class TestSyncDeal:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -605,7 +623,7 @@ class TestSyncDeal:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -991,7 +1009,7 @@ class TestSyncMeetingToPipedrive:
             'estimated_income': 1000,
             'currency': 'GBP',
             'price_plan': 'payg',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
@@ -1019,7 +1037,7 @@ class TestSyncMeetingToPipedrive:
             'company_id': test_company.id,
             'name': 'Test Person',
             'email': 'test@example.com',
-            'meeting_dt': datetime(2026, 7, 3, 9, tzinfo=utc).isoformat(),
+            'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
         }
 
         r = client.post(client.app.url_path_for('book-support-call'), json=meeting_data)

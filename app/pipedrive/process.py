@@ -137,7 +137,9 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return [
             f
             for f in list(COMPANY_PD_FIELD_MAP.keys())
-            if f not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url']
+            # receive_marketing_emails is TC2-authoritative; Pipedrive must not write it back.
+            if f
+            not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url', 'receive_marketing_emails']
         ]
 
     async def _add_obj(self, pd_obj: Organisation) -> Company:
