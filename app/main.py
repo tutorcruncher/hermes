@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 import logfire
@@ -16,7 +17,17 @@ logger = get_logger('hermes')
 
 # Initialize Logfire
 if settings.logfire_token:
-    logfire.configure(token=settings.logfire_token)
+    logfire.configure(
+        token=settings.logfire_token,
+        service_name='hermes',
+        environment=settings.logfire_environment,
+    )
+    # Send stdlib logging records to Logfire as well as stdout. Without this every
+    # logger.error (including swallowed webhook processing errors) is only visible
+    # in the rolling Heroku log buffer, not in Logfire.
+    logging.getLogger().addHandler(logfire.LogfireLoggingHandler())
+    # Trace outbound TC2/Pipedrive API calls, including error responses.
+    logfire.instrument_httpx()
 
 # Initialize Sentry
 if settings.sentry_dsn:

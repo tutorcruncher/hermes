@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     log_level: str = 'INFO'
 
     logfire_token: Optional[str] = None
+    # Shown as deployment_environment on all telemetry, e.g. 'production' / 'beta'
+    logfire_environment: Optional[str] = None
 
     # Postgres
     database_url: PostgresDsn = Field(
