@@ -221,9 +221,11 @@ def _delete_meeting_on_calendar_failure(meeting_id: int, db: DBSession) -> None:
 
 def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admin, meeting_type: str) -> dict:
     """Build template variables for meeting description"""
-    # The signup link carries the company's real acquisition source (captured when
-    # the call was booked) so signing up via this email doesn't overwrite it;
-    # 'call_booker' is only a fallback when we never captured one.
+    # The signup link carries the company's recorded acquisition source so that signing up from
+    # this email doesn't overwrite it with 'call_booker'. That is whatever source was first
+    # captured for the company - get_or_create_contact_company only applies the booking payload's
+    # utm when it creates the company, so a repeat booking does not update it.
+    # 'call_booker' is only a fallback when no source was ever captured.
     tracking_params = {'tc_source': company.utm_source or 'call_booker'}
     if company.utm_campaign:
         tracking_params['tc_campaign'] = company.utm_campaign
