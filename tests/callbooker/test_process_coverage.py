@@ -8,9 +8,10 @@ from unittest.mock import AsyncMock, patch
 from pytz import utc
 from sqlmodel import select
 
+from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
-from app.callbooker.process import book_meeting
-from app.main_app.models import Config, Deal, Pipeline, Stage
+from app.callbooker.process import _build_meeting_template_vars, book_meeting
+from app.main_app.models import Config, Deal, Meeting, Pipeline, Stage
 from tests.helpers import fake_gcal_builder
 
 
@@ -371,3 +372,19 @@ class TestAvailabilityEndpoint:
         assert data['status'] == 'ok'
         # Should have some slots but not at 10:00-11:00
         assert isinstance(data['slots'], list)
+
+
+class TestMeetingTemplateVars:
+    def test_signup_link_uses_company_utm(self, test_admin, test_company, test_contact):
+        test_company.utm_source = 'google'
+        test_company.utm_campaign = 'US Search'
+        template_vars = _build_meeting_template_vars(test_company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=google&tc_campaign=US+Search'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert f'/start/1/?cli_id={test_company.tc2_cligency_id or ""}&tc_source=google&tc_campaign=US+Search' in description
+
+    def test_signup_link_falls_back_to_call_booker(self, test_admin, test_company, test_contact):
+        template_vars = _build_meeting_template_vars(test_company, test_contact, test_admin, Meeting.TYPE_SALES)
+        assert template_vars['signup_tracking_params'] == 'tc_source=call_booker'
+        description = MEETING_CONTENT_TEMPLATES['sales'].format(**template_vars)
+        assert 'tc_source=call_booker' in description
