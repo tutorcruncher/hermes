@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
@@ -220,12 +221,21 @@ def _delete_meeting_on_calendar_failure(meeting_id: int, db: DBSession) -> None:
 
 def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admin, meeting_type: str) -> dict:
     """Build template variables for meeting description"""
+    # The signup link carries the company's recorded acquisition source so that signing up from
+    # this email doesn't overwrite it with 'call_booker'. That is whatever source was first
+    # captured for the company - get_or_create_contact_company only applies the booking payload's
+    # utm when it creates the company, so a repeat booking does not update it.
+    # 'call_booker' is only a fallback when no source was ever captured.
+    tracking_params = {'tc_source': company.utm_source or 'call_booker'}
+    if company.utm_campaign:
+        tracking_params['tc_campaign'] = company.utm_campaign
     template_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
         'admin_name': admin.first_name,
         'tc2_cligency_id': company.tc2_cligency_id or '',
         'tc2_cligency_url': company.tc2_cligency_url or '',
+        'signup_tracking_params': urlencode(tracking_params),
     }
 
     if meeting_type == Meeting.TYPE_SALES:

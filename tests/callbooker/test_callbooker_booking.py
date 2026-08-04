@@ -24,6 +24,23 @@ CB_MEETING_DATA = {
 }
 
 
+def capturing_gcal_builder(captured_events: list, admin_email: str = 'climan@example.com'):
+    """
+    Mock Google Calendar resource builder that records the body of every event it inserts.
+
+    Lets a test assert on the description actually handed to the Google Calendar API, so template
+    placeholders that no longer match the template vars fail here rather than in production.
+    """
+    base_resource = fake_gcal_builder(admin_email=admin_email)
+
+    class CapturingGCalResource(base_resource):
+        def insert(self, *args, **kwargs):
+            captured_events.append(kwargs['body'])
+            return self
+
+    return CapturingGCalResource
+
+
 def get_pipedrive_call_data(mock_pipedrive, endpoint: str, method: str):
     """Extract data from a specific Pipedrive API call"""
     calls = [
@@ -676,6 +693,94 @@ class TestSupportCallBooking:
 
         assert r.status_code == 400
         assert r.json()['status'] == 'error'
+
+
+class TestSignupLinkAttribution:
+    """Test the signup link in the calendar invite carries the company's acquisition source"""
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_invite_carries_the_booking_utm(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test utm in the sales booking payload reaches the signup link in the calendar invite"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events)
+        sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['utm_source'] = 'google.com'
+        meeting_data['utm_campaign'] = 'tc-home-US'
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
+
+        assert r.status_code == 200, r.json()
+
+        company = db.exec(select(Company)).one()
+        assert company.utm_source == 'google.com'
+        assert company.utm_campaign == 'tc-home-US'
+
+        description = captured_events[0]['description']
+        assert '/start/1/?cli_id=&tc_source=google.com&tc_campaign=tc-home-US"' in description
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_invite_carries_the_stored_utm(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test a support invite carries the company's stored utm_source, not call_booker"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email='support@example.com')
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(
+            Company(
+                name='Junes Ltd',
+                sales_person_id=admin.id,
+                price_plan='payg',
+                country='GB',
+                tc2_cligency_id=10,
+                utm_source='bing.com',
+            )
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_id'] = company.id
+
+        r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
+
+        assert r.status_code == 200, r.json()
+
+        description = captured_events[0]['description']
+        assert '/start/1/?cli_id=10&tc_source=bing.com"' in description
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_invite_falls_back_to_call_booker_without_utm(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test the signup link falls back to call_booker when the company has no captured utm"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email='support@example.com')
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(
+            Company(
+                name='Junes Ltd',
+                sales_person_id=admin.id,
+                price_plan='payg',
+                country='GB',
+                tc2_cligency_id=10,
+            )
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_id'] = company.id
+
+        r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
+
+        assert r.status_code == 200, r.json()
+
+        description = captured_events[0]['description']
+        assert '/start/1/?cli_id=10&tc_source=call_booker"' in description
 
 
 class TestCallbookerValidation:

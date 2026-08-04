@@ -8,9 +8,11 @@ from unittest.mock import AsyncMock, patch
 from pytz import utc
 from sqlmodel import select
 
+from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
-from app.callbooker.process import book_meeting
-from app.main_app.models import Config, Deal, Pipeline, Stage
+from app.callbooker.process import _build_meeting_template_vars, book_meeting
+from app.main_app.models import Config, Deal, Meeting, Pipeline, Stage
+from tests.factories import CompanyFactory
 from tests.helpers import fake_gcal_builder
 
 
@@ -371,3 +373,44 @@ class TestAvailabilityEndpoint:
         assert data['status'] == 'ok'
         # Should have some slots but not at 10:00-11:00
         assert isinstance(data['slots'], list)
+
+
+class TestMeetingTemplateVars:
+    """Test the signup link in the meeting description carries the company's utm"""
+
+    def test_signup_link_uses_company_utm(self, db, test_admin, test_contact):
+        """Test the signup link carries the company's utm_source and utm_campaign"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='google', utm_campaign='US Search'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=google&tc_campaign=US+Search'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert '/start/1/?cli_id=10&tc_source=google&tc_campaign=US+Search' in description
+
+    def test_signup_link_omits_campaign_when_only_source_is_set(self, db, test_admin, test_contact):
+        """Test the signup link carries tc_source alone when the company has no utm_campaign"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='google'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=google'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert '/start/1/?cli_id=10&tc_source=google">' in description
+
+    def test_signup_link_escapes_hostile_utm_source(self, db, test_admin, test_contact):
+        """Test a utm_source from the public booking endpoint cannot break out of the href"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='a&b="x"<script>'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=a%26b%3D%22x%22%3Cscript%3E'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert '/start/1/?cli_id=10&tc_source=a%26b%3D%22x%22%3Cscript%3E">' in description
+
+    def test_signup_link_falls_back_to_call_booker(self, test_admin, test_company, test_contact):
+        """Test the signup link falls back to call_booker when no utm was ever captured"""
+        template_vars = _build_meeting_template_vars(test_company, test_contact, test_admin, Meeting.TYPE_SALES)
+        assert template_vars['signup_tracking_params'] == 'tc_source=call_booker'
+        description = MEETING_CONTENT_TEMPLATES['sales'].format(**template_vars)
+        assert '/start/1/?cli_id=&tc_source=call_booker"' in description
