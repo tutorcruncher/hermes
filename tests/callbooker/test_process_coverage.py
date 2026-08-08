@@ -67,6 +67,70 @@ class TestCallbookerProcessEdgeCases:
         assert meeting is not None
         assert len(session_open) == 0
 
+    @patch('app.callbooker.process.AdminGoogleCalendar')
+    @patch('app.callbooker.process.check_gcal_open_slots', new_callable=AsyncMock)
+    async def test_crm_url_uses_deal_when_synced(
+        self, mock_check_gcal, mock_gcal_class, db, test_admin, test_company, test_contact, test_deal
+    ):
+        """Sales meeting CRM URL links to the PipeDrive deal when the deal has a pd_deal_id"""
+        mock_check_gcal.return_value = True
+        test_deal.pd_deal_id = 555
+        db.add(test_deal)
+        db.commit()
+
+        captured = {}
+        mock_gcal_class.return_value.create_cal_event = lambda *a, **kw: captured.update(kw)
+
+        future_dt = datetime.now(utc) + timedelta(days=1)
+        event = CBSalesCall(
+            admin_id=test_admin.id,
+            name='John Doe',
+            email='john@example.com',
+            company_name='Test Company',
+            country='GB',
+            estimated_income=1000,
+            currency='GBP',
+            price_plan='payg',
+            meeting_dt=future_dt,
+        )
+
+        await book_meeting(test_company, test_contact, event, db, deal=test_deal)
+
+        assert '/deal/555/' in captured['description']
+
+    @patch('app.callbooker.process.AdminGoogleCalendar')
+    @patch('app.callbooker.process.check_gcal_open_slots', new_callable=AsyncMock)
+    async def test_crm_url_falls_back_to_org_when_deal_not_synced(
+        self, mock_check_gcal, mock_gcal_class, db, test_admin, test_company, test_contact, test_deal
+    ):
+        """Sales meeting CRM URL falls back to the org URL when the deal has no pd_deal_id"""
+        mock_check_gcal.return_value = True
+        test_deal.pd_deal_id = None
+        test_company.pd_org_id = 777
+        db.add(test_deal)
+        db.add(test_company)
+        db.commit()
+
+        captured = {}
+        mock_gcal_class.return_value.create_cal_event = lambda *a, **kw: captured.update(kw)
+
+        future_dt = datetime.now(utc) + timedelta(days=1)
+        event = CBSalesCall(
+            admin_id=test_admin.id,
+            name='John Doe',
+            email='john@example.com',
+            company_name='Test Company',
+            country='GB',
+            estimated_income=1000,
+            currency='GBP',
+            price_plan='payg',
+            meeting_dt=future_dt,
+        )
+
+        await book_meeting(test_company, test_contact, event, db, deal=test_deal)
+
+        assert '/organization/777/' in captured['description']
+
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
         self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config
