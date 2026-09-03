@@ -644,8 +644,9 @@ async def add_jewel_bdr_admin(db):
 
     Outcome:
     One new Admin row. The id printed by the --live run is the bdr_person_id to use in her callbooker
-    links; her TC2 admin id also works there because the callbooker falls back to matching on
-    tc2_admin_id. A dry run also prints an id, but it consumes a sequence value that is discarded.
+    links. Old-style links that pass her TC2 admin id instead also work, but only via the IntegrityError
+    fallback in app/callbooker/process.py that re-resolves the value through tc2_admin_id. A dry run
+    also prints an id, but it consumes a sequence value that is discarded.
     """
     existing = db.exec(select(Admin).where(Admin.tc2_admin_id == JEWEL_TC2_ADMIN_ID)).one_or_none()
     if existing:
@@ -663,6 +664,9 @@ async def add_jewel_bdr_admin(db):
                 print(f'  {u["id"]}: {u.get("name")} <{u.get("email")}>')
         raise click.ClickException('Could not identify Jewel in Pipedrive, nothing changed')
     pd_user = matches[0]
+
+    if not pd_user.get('email'):
+        raise click.ClickException(f'Pipedrive user {pd_user["id"]} ({pd_user["name"]}) has no email, nothing changed')
 
     clash = db.exec(select(Admin).where(Admin.pd_owner_id == pd_user['id'])).first()
     if clash:
