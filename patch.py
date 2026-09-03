@@ -11,11 +11,9 @@ import logging
 from datetime import datetime
 
 import click
-import httpx
 from sqlalchemy import text
 from sqlmodel import select
 
-from app.core.config import settings
 from app.core.database import get_session
 from app.main_app.models import Admin, Stage
 from app.pipedrive import api
@@ -35,9 +33,6 @@ DAN_ID = 8
 TONY_ID = 9
 CHRIS_ID = 11
 DREW_ID = 15
-
-JEWEL_TC2_ADMIN_ID = 5800431  # Jewel's TC2 (meta) admin id, from #411
-JEWEL_FIRST_NAME = 'Jewel'
 
 INACTIVE_ADMIN_IDS = [TOM_ID, DAN_ID, 11, 13]  # Tom, Daniel, Chris, Drew (old id=13)
 INACTIVE_BDR_IDS = [TOM_ID, DAN_ID, 13]  # Tom, Daniel, Drew (old id=13)
@@ -609,92 +604,46 @@ async def insert_missing_stages(db):
         print('\nNo missing stages found')
 
 
-_FIX_ADMIN_ID_SEQ = text(
-    "SELECT setval('admin_id_seq', GREATEST((SELECT last_value FROM admin_id_seq), (SELECT MAX(id) FROM admin)))"
-)
-
-
-async def _get_pipedrive_users() -> list[dict]:
-    """Fetch all Pipedrive users. The users endpoint only exists in API v1, which app.pipedrive.api does not cover."""
-    url = f'{settings.pd_base_url}/api/v1/users'
-    headers = {'x-api-token': settings.pd_api_key, 'Accept': 'application/json'}
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, timeout=30.0)
-        response.raise_for_status()
-        return response.json().get('data') or []
-
-
 @command
 async def add_jewel_bdr_admin(db):
     """
-    Create the Hermes Admin record for Jewel, the new BDR (TC2 meta admin id 5800431, #411).
+    Create the Admin record for Jewel, the new BDR (#411), with the same BDR-only flags as Gabe (id=7)
+    and Drew (id=15). Without it, TC2 webhooks and callbooker bookings naming her as BDR save the
+    company with bdr_person_id NULL.
 
-    Until this row exists, every TC2 webhook and callbooker booking that names her as the BDR logs
-    'BDR person 5800431 not found' and saves the company with bdr_person_id NULL.
+    admin_id_seq is first moved up to MAX(admin.id): insert_admin_placeholders inserted Drew at id=15
+    explicitly and left the sequence at 13, so a plain insert would collide with id 15. setval is not
+    transactional, so this applies even without --live.
 
-    Her name, email, Pipedrive owner id and timezone come from her Pipedrive user (matched on first
-    name), so nothing is guessed - the dry run prints exactly what will be inserted. The flags mirror
-    the existing BDR admins Gabe (id=7) and Drew (id=15): is_bdr_person only, no sales/support role,
-    no plan or territory flags, so she is never picked by the sales or support round-robin.
-
-    admin_id_seq is moved forward to MAX(admin.id) first. insert_admin_placeholders inserted Drew at
-    id=15 with an explicit id, which left the sequence behind at 13, so plain inserts would collide
-    with id 15 on the second new admin. Sequence changes are not transactional, so this repair
-    applies even without --live; it is forward-only and harmless.
-
-    Outcome:
-    One new Admin row. The id printed by the --live run is the bdr_person_id to use in her callbooker
-    links. Old-style links that pass her TC2 admin id instead also work, but only via the IntegrityError
-    fallback in app/callbooker/process.py that re-resolves the value through tc2_admin_id. A dry run
-    also prints an id, but it consumes a sequence value that is discarded.
+    The id printed by the --live run is the bdr_person_id for her callbooker links.
     """
-    existing = db.exec(select(Admin).where(Admin.tc2_admin_id == JEWEL_TC2_ADMIN_ID)).one_or_none()
+    TC2_ADMIN_ID = 5800431  # TC2 meta admin id, from the issue
+    PD_OWNER_ID = 27488253  # Pipedrive user id
+    EMAIL = 'jewel@tutorcruncher.com'
+
+    existing = db.exec(select(Admin).where(Admin.tc2_admin_id == TC2_ADMIN_ID)).one_or_none()
     if existing:
-        print(f'Admin {existing.id} ({existing.name}) already has tc2_admin_id {JEWEL_TC2_ADMIN_ID}, nothing to do')
+        print(f'Admin {existing.id} already has tc2_admin_id {TC2_ADMIN_ID}, nothing to do')
         return
 
-    pd_users = [u for u in await _get_pipedrive_users() if u.get('active_flag')]
-    matches = [u for u in pd_users if (u.get('name') or '').strip().split(' ')[0].lower() == JEWEL_FIRST_NAME.lower()]
-    if len(matches) != 1:
-        linked_pd_ids = {a.pd_owner_id for a in db.exec(select(Admin)).all()}
-        print(f'Found {len(matches)} active Pipedrive users with first name {JEWEL_FIRST_NAME}, expected exactly 1')
-        print('Active Pipedrive users not linked to any Hermes admin:')
-        for u in pd_users:
-            if u['id'] not in linked_pd_ids:
-                print(f'  {u["id"]}: {u.get("name")} <{u.get("email")}>')
-        raise click.ClickException('Could not identify Jewel in Pipedrive, nothing changed')
-    pd_user = matches[0]
-
-    if not pd_user.get('email'):
-        raise click.ClickException(f'Pipedrive user {pd_user["id"]} ({pd_user["name"]}) has no email, nothing changed')
-
-    clash = db.exec(select(Admin).where(Admin.pd_owner_id == pd_user['id'])).first()
-    if clash:
-        raise click.ClickException(
-            f'Admin {clash.id} ({clash.name}) already has pd_owner_id {pd_user["id"]}, refusing to create a duplicate'
-        )
-
-    first_name, _, last_name = pd_user['name'].strip().partition(' ')
-
-    db.execute(_FIX_ADMIN_ID_SEQ)
+    db.execute(
+        text("SELECT setval('admin_id_seq', GREATEST(last_value, (SELECT MAX(id) FROM admin))) FROM admin_id_seq")
+    )
 
     admin = Admin(
-        tc2_admin_id=JEWEL_TC2_ADMIN_ID,
-        pd_owner_id=pd_user['id'],
-        first_name=first_name,
-        last_name=last_name,
-        username=pd_user['email'],
-        timezone=pd_user.get('timezone_name') or 'Europe/London',
+        tc2_admin_id=TC2_ADMIN_ID,
+        pd_owner_id=PD_OWNER_ID,
+        first_name='Jewel',
+        username=EMAIL,
+        timezone='Europe/London',
         is_bdr_person=True,
     )
     db.add(admin)
     db.flush()
 
     print(
-        f'Created admin {admin.id}: {admin.name} <{admin.username}> tc2_admin_id={admin.tc2_admin_id} '
-        f'pd_owner_id={admin.pd_owner_id} timezone={admin.timezone} is_bdr_person=True'
+        f'Created admin {admin.id}: {admin.name} <{admin.username}> tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
     )
-    print(f'Use {admin.id} as bdr_person_id in her callbooker links')
 
 
 @click.command()
