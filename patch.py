@@ -642,7 +642,8 @@ async def add_jewel_bdr_admin(db):
     db.flush()
 
     print(
-        f'Created admin {admin.id}: {admin.name} <{admin.username}> tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
+        f'Created admin {admin.id}: {admin.name} <{admin.username}> '
+        f'tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
     )
 
 
