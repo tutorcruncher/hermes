@@ -11,10 +11,11 @@ import logging
 from datetime import datetime
 
 import click
+from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Stage
+from app.main_app.models import Admin, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -601,6 +602,49 @@ async def insert_missing_stages(db):
         print(f'\nInserted {len(inserted)} missing stages')
     else:
         print('\nNo missing stages found')
+
+
+@command
+async def add_jewel_bdr_admin(db):
+    """
+    Create the Admin record for Jewel, the new BDR (#411), with the same BDR-only flags as Gabe (id=7)
+    and Drew (id=15). Without it, TC2 webhooks and callbooker bookings naming her as BDR save the
+    company with bdr_person_id NULL.
+
+    admin_id_seq is first moved up to MAX(admin.id): insert_admin_placeholders inserted Drew at id=15
+    explicitly and left the sequence at 13, so a plain insert would collide with id 15. setval is not
+    transactional, so this applies even without --live.
+
+    The id printed by the --live run is the bdr_person_id for her callbooker links.
+    """
+    TC2_ADMIN_ID = 5800431  # TC2 meta admin id, from the issue
+    PD_OWNER_ID = 27488253  # Pipedrive user id
+    EMAIL = 'jewel@tutorcruncher.com'
+
+    existing = db.exec(select(Admin).where(Admin.tc2_admin_id == TC2_ADMIN_ID)).one_or_none()
+    if existing:
+        print(f'Admin {existing.id} already has tc2_admin_id {TC2_ADMIN_ID}, nothing to do')
+        return
+
+    db.execute(
+        text("SELECT setval('admin_id_seq', GREATEST(last_value, (SELECT MAX(id) FROM admin))) FROM admin_id_seq")
+    )
+
+    admin = Admin(
+        tc2_admin_id=TC2_ADMIN_ID,
+        pd_owner_id=PD_OWNER_ID,
+        first_name='Jewel',
+        username=EMAIL,
+        timezone='Europe/London',
+        is_bdr_person=True,
+    )
+    db.add(admin)
+    db.flush()
+
+    print(
+        f'Created admin {admin.id}: {admin.name} <{admin.username}> '
+        f'tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
+    )
 
 
 @click.command()
