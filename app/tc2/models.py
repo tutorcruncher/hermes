@@ -24,6 +24,20 @@ class _TCSimpleRole(BaseModel):
     last_name: str
 
 
+class _TCSignupData(BaseModel):
+    """The ad attribution TC2 captured when the company signed up."""
+
+    utm_medium: Optional[str] = None
+    utm_term: Optional[str] = None
+    utm_content: Optional[str] = None
+    ga4_client_id: Optional[str] = None
+    # The contact details as the company gave them at signup, in the shapes Google matches an
+    # enhanced conversion on. They are a snapshot, so they can differ from the current cligency.
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+
+
 class _TCAgency(BaseModel):
     """TC2 Agency data"""
 
@@ -45,6 +59,7 @@ class _TCAgency(BaseModel):
     email_confirmed_dt: Optional[datetime] = None
     gclid: Optional[str] = None
     gclid_expiry_dt: Optional[datetime] = None
+    signup_data: Optional['_TCSignupData'] = None
 
     @field_validator('price_plan')
     @classmethod
