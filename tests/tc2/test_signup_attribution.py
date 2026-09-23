@@ -1,9 +1,9 @@
 """
-The signup attribution TC2 sends on the meta Client webhook (TC2 #17741).
+The signup contact details TC2 sends on the meta Client webhook (TC2 #17741).
 
-TC2 nests it under meta_agency.signup_data; Hermes flattens it onto the Company so the existing
-field-map machinery can sync it to the Pipedrive organisation, where Zapier reads it to import the
-signup into Google Ads as an offline conversion.
+They go to Google alongside the click id, which lets it fall back to matching on the person when the
+click alone doesn't resolve. Hermes stores them on the Company and syncs them to the Pipedrive
+organisation, where Zapier reads them for the offline conversion import.
 """
 
 import pytest
@@ -14,16 +14,11 @@ from app.pipedrive.models import Organisation
 from app.pipedrive.process import OrganisationProcessor
 from app.pipedrive.tasks import _company_to_org_data
 from app.tc2.models import TCClient
-from app.tc2.process import SIGNUP_DATA_FIELDS, process_tc_client
+from app.tc2.process import COMPANY_SYNCABLE_FIELDS, process_tc_client
 
-SIGNUP_DATA = {
-    'utm_medium': 'cpc',
-    'utm_term': 'tutoring software',
-    'utm_content': 'headline_b',
-    'ga4_client_id': '123456.7890',
-    'email': 'aoife@brightside-tutoring.test',
-    'phone': '+447700900123',
-    'company_name': 'Brightside Tutoring',
+SIGNUP_CONTACT = {
+    'signup_email': 'aoife@brightside-tutoring.test',
+    'signup_phone': '+447700900123',
 }
 
 
@@ -50,57 +45,47 @@ def sample_tc_client_data(test_admin):
     }
 
 
-class TestSignupAttribution:
-    async def test_signup_data_mapped_to_company(self, db, test_admin, sample_tc_client_data):
-        """The nested signup_data lands on the company's own columns."""
-        sample_tc_client_data['meta_agency']['signup_data'] = SIGNUP_DATA
+class TestSignupContact:
+    async def test_signup_contact_mapped_to_company(self, db, test_admin, sample_tc_client_data):
+        """The contact details arrive flat on meta_agency and land on the company."""
+        sample_tc_client_data['meta_agency'].update(SIGNUP_CONTACT)
 
         company = await process_tc_client(TCClient(**sample_tc_client_data), db)
 
-        assert company.utm_medium == 'cpc'
-        assert company.utm_term == 'tutoring software'
-        assert company.utm_content == 'headline_b'
-        assert company.ga4_client_id == '123456.7890'
         assert company.signup_email == 'aoife@brightside-tutoring.test'
         assert company.signup_phone == '+447700900123'
-        assert company.signup_company_name == 'Brightside Tutoring'
 
-    async def test_signup_data_updated_on_an_existing_company(self, db, test_admin, sample_tc_client_data):
-        """A later webhook for a company we already have refreshes the attribution."""
+    async def test_signup_contact_updated_on_an_existing_company(self, db, test_admin, sample_tc_client_data):
+        """They are syncable fields, so a later webhook refreshes them."""
         await process_tc_client(TCClient(**sample_tc_client_data), db)
 
-        sample_tc_client_data['meta_agency']['signup_data'] = SIGNUP_DATA
+        sample_tc_client_data['meta_agency'].update(SIGNUP_CONTACT)
         company = await process_tc_client(TCClient(**sample_tc_client_data), db)
 
-        assert company.utm_medium == 'cpc'
         assert company.signup_email == 'aoife@brightside-tutoring.test'
+        assert company.signup_phone == '+447700900123'
 
-    async def test_missing_signup_data_is_not_an_error(self, db, test_admin, sample_tc_client_data):
+    async def test_missing_signup_contact_is_not_an_error(self, db, test_admin, sample_tc_client_data):
         """
-        TC2 only started sending this recently, so every company that signed up before it has no
-        signup_data at all. The payload has to parse and the columns stay empty.
+        A company that signed up before TC2 sent these, or one that arrived with no click id, has
+        neither. The payload has to parse and the columns stay empty.
         """
-        assert 'signup_data' not in sample_tc_client_data['meta_agency']
+        assert 'signup_email' not in sample_tc_client_data['meta_agency']
 
         company = await process_tc_client(TCClient(**sample_tc_client_data), db)
 
-        assert company.utm_medium is None
         assert company.signup_email is None
-        assert company.signup_company_name is None
+        assert company.signup_phone is None
 
-    async def test_signup_data_reaches_the_pipedrive_organisation(self, db, test_admin, sample_tc_client_data):
-        """The values are sent on as Pipedrive custom fields, keyed by the field map."""
-        sample_tc_client_data['meta_agency']['signup_data'] = SIGNUP_DATA
+    async def test_signup_contact_reaches_the_pipedrive_organisation(self, db, test_admin, sample_tc_client_data):
+        """They are sent on as Pipedrive custom fields, keyed by the field map."""
+        sample_tc_client_data['meta_agency'].update(SIGNUP_CONTACT)
         company = await process_tc_client(TCClient(**sample_tc_client_data), db)
 
         custom_fields = _company_to_org_data(company)['custom_fields']
 
-        assert custom_fields[COMPANY_PD_FIELD_MAP['utm_medium']] == 'cpc'
-        assert custom_fields[COMPANY_PD_FIELD_MAP['utm_term']] == 'tutoring software'
-        assert custom_fields[COMPANY_PD_FIELD_MAP['utm_content']] == 'headline_b'
         assert custom_fields[COMPANY_PD_FIELD_MAP['signup_email']] == 'aoife@brightside-tutoring.test'
         assert custom_fields[COMPANY_PD_FIELD_MAP['signup_phone']] == '+447700900123'
-        assert custom_fields[COMPANY_PD_FIELD_MAP['signup_company_name']] == 'Brightside Tutoring'
 
 
 class TestFieldMapIntegrity:
@@ -125,8 +110,9 @@ class TestFieldMapIntegrity:
         missing = [f for f in COMPANY_PD_FIELD_MAP if f not in exempt and f not in Company.model_fields]
         assert missing == []
 
-    def test_every_signup_data_column_exists_on_the_company_model(self):
-        missing = [c for c in SIGNUP_DATA_FIELDS if c not in Company.model_fields]
+    def test_every_syncable_field_exists_on_both_models(self):
+        """_update_syncable_fields getattr()s each of these off meta_agency and sets it on Company."""
+        missing = [f for f in COMPANY_SYNCABLE_FIELDS if f not in Company.model_fields]
         assert missing == []
 
     def test_no_placeholder_field_ids(self):

@@ -32,12 +32,8 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     # Created by `python create_pipedrive_fields.py`, then picked up by `make setup-fields`.
     # These placeholders have to be replaced with the real ids before this is deployed —
     # test_signup_attribution.py::test_no_placeholder_field_ids fails while any remain.
-    'utm_medium': 'REPLACE_ME_utm_medium',
-    'utm_term': 'REPLACE_ME_utm_term',
-    'utm_content': 'REPLACE_ME_utm_content',
     'signup_email': 'REPLACE_ME_signup_email',
     'signup_phone': 'REPLACE_ME_signup_phone',
-    'signup_company_name': 'REPLACE_ME_signup_company_name',
     'created': '02ccf8be2c19db0d88f46b9fac20982f43cf1394',
     'pay0_dt': '8ca7c3d5c4d2a343ddfbca712606e27ad9714188',
     'pay1_dt': '291ac593816f0a5ab018f61905274312008c8c9b',

@@ -169,18 +169,13 @@ class Company(SQLModel, table=True):
     # Marketing fields
     utm_campaign: Optional[str] = Field(default=None, max_length=255)
     utm_source: Optional[str] = Field(default=None, max_length=255)
-    utm_medium: Optional[str] = Field(default=None, max_length=255)
-    utm_term: Optional[str] = Field(default=None, max_length=255)
-    utm_content: Optional[str] = Field(default=None, max_length=255)
     gclid: Optional[str] = Field(default=None, max_length=255)
-    ga4_client_id: Optional[str] = Field(default=None, max_length=255)
     signup_questionnaire: Optional[str] = Field(default=None)
 
-    # What the company gave us at signup, for Google's enhanced conversion matching. A snapshot,
-    # so it can differ from the contact details on the company now.
+    # Sent to Google with the click id so it can fall back to matching the person. A snapshot of
+    # what was given at signup, so it can differ from the contact details on the company now.
     signup_email: Optional[str] = Field(default=None, max_length=255)
     signup_phone: Optional[str] = Field(default=None, max_length=255)
-    signup_company_name: Optional[str] = Field(default=None, max_length=255)
 
     # Flags
     has_booked_call: bool = Field(default=False)

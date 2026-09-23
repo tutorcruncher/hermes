@@ -1,4 +1,4 @@
-"""Signup attribution columns on company
+"""Signup contact columns on company
 
 Revision ID: b7c4d9e21a83
 Revises: 5d51f946e024
@@ -19,15 +19,7 @@ down_revision: Union[str, Sequence[str], None] = '5d51f946e024'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-COLUMNS = (
-    'utm_medium',
-    'utm_term',
-    'utm_content',
-    'ga4_client_id',
-    'signup_email',
-    'signup_phone',
-    'signup_company_name',
-)
+COLUMNS = ('signup_email', 'signup_phone')
 
 
 def upgrade() -> None:

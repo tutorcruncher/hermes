@@ -20,36 +20,14 @@ COMPANY_SYNCABLE_FIELDS = {
     'email_confirmed_dt',
     'gclid',
     'gclid_expiry_dt',
+    'signup_email',
+    'signup_phone',
     'tc2_status',
     'narc',
     'receive_marketing_emails',
     'paid_invoice_count',
     'signup_questionnaire',
 }
-
-
-SIGNUP_DATA_FIELDS = {
-    'utm_medium': 'utm_medium',
-    'utm_term': 'utm_term',
-    'utm_content': 'utm_content',
-    'ga4_client_id': 'ga4_client_id',
-    'signup_email': 'email',
-    'signup_phone': 'phone',
-    'signup_company_name': 'company_name',
-}
-
-
-def _signup_data_kwargs(tc_client: TCClient) -> dict:
-    """
-    The company's signup attribution, flattened onto the Company's own columns.
-
-    An agency that signed up before TC2 started sending this has no signup_data at all, so every
-    value is left as None rather than overwritten.
-    """
-    signup_data = tc_client.meta_agency.signup_data
-    if not signup_data:
-        return {}
-    return {column: getattr(signup_data, attr) for column, attr in SIGNUP_DATA_FIELDS.items()}
 
 
 def _update_syncable_fields(company: Company, tc_client: TCClient):
@@ -153,9 +131,6 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
         _update_syncable_fields(company, tc_client)
         _close_open_deals_if_narc_or_terminated(company, db)
 
-        for column, value in _signup_data_kwargs(tc_client).items():
-            setattr(company, column, value)
-
         # handle extra attrs
         if 'utm_source' in extra_attrs_dict:
             company.utm_source = extra_attrs_dict['utm_source']
@@ -187,7 +162,8 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             email_confirmed_dt=tc_client.meta_agency.email_confirmed_dt,
             gclid=tc_client.meta_agency.gclid,
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
-            **_signup_data_kwargs(tc_client),
+            signup_email=tc_client.meta_agency.signup_email,
+            signup_phone=tc_client.meta_agency.signup_phone,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),
             signup_questionnaire=tc_client.meta_agency.signup_questionnaire,
