@@ -172,6 +172,11 @@ class Company(SQLModel, table=True):
     gclid: Optional[str] = Field(default=None, max_length=255)
     signup_questionnaire: Optional[str] = Field(default=None)
 
+    # Sent to Google with the click id so it can fall back to matching the person. A snapshot of
+    # what was given at signup, so it can differ from the contact details on the company now.
+    signup_email: Optional[str] = Field(default=None, max_length=255)
+    signup_phone: Optional[str] = Field(default=None, max_length=255)
+
     # Flags
     has_booked_call: bool = Field(default=False)
     has_signed_up: bool = Field(default=False)

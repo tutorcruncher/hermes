@@ -55,6 +55,8 @@ class Organisation(_HermesModel):
     )
     utm_source: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['utm_source'])
     utm_campaign: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['utm_campaign'])
+    signup_email: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['signup_email'])
+    signup_phone: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['signup_phone'])
     created: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['created'])
     pay0_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['pay0_dt'])
     pay1_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['pay1_dt'])

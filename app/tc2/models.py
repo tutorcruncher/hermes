@@ -45,6 +45,8 @@ class _TCAgency(BaseModel):
     email_confirmed_dt: Optional[datetime] = None
     gclid: Optional[str] = None
     gclid_expiry_dt: Optional[datetime] = None
+    signup_email: Optional[str] = None
+    signup_phone: Optional[str] = None
 
     @field_validator('price_plan')
     @classmethod
