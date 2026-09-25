@@ -22,7 +22,7 @@ ORGANIZATION_FIELDS = [
     {'name': 'paid_invoice_count', 'field_type': 'double'},
     {'name': 'website', 'field_type': 'text'},
     {'name': 'price_plan', 'field_type': 'text'},
-    {'name': 'estimated_income', 'field_type': 'text'},
+    {'name': 'estimated_monthly_income', 'field_type': 'text'},
     {'name': 'support_person_id', 'field_type': 'double'},
     {'name': 'bdr_person_id', 'field_type': 'double'},
     {'name': 'signup_questionnaire', 'field_type': 'text'},
@@ -57,7 +57,7 @@ DEAL_FIELDS = [
     {'name': 'tc2_status', 'field_type': 'text'},
     {'name': 'website', 'field_type': 'text'},
     {'name': 'price_plan', 'field_type': 'text'},
-    {'name': 'estimated_income', 'field_type': 'text'},
+    {'name': 'estimated_monthly_income', 'field_type': 'text'},
 ]
 
 
