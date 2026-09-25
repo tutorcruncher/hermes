@@ -8,7 +8,7 @@ from app.core.database import get_session
 from app.core.locks import RedisLockRegistry
 from app.pipedrive.tasks import purge_company_from_pipedrive, sync_company_to_pipedrive
 from app.tc2.models import TCClient, TCWebhook
-from app.tc2.process import process_tc_client
+from app.tc2.process import mark_company_deleted, process_tc_client
 
 logger = logging.getLogger('hermes.tc2')
 
@@ -43,11 +43,23 @@ async def tc2_callback(
                 logger.info('Ignoring AGREE_TERMS event')
                 continue
 
+            subject = event.subject.model_dump()
+            is_deleted = subject.get('is_deleted', False)
+            # Enquiries, and clients TC2 leaves out of its detail queryset (deleted or admin users), have no agency data
+            if not is_deleted and subject.get('meta_agency') is None:
+                logger.info(f'Ignoring {event.action} for client {event.subject.id} as it has no meta_agency')
+                continue
+
             try:
                 async with _cligency_locks.acquire(event.subject.id):
+                    if is_deleted:
+                        with get_session() as db:
+                            mark_company_deleted(event.subject.id, db)
+                        continue
+
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
-                        company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
+                        company = await process_tc_client(TCClient(**subject), db)
 
                     if company:
                         # Queue background task to sync to Pipedrive

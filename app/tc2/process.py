@@ -56,6 +56,21 @@ def _close_open_deals_if_narc_or_terminated(company: Company, db: DBSession):
             )
 
 
+def mark_company_deleted(tc2_cligency_id: int, db: DBSession):
+    """
+    Mark the company deleted when its client is deleted in TC2, so it stops syncing to Pipedrive.
+    """
+    company = db.exec(select(Company).where(Company.tc2_cligency_id == tc2_cligency_id)).one_or_none()
+    if not company:
+        logger.info(f'Client {tc2_cligency_id} was deleted in TC2 but has no company in Hermes')
+        return
+
+    company.is_deleted = True
+    db.add(company)
+    db.commit()
+    logger.info(f'Marked company {company.id} as deleted because client {tc2_cligency_id} was deleted in TC2')
+
+
 async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) -> Company:
     """
     Get or create a company from TC2 data.
