@@ -15,8 +15,8 @@ class RedisLockRegistry:
     run in parallel while operations on the same ID are serialised.
 
     lease_timeout is the TTL (seconds) of the Redis key. While the lock is held the lease is
-    renewed every third of a lease, so it never expires under a live holder. It only bounds
-    how long the lock outlives a holder that crashed.
+    renewed every quarter of a lease, so it only expires under a live holder if three renewals
+    in a row fail. It bounds how long the lock outlives a holder that crashed.
     blocking_timeout is the time (seconds) to wait for a lock to become available.
     None waits until the lock is released.
     max_hold_seconds stops renewing after that long, so a stuck holder loses the lock
@@ -80,25 +80,29 @@ class RedisLockRegistry:
                     logger.error(f'Lock {name} was lost before it was released', exc_info=True)
 
     async def _renew(self, lock: Lock, name: str):
-        """Reset the lock's TTL to the full lease every third of a lease until cancelled.
+        """Reset the lock's TTL to the full lease every quarter of a lease until cancelled.
 
-        A failed renewal is retried on the next interval, leaving two retries before the key
-        expires. Stops once the lock is no longer owned, or after max_hold_seconds.
+        Renewals run on a fixed schedule and each call gets at most half an interval, so a failed
+        or hung call never delays the next one, leaving two retries before the key expires.
+        Stops once the lock is no longer owned, or after max_hold_seconds.
         """
-        interval = self._lease_timeout / 3
+        interval = self._lease_timeout / 4
         loop = asyncio.get_running_loop()
-        started = loop.time()
+        started = next_renewal = loop.time()
         while True:
-            await asyncio.sleep(interval)
+            next_renewal += interval
+            await asyncio.sleep(max(0, next_renewal - loop.time()))
             if self._max_hold is not None and loop.time() - started > self._max_hold:
                 logger.error(f'Lock {name} held for over {self._max_hold}s, no longer renewing it')
                 return
             try:
                 # redis_client has no socket timeout, so a hung call would otherwise stop renewal for good
-                async with asyncio.timeout(interval):
+                async with asyncio.timeout(interval / 2):
                     await lock.reacquire()
             except LockNotOwnedError:
                 logger.warning(f'Lock {name} is no longer owned, stopping renewal')
                 return
+            except TimeoutError:
+                logger.warning(f'Renewing lock {name} timed out after {interval / 2}s')
             except Exception as e:
                 logger.warning(f'Failed to renew lock {name}: {e}', exc_info=True)

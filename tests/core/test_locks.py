@@ -35,7 +35,7 @@ class TestRedisLockRegistry:
     @pytest.fixture
     def short_lease_registry(self, redis_client, monkeypatch):
         monkeypatch.setattr('app.core.redis.redis_client', redis_client)
-        return RedisLockRegistry('test', lease_timeout_seconds=0.6)
+        return RedisLockRegistry('test', lease_timeout_seconds=0.8)
 
     async def test_same_key_serialised(self, registry):
         """Two concurrent acquires on the same key run one at a time."""
@@ -160,11 +160,11 @@ class TestRedisLockRegistry:
 
     @patch.object(Lock, 'reacquire', autospec=True)
     async def test_renewal_error_logged_and_retried(self, mock_reacquire, short_lease_registry, redis_client, caplog):
-        """A failed renewal is logged and retried on the next interval, so the lock is kept."""
+        """Two failed renewals in a row are logged and retried before the lease runs out, so the lock is kept."""
         caplog.set_level(logging.WARNING, logger='hermes.locks')
 
         def reacquire(lock):
-            if mock_reacquire.call_count == 1:
+            if mock_reacquire.call_count <= 2:
                 raise RedisConnectionError('Connection reset by peer')
             return _real_reacquire(lock)
 
@@ -174,14 +174,37 @@ class TestRedisLockRegistry:
             await asyncio.sleep(1.5)
             assert await redis_client.get('test:1') is not None
 
+        assert mock_reacquire.call_count >= 3
+        assert _lock_logs(caplog) == [
+            ('WARNING', 'Failed to renew lock test:1: Connection reset by peer'),
+            ('WARNING', 'Failed to renew lock test:1: Connection reset by peer'),
+        ]
+        assert _other_tasks() == set()
+
+    @patch.object(Lock, 'reacquire', autospec=True)
+    async def test_hung_renewal_timed_out_and_retried(self, mock_reacquire, short_lease_registry, redis_client, caplog):
+        """A hung renewal is timed out and retried on schedule, so the lock is kept."""
+        caplog.set_level(logging.WARNING, logger='hermes.locks')
+
+        def reacquire(lock):
+            if mock_reacquire.call_count == 1:
+                return asyncio.sleep(3600)
+            return _real_reacquire(lock)
+
+        mock_reacquire.side_effect = reacquire
+
+        async with short_lease_registry.acquire(1):
+            await asyncio.sleep(1.5)
+            assert await redis_client.get('test:1') is not None
+
         assert mock_reacquire.call_count >= 2
-        assert _lock_logs(caplog) == [('WARNING', 'Failed to renew lock test:1: Connection reset by peer')]
+        assert _lock_logs(caplog) == [('WARNING', 'Renewing lock test:1 timed out after 0.1s')]
         assert _other_tasks() == set()
 
     async def test_max_hold_stops_renewal(self, redis_client, monkeypatch, caplog):
         """Renewal stops after max_hold_seconds, so a stuck holder loses the lock within one more lease."""
         monkeypatch.setattr('app.core.redis.redis_client', redis_client)
-        registry = RedisLockRegistry('test', lease_timeout_seconds=0.6, max_hold_seconds=0.5)
+        registry = RedisLockRegistry('test', lease_timeout_seconds=0.8, max_hold_seconds=0.5)
         caplog.set_level(logging.WARNING, logger='hermes.locks')
 
         async with registry.acquire(1):
