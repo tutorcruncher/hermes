@@ -4,6 +4,7 @@ Integration tests for TC2 → Hermes → Pipedrive flow.
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -949,6 +950,149 @@ class TestTC2EdgeCases:
         assert call_data['emails'] == [{'value': 'test@example.com', 'label': 'work', 'primary': True}]
         assert 'phones' in call_data
         assert call_data['phones'] == [{'value': '+1234567890', 'label': 'work', 'primary': True}]
+
+
+class TestTC2ClientWebhookShapes:
+    """Test TC2 Client webhooks with a null country, no meta_agency, or a deleted client"""
+
+    @staticmethod
+    def webhook_data(subject: dict, action: str = 'EDITED_A_CLIENT') -> dict:
+        """A TC2 webhook with one event for the given subject"""
+        return {'events': [{'action': action, 'verb': 'verb', 'subject': subject}], '_request_time': 1234567890}
+
+    @staticmethod
+    def error_logs(caplog) -> list[str]:
+        """Messages of the ERROR records logged during the test"""
+        return [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR]
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_null_country_creates_company(self, mock_sync, client, db, test_admin, sample_tc_client_data):
+        """A null meta_agency.country creates the company with no country and syncs it"""
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['country'] = None
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.country is None
+        mock_sync.assert_called_once_with(company.id)
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_null_country_updates_existing_company_and_keeps_country(
+        self, mock_sync, client, db, test_admin, sample_tc_client_data
+    ):
+        """A null meta_agency.country still updates an existing company, and its stored country is kept"""
+        sample_tc_client_data['model'] = 'Client'
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+        assert r.status_code == 200
+
+        sample_tc_client_data['meta_agency']['country'] = None
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.expire_all()
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        assert company.country == 'GB'
+        assert company.paid_invoice_count == 10
+        assert mock_sync.call_count == 2
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_client_without_meta_agency_is_skipped(self, mock_sync, client, db, test_admin, caplog):
+        """A short Client payload with no meta_agency (deleted or admin user in TC2) is skipped"""
+        company = db.create(
+            Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg', tc2_cligency_id=555)
+        )
+        subject = {
+            'model': 'Client',
+            'id': 555,
+            'url': 'https://app.tutorcruncher.com/api/clients/1/',
+            'first_name': None,
+            'last_name': 'Doe',
+            'email': None,
+            'role_type': 'Client',
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(subject))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        mock_sync.assert_not_called()
+        assert self.error_logs(caplog) == []
+        db.expire_all()
+        assert db.get(Company, company.id).is_deleted is False
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_client_enquiry_with_null_meta_agency_is_skipped(
+        self, mock_sync, client, db, sample_tc_client_data, caplog
+    ):
+        """A CLIENT_ENQUIRY with meta_agency null is skipped"""
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency'] = None
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            json=self.webhook_data(sample_tc_client_data, action='CLIENT_ENQUIRY'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        mock_sync.assert_not_called()
+        assert self.error_logs(caplog) == []
+        assert db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first() is None
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_deleted_client_is_skipped(self, mock_sync, client, db, test_admin, caplog):
+        """A DELETED_A_CLIENT payload is skipped and leaves the company as it is"""
+        company = db.create(
+            Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg', tc2_cligency_id=555)
+        )
+        subject = {
+            'model': 'Client',
+            'id': 555,
+            'url': None,
+            'first_name': None,
+            'last_name': 'Doe',
+            'email': 'deleted@example.com',
+            'role_type': 'Client',
+            'is_deleted': True,
+        }
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'), json=self.webhook_data(subject, action='DELETED_A_CLIENT')
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        mock_sync.assert_not_called()
+        assert self.error_logs(caplog) == []
+        db.expire_all()
+        assert db.get(Company, company.id).is_deleted is False
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_client_payload_without_meta_agency_logs_error(
+        self, mock_sync, client, db, test_admin, sample_tc_client_data, caplog
+    ):
+        """A full Client payload with no meta_agency (the TC2 contract break in TutorCruncher2#17205) logs an error"""
+        sample_tc_client_data['model'] = 'Client'
+        del sample_tc_client_data['meta_agency']
+        sample_tc_client_data.update(sample_tc_client_data.pop('user'))
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            json=self.webhook_data(sample_tc_client_data, action='CREATED_A_CLIENT'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        mock_sync.assert_not_called()
+        assert db.exec(select(Company)).all() == []
+        error_logs = self.error_logs(caplog)
+        assert len(error_logs) == 1
+        assert error_logs[0].startswith('Error processing TC2 client event: ')
 
 
 class TestTC2DealCreation:

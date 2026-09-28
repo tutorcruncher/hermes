@@ -29,7 +29,7 @@ class _TCAgency(BaseModel):
 
     id: int = Field(exclude=True)
     name: str
-    country: str
+    country: Optional[str] = None
     website: Optional[str] = None
     status: str
     paid_invoice_count: int
@@ -59,6 +59,8 @@ class _TCAgency(BaseModel):
     @field_validator('country')
     @classmethod
     def country_to_code(cls, v):
+        if v is None:
+            return None
         return v.split(' ')[-1].strip('()')
 
     @field_validator('signup_questionnaire', mode='before')
