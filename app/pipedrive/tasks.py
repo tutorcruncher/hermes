@@ -20,9 +20,11 @@ logger = logging.getLogger('hermes.pipedrive')
 SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
 
 # Per-company locks to serialise concurrent syncs for the same company.
-# the p99 latency for company syncs on TC2 webhooks is ~745s
-# hence the lease_timeout is kept at 800s (max time a lock can be held for)
-_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=800, blocking_timeout_seconds=800)
+# A sync holds its lock while its Pipedrive calls queue behind every other sync's calls in the
+# shared rate limiter, so during a TC2 burst a sync can hold it for over 1000s. The lease is renewed
+# while held, so it only bounds how long a killed sync keeps the company locked. Waiters wait until
+# the lock is released, and max_hold_seconds caps how long a stuck sync can keep it.
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=300, max_hold_seconds=3600)
 
 
 async def sync_company_to_pipedrive(company_id: int):
