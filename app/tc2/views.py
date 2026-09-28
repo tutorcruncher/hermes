@@ -8,7 +8,7 @@ from app.core.database import get_session
 from app.core.locks import RedisLockRegistry
 from app.pipedrive.tasks import purge_company_from_pipedrive, sync_company_to_pipedrive
 from app.tc2.models import TCClient, TCWebhook
-from app.tc2.process import mark_company_deleted, process_tc_client
+from app.tc2.process import process_tc_client
 
 logger = logging.getLogger('hermes.tc2')
 
@@ -18,6 +18,10 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 # Prevents duplicate Hermes Deal rows when CREATED_A_CLIENT and EDITED_A_CLIENT
 # arrive as near-simultaneous separate requests from TC2 batched webhooks.
 _cligency_locks = RedisLockRegistry('hermes:cligency-lck', lease_timeout_seconds=10, blocking_timeout_seconds=10)
+
+# The fields of TC2's short Client payload (ClientSimpleSerializer, plus model/url/is_deleted added by the webhook),
+# which TC2 sends for clients outside its detail queryset: deleted users, including deletes, and admin users.
+_SHORT_CLIENT_FIELDS = {'model', 'url', 'id', 'first_name', 'last_name', 'email', 'role_type', 'is_deleted'}
 
 
 @router.post('/callback/', name='tc2-callback')
@@ -44,19 +48,14 @@ async def tc2_callback(
                 continue
 
             subject = event.subject.model_dump()
-            is_deleted = subject.get('is_deleted', False)
-            # Enquiries, and clients TC2 leaves out of its detail queryset (deleted or admin users), have no agency data
-            if not is_deleted and subject.get('meta_agency') is None:
+            # Enquiries have meta_agency null, and short payloads have no agency data. Any other payload without
+            # meta_agency must still fail validation below, so a TC2 contract break is logged as an error.
+            if ('meta_agency' in subject and subject['meta_agency'] is None) or subject.keys() <= _SHORT_CLIENT_FIELDS:
                 logger.info(f'Ignoring {event.action} for client {event.subject.id} as it has no meta_agency')
                 continue
 
             try:
                 async with _cligency_locks.acquire(event.subject.id):
-                    if is_deleted:
-                        with get_session() as db:
-                            mark_company_deleted(event.subject.id, db)
-                        continue
-
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
                         company = await process_tc_client(TCClient(**subject), db)
