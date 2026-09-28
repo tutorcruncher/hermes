@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 
+import httpx
 import logfire
 from sqlmodel import select
 
@@ -14,6 +15,7 @@ from app.pipedrive.field_mappings import (
     CONTACT_PD_FIELD_MAP,
     DEAL_PD_FIELD_MAP,
 )
+from app.pipedrive.process import mark_deleted_from_pipedrive
 
 logger = logging.getLogger('hermes.pipedrive')
 
@@ -27,10 +29,14 @@ SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from de
 _company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=300, max_hold_seconds=3600)
 
 
-async def sync_company_to_pipedrive(company_id: int):
+async def sync_company_to_pipedrive(company_id: int, recreate_on_404: bool = False):
     """
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
+
+    When Pipedrive no longer has the org, a person or a deal, it is marked deleted in Hermes, as the delete webhook
+    would do. A sales call booking passes recreate_on_404=True, so a gone org or person is recreated instead; a
+    company or contact already marked deleted is still skipped. NARC companies are never synced.
     """
     async with _company_sync_locks.acquire(company_id):
         with logfire.span('sync_company_to_pipedrive'):
@@ -42,6 +48,9 @@ async def sync_company_to_pipedrive(company_id: int):
                         return
                     if company.is_deleted:
                         logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                        return
+                    if company.narc:
+                        logger.info(f'Company {company_id} is NARC, skipping sync')
                         return
 
                     contact_ids = [
@@ -65,10 +74,12 @@ async def sync_company_to_pipedrive(company_id: int):
 
                     deal_ids = [d.id for d in db.exec(deal_query).all()]
 
-                await sync_organization(company_id)
+                if not await sync_organization(company_id, recreate_on_404):
+                    logger.info(f'Company {company_id} has no Pipedrive org, skipping its contacts and deals')
+                    return
 
                 for contact_id in contact_ids:
-                    await sync_person(contact_id)
+                    await sync_person(contact_id, recreate_on_404)
 
                 for deal_id in deal_ids:
                     await sync_deal(deal_id, only_syncable_deal_fields)
@@ -78,12 +89,16 @@ async def sync_company_to_pipedrive(company_id: int):
                 logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
 
 
-async def sync_organization(company_id: int):
-    """Sync a single organization to Pipedrive"""
+async def sync_organization(company_id: int, recreate_on_404: bool = False) -> bool:
+    """
+    Sync a single organization to Pipedrive.
+    Returns False when the company should not sync further: it is missing, or Pipedrive no longer has its org and
+    the company was marked deleted.
+    """
     with get_session() as db:
         company = db.get(Company, company_id)
         if not company:
-            return
+            return False
         org_data = _company_to_org_data(company)
         pd_org_id = company.pd_org_id
 
@@ -98,10 +113,12 @@ async def sync_organization(company_id: int):
                 logger.info(f'Updated organization {pd_org_id} for company {company_id}')
         except Exception as e:
             logger.error(f'Error updating organization {pd_org_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
-                pd_org_id = None
-            else:
+            if not _is_deleted_in_pipedrive(e):
                 raise
+            if not recreate_on_404:
+                _mark_deleted_after_404(Company, company_id, 'pd_org_id', pd_org_id)
+                return False
+            pd_org_id = None
 
     if not pd_org_id:
         try:
@@ -120,8 +137,10 @@ async def sync_organization(company_id: int):
             logger.error(f'Error creating organization for company {company_id}: {e}')
             raise
 
+    return True
 
-async def sync_person(contact_id: int):
+
+async def sync_person(contact_id: int, recreate_on_404: bool = False):
     """Sync a single person to Pipedrive"""
     with get_session() as db:
         contact = db.get(Contact, contact_id)
@@ -144,7 +163,10 @@ async def sync_person(contact_id: int):
                 logger.info(f'Updated person {pd_person_id} for contact {contact_id}')
         except Exception as e:
             logger.error(f'Error updating person {pd_person_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
+            if _is_deleted_in_pipedrive(e):
+                if not recreate_on_404:
+                    _mark_deleted_after_404(Contact, contact_id, 'pd_person_id', pd_person_id)
+                    return
                 pd_person_id = None
 
     if not pd_person_id:
@@ -190,6 +212,9 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
         logger.info(f'Updated deal {deal.pd_deal_id}')
     except Exception as e:
         logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
+        # The PATCH only sends custom fields, so a not-found answer can only mean the deal itself is gone
+        if _is_deleted_in_pipedrive(e, method='PATCH'):
+            _mark_deleted_after_404(Deal, deal.id, 'pd_deal_id', deal.pd_deal_id)
 
 
 async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
@@ -243,6 +268,8 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
             logger.error(f'Error updating deal {pd_deal_id}: {e}')
+            if _is_deleted_in_pipedrive(e):
+                _mark_deleted_after_404(Deal, deal_id, 'pd_deal_id', pd_deal_id)
 
     else:
         # We don't have a deal and creating one
@@ -308,6 +335,44 @@ async def purge_company_from_pipedrive(company_id: int):
             logger.info(f'Purged company {company_id} from Pipedrive')
         except Exception as e:
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
+
+
+def _is_deleted_in_pipedrive(e: Exception, method: str = 'GET') -> bool:
+    """
+    Whether the error says Pipedrive no longer has the object: deleted over 30 days ago or merged into another one.
+    Pipedrive answers 410, or 404 with its ERR_NOT_FOUND error body. The body check keeps a 404 that did not come
+    from the Pipedrive API, e.g. from a wrong base URL, from marking every record deleted.
+    Syncs only trust the GET: a PATCH after a successful GET can fail for another reason, such as a missing linked
+    object.
+    """
+    if not isinstance(e, httpx.HTTPStatusError) or e.request.method != method:
+        return False
+    if e.response.status_code == 410:
+        return True
+    if e.response.status_code != 404:
+        return False
+    try:
+        body = e.response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get('code') == 'ERR_NOT_FOUND'
+
+
+def _mark_deleted_after_404(
+    model: type[Company | Contact | Deal], hermes_id: int, pd_id_field: str, pd_id: int
+) -> None:
+    """
+    Do what the Pipedrive delete webhook would have done for an object Pipedrive answered 404/410 for.
+    The row is re-read and only marked if it still holds that Pipedrive id, so a webhook that already
+    deleted or relinked it wins.
+    """
+    with get_session() as db:
+        obj = db.get(model, hermes_id)
+        if obj and getattr(obj, pd_id_field) == pd_id:
+            logger.warning(
+                f'Pipedrive no longer has {pd_id_field} {pd_id}, marking {model.__name__} {hermes_id} deleted'
+            )
+            mark_deleted_from_pipedrive(db, obj, pd_id_field)
 
 
 def _bool_to_pd_enum_option(field_name: str, value: bool) -> int | None:

@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from sqlalchemy import func
 from sqlmodel import select
@@ -23,6 +24,7 @@ from app.pipedrive.tasks import (
     sync_organization,
     sync_person,
 )
+from tests.helpers import pipedrive_http_error
 
 
 class SessionMock:
@@ -126,6 +128,132 @@ class TestSyncCompanyToPipedrive:
         # and do a GET+PATCH
         assert mock_create_deal.call_count == 1
 
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_org_404_stops_company_sync(
+        self,
+        mock_get_org,
+        mock_create_org,
+        mock_get_person,
+        mock_update_person,
+        mock_create_person,
+        mock_get_deal,
+        mock_update_deal,
+        mock_create_deal,
+        db,
+        test_company,
+        test_contact,
+        test_deal,
+    ):
+        """An org that is gone from Pipedrive marks the company deleted and stops the sync, so its persons
+        and deals are not sent to Pipedrive with no org"""
+        test_company.pd_org_id = 999
+        test_contact.pd_person_id = 888
+        test_deal.pd_deal_id = 777
+        db.add(test_company)
+        db.add(test_contact)
+        db.add(test_deal)
+        db.commit()
+
+        mock_get_org.side_effect = pipedrive_http_error(404, 'organizations/999')
+
+        await sync_company_to_pipedrive(test_company.id)
+
+        mock_create_org.assert_not_called()
+        mock_get_person.assert_not_called()
+        mock_update_person.assert_not_called()
+        mock_create_person.assert_not_called()
+        mock_get_deal.assert_not_called()
+        mock_update_deal.assert_not_called()
+        mock_create_deal.assert_not_called()
+
+        db.refresh(test_company)
+        db.refresh(test_contact)
+        db.refresh(test_deal)
+        assert test_company.is_deleted is True
+        assert test_company.pd_org_id is None
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 888
+        assert test_deal.status == Deal.STATUS_OPEN
+        assert test_deal.pd_deal_id == 777
+
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_booking_sync_recreates_person_gone_from_pipedrive(
+        self,
+        mock_get_org,
+        mock_update_org,
+        mock_get_person,
+        mock_create_person,
+        mock_create_deal,
+        db,
+        test_company,
+        test_contact,
+    ):
+        """A sync for a sales call booking recreates a contact's person that is gone from Pipedrive"""
+        test_company.pd_org_id = 999
+        test_contact.pd_person_id = 888
+        db.add(test_company)
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_org.return_value = {'data': {'id': 999}}
+        mock_get_person.side_effect = pipedrive_http_error(404, 'persons/888')
+        mock_create_person.return_value = {'data': {'id': 1111}}
+        mock_create_deal.return_value = {'data': {'id': 2222}}
+
+        await sync_company_to_pipedrive(test_company.id, recreate_on_404=True)
+
+        mock_create_person.assert_called_once()
+        db.refresh(test_contact)
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 1111
+
+    @pytest.mark.parametrize('pd_org_id', [999, None])
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_narc_company_not_synced(
+        self,
+        mock_get_org,
+        mock_create_org,
+        mock_get_person,
+        mock_create_person,
+        mock_get_deal,
+        mock_create_deal,
+        pd_org_id,
+        db,
+        test_company,
+        test_contact,
+        test_deal,
+    ):
+        """A NARC company is never synced to Pipedrive, whether or not it still holds an org id"""
+        test_company.narc = True
+        test_company.pd_org_id = pd_org_id
+        db.add(test_company)
+        db.commit()
+
+        await sync_company_to_pipedrive(test_company.id, recreate_on_404=True)
+
+        mock_get_org.assert_not_called()
+        mock_create_org.assert_not_called()
+        mock_get_person.assert_not_called()
+        mock_create_person.assert_not_called()
+        mock_get_deal.assert_not_called()
+        mock_create_deal.assert_not_called()
+
 
 class TestSyncOrganization:
     """Test sync_organization function"""
@@ -189,26 +317,120 @@ class TestSyncOrganization:
 
         mock_get.assert_called_once()
 
+    @pytest.mark.parametrize('status_code', [404, 410])
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
-    async def test_sync_organization_recreates_on_404(self, mock_get, mock_create, mock_get_session, db, test_company):
-        """Test that sync_organization recreates organization when getting 404 on update"""
+    async def test_sync_organization_404_marks_company_deleted(
+        self, mock_get, mock_create, mock_get_session, status_code, db, test_company
+    ):
+        """An org that is gone from Pipedrive marks the company deleted, as the delete webhook does, and is not
+        recreated"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
 
         mock_get_session.return_value = SessionMock(db)
-        mock_get.side_effect = Exception('404 Not Found')
+        mock_get.side_effect = pipedrive_http_error(status_code, 'organizations/999')
+
+        assert await sync_organization(test_company.id) is False
+
+        mock_create.assert_not_called()
+        db.refresh(test_company)
+        assert test_company.is_deleted is True
+        assert test_company.pd_org_id is None
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_404_recreates_when_asked(
+        self, mock_get, mock_create, mock_get_session, db, test_company
+    ):
+        """A sales call booking recreates an org that is gone from Pipedrive"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(404, 'organizations/999')
         mock_create.return_value = {'data': {'id': 1000}}
 
-        await sync_organization(test_company.id)
+        assert await sync_organization(test_company.id, recreate_on_404=True) is True
 
-        mock_get.assert_called_once()
         mock_create.assert_called_once()
-
         db.refresh(test_company)
         assert test_company.pd_org_id == 1000
+        assert test_company.is_deleted is False
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_500_on_id_containing_404_raises(
+        self, mock_get, mock_create, mock_get_session, db, test_company
+    ):
+        """A server error for an org whose id contains '404' is not taken as the org being gone"""
+        test_company.pd_org_id = 14041
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(500, 'organizations/14041')
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await sync_organization(test_company.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_company)
+        assert test_company.is_deleted is False
+        assert test_company.pd_org_id == 14041
+
+    @pytest.mark.parametrize('body', [{'detail': 'Not Found'}, '<html>Not Found</html>'])
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_404_without_pipedrive_body_raises(
+        self, mock_get, mock_create, mock_get_session, body, db, test_company
+    ):
+        """A 404 that did not come from the Pipedrive API, e.g. from a wrong base URL, does not mark the company
+        deleted"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(404, 'organizations/999', body=body)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await sync_organization(test_company.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_company)
+        assert test_company.is_deleted is False
+        assert test_company.pd_org_id == 999
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_patch_404_after_get_raises(
+        self, mock_get, mock_update, mock_create, mock_get_session, db, test_company
+    ):
+        """The GET just proved the org exists, so a 404 on the PATCH does not mark the company deleted"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name'}}
+        mock_update.side_effect = pipedrive_http_error(404, 'organizations/999', method='PATCH')
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await sync_organization(test_company.id, recreate_on_404=True)
+
+        mock_create.assert_not_called()
+        db.refresh(test_company)
+        assert test_company.is_deleted is False
+        assert test_company.pd_org_id == 999
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
@@ -268,23 +490,139 @@ class TestSyncOrganization:
 class TestSyncPerson:
     """Test sync_person function"""
 
+    @pytest.mark.parametrize('status_code', [404, 410])
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
-    async def test_sync_person_update_404_then_create(self, mock_get, mock_create, mock_get_session, db, test_contact):
-        """Test person update getting 404 then creates new"""
+    async def test_sync_person_404_marks_contact_deleted(
+        self, mock_get, mock_create, mock_get_session, status_code, db, test_contact
+    ):
+        """A person that is gone from Pipedrive marks the contact deleted, as the delete webhook does, and is not
+        recreated"""
         test_contact.pd_person_id = 999
         db.add(test_contact)
         db.commit()
 
         mock_get_session.return_value = SessionMock(db)
-        mock_get.side_effect = Exception('404 Not Found')
-        mock_create.return_value = {'data': {'id': 1111}}
+        mock_get.side_effect = pipedrive_http_error(status_code, 'persons/999')
 
         await sync_person(test_contact.id)
 
+        mock_create.assert_not_called()
+        db.refresh(test_contact)
+        assert test_contact.is_deleted is True
+        assert test_contact.pd_person_id is None
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_404_not_requested_again(self, mock_get, mock_create, mock_get_session, db, test_contact):
+        """Once a person is found gone from Pipedrive, the next sync makes no Pipedrive call for it"""
+        test_contact.pd_person_id = 999
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(404, 'persons/999')
+
+        await sync_person(test_contact.id)
+        await sync_person(test_contact.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_create.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_patch_404_after_get_keeps_contact(
+        self, mock_get, mock_update, mock_create, mock_get_session, db, test_contact
+    ):
+        """The GET just proved the person exists, so a 404 on the PATCH does not mark the contact deleted"""
+        test_contact.pd_person_id = 999
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, 'name': 'Old Name'}}
+        mock_update.side_effect = pipedrive_http_error(404, 'persons/999', method='PATCH')
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_contact)
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 999
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_404_recreates_when_asked(
+        self, mock_get, mock_create, mock_get_session, db, test_contact
+    ):
+        """A sales call booking recreates a person that is gone from Pipedrive"""
+        test_contact.pd_person_id = 999
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(404, 'persons/999')
+        mock_create.return_value = {'data': {'id': 1111}}
+
+        await sync_person(test_contact.id, recreate_on_404=True)
+
         db.refresh(test_contact)
         assert test_contact.pd_person_id == 1111
+        assert test_contact.is_deleted is False
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_500_on_id_containing_404_keeps_contact(
+        self, mock_get, mock_create, mock_get_session, db, test_contact
+    ):
+        """A server error for a person whose id contains '404' is not taken as the person being gone"""
+        test_contact.pd_person_id = 14041
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = pipedrive_http_error(500, 'persons/14041')
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_contact)
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 14041
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_404_after_id_changed_keeps_contact(
+        self, mock_get, mock_create, mock_get_session, db, test_contact
+    ):
+        """If the contact got a new Pipedrive id while the request was in flight, the 404 for the old id does not
+        mark it deleted"""
+        test_contact.pd_person_id = 999
+        db.add(test_contact)
+        db.commit()
+
+        async def relink_then_404(pd_person_id):
+            test_contact.pd_person_id = 2222
+            db.add(test_contact)
+            db.commit()
+            raise pipedrive_http_error(404, f'persons/{pd_person_id}')
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.side_effect = relink_then_404
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_contact)
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 2222
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
@@ -384,23 +722,28 @@ class TestSyncPerson:
 class TestSyncDeal:
     """Test sync_deal function"""
 
+    @pytest.mark.parametrize('status_code', [404, 410])
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
-    async def test_sync_deal_update_404_keeps_pd_id(self, mock_get, mock_create, mock_get_session, db, test_deal):
-        """Test deal update getting 404 preserves existing pd_deal_id"""
+    async def test_sync_deal_404_marks_deal_deleted(
+        self, mock_get, mock_create, mock_get_session, status_code, db, test_deal
+    ):
+        """A deal that is gone from Pipedrive gets the deleted status, as the delete webhook does, and is not
+        recreated"""
         test_deal.pd_deal_id = 999
         db.add(test_deal)
         db.commit()
 
         mock_get_session.return_value = SessionMock(db)
-        mock_get.side_effect = Exception('404 Not Found')
+        mock_get.side_effect = pipedrive_http_error(status_code, 'deals/999')
 
         await sync_deal(test_deal.id)
 
-        db.refresh(test_deal)
-        assert test_deal.pd_deal_id == 999
         mock_create.assert_not_called()
+        db.refresh(test_deal)
+        assert test_deal.status == Deal.STATUS_DELETED
+        assert test_deal.pd_deal_id is None
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
@@ -831,6 +1174,48 @@ class TestSyncDealPartialSync:
         await partial_sync_deal_from_company(test_company, test_deal)
 
         mock_update_deal.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    async def test_partial_sync_404_marks_deal_deleted(
+        self, mock_update_deal, mock_get_session, db, test_deal, test_company
+    ):
+        """A paying company's deal that is gone from Pipedrive gets the deleted status"""
+        test_deal.pd_deal_id = 5555
+        test_company.paid_invoice_count = 10
+        db.add(test_deal)
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_update_deal.side_effect = pipedrive_http_error(404, 'deals/5555', method='PATCH')
+
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
+
+        db.refresh(test_deal)
+        assert test_deal.status == Deal.STATUS_DELETED
+        assert test_deal.pd_deal_id is None
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    async def test_partial_sync_server_error_keeps_deal(
+        self, mock_update_deal, mock_get_session, db, test_deal, test_company
+    ):
+        """A server error on the partial deal update does not mark the deal deleted"""
+        test_deal.pd_deal_id = 5555
+        test_company.paid_invoice_count = 10
+        db.add(test_deal)
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_update_deal.side_effect = pipedrive_http_error(500, 'deals/5555', method='PATCH')
+
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
+
+        db.refresh(test_deal)
+        assert test_deal.status == Deal.STATUS_OPEN
+        assert test_deal.pd_deal_id == 5555
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
