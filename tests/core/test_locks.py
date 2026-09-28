@@ -1,10 +1,23 @@
 import asyncio
+import logging
+from unittest.mock import patch
 
 import fakeredis
 import pytest
-from redis.exceptions import LockError
+from redis.asyncio.lock import Lock
+from redis.exceptions import ConnectionError as RedisConnectionError, LockError
 
 from app.core.locks import RedisLockRegistry
+
+_real_reacquire = Lock.reacquire
+
+
+def _lock_logs(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == 'hermes.locks']
+
+
+def _other_tasks():
+    return {t for t in asyncio.all_tasks() if t is not asyncio.current_task()}
 
 
 class TestRedisLockRegistry:
@@ -18,6 +31,11 @@ class TestRedisLockRegistry:
     def registry(self, redis_client, monkeypatch):
         monkeypatch.setattr('app.core.redis.redis_client', redis_client)
         return RedisLockRegistry('test', lease_timeout_seconds=10)
+
+    @pytest.fixture
+    def short_lease_registry(self, redis_client, monkeypatch):
+        monkeypatch.setattr('app.core.redis.redis_client', redis_client)
+        return RedisLockRegistry('test', lease_timeout_seconds=0.6)
 
     async def test_same_key_serialised(self, registry):
         """Two concurrent acquires on the same key run one at a time."""
@@ -91,3 +109,86 @@ class TestRedisLockRegistry:
             with pytest.raises(LockError):
                 async with registry.acquire(1):
                     pass
+
+    async def test_lease_renewed_while_held(self, short_lease_registry, redis_client, caplog):
+        """A lock held for longer than its lease keeps its key and releases cleanly."""
+        caplog.set_level(logging.WARNING, logger='hermes.locks')
+
+        async with short_lease_registry.acquire(1):
+            await asyncio.sleep(1.5)
+            assert await redis_client.get('test:1') is not None
+
+        assert await redis_client.get('test:1') is None
+        assert _lock_logs(caplog) == []
+        assert _other_tasks() == set()
+
+    async def test_waiter_waits_past_lease(self, short_lease_registry):
+        """A waiter with no blocking timeout waits for a holder that outlives the lease."""
+        order = []
+        acquired = asyncio.Event()
+
+        async def holder():
+            async with short_lease_registry.acquire(1):
+                acquired.set()
+                order.append('a_start')
+                await asyncio.sleep(1.5)
+                order.append('a_end')
+
+        async def waiter():
+            await acquired.wait()
+            async with short_lease_registry.acquire(1):
+                order.append('b_start')
+                order.append('b_end')
+
+        await asyncio.gather(holder(), waiter())
+        assert order == ['a_start', 'a_end', 'b_start', 'b_end']
+
+    async def test_lock_taken_by_other_owner_logged_not_raised(self, short_lease_registry, redis_client, caplog):
+        """A lock lost to another owner is logged on renewal and release, and the other owner's key is untouched."""
+        caplog.set_level(logging.WARNING, logger='hermes.locks')
+
+        async with short_lease_registry.acquire(1):
+            await redis_client.set('test:1', 'other')
+            await asyncio.sleep(0.5)
+
+        assert await redis_client.get('test:1') == b'other'
+        assert _lock_logs(caplog) == [
+            ('WARNING', 'Lock test:1 is no longer owned, stopping renewal'),
+            ('ERROR', 'Lock test:1 was lost before it was released'),
+        ]
+        assert _other_tasks() == set()
+
+    @patch.object(Lock, 'reacquire', autospec=True)
+    async def test_renewal_error_logged_and_retried(self, mock_reacquire, short_lease_registry, redis_client, caplog):
+        """A failed renewal is logged and retried on the next interval, so the lock is kept."""
+        caplog.set_level(logging.WARNING, logger='hermes.locks')
+
+        def reacquire(lock):
+            if mock_reacquire.call_count == 1:
+                raise RedisConnectionError('Connection reset by peer')
+            return _real_reacquire(lock)
+
+        mock_reacquire.side_effect = reacquire
+
+        async with short_lease_registry.acquire(1):
+            await asyncio.sleep(1.5)
+            assert await redis_client.get('test:1') is not None
+
+        assert mock_reacquire.call_count >= 2
+        assert _lock_logs(caplog) == [('WARNING', 'Failed to renew lock test:1: Connection reset by peer')]
+        assert _other_tasks() == set()
+
+    async def test_max_hold_stops_renewal(self, redis_client, monkeypatch, caplog):
+        """Renewal stops after max_hold_seconds, so a stuck holder loses the lock within one more lease."""
+        monkeypatch.setattr('app.core.redis.redis_client', redis_client)
+        registry = RedisLockRegistry('test', lease_timeout_seconds=0.6, max_hold_seconds=0.5)
+        caplog.set_level(logging.WARNING, logger='hermes.locks')
+
+        async with registry.acquire(1):
+            await asyncio.sleep(1.5)
+
+        assert _lock_logs(caplog) == [
+            ('ERROR', 'Lock test:1 held for over 0.5s, no longer renewing it'),
+            ('ERROR', 'Lock test:1 was lost before it was released'),
+        ]
+        assert _other_tasks() == set()
