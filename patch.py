@@ -7,6 +7,7 @@ with existing deals in Pipedrive using the hermes_id custom field.
 """
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime
 
@@ -648,7 +649,7 @@ async def add_jewel_bdr_admin(db):
 
 
 @command
-async def fix_repeated_contact_names(db):
+async def fix_repeated_contact_names(db, live=False):
     """
     Remove the repeated words from contact names damaged by #418.
 
@@ -658,29 +659,47 @@ async def fix_repeated_contact_names(db):
 
     Only names that start lowercase, have a capital and repeat a word are changed. The new name is the
     words in order without repeats: first_name is the first word and last_name the rest, the same split
-    Person.parse_name makes when Pipedrive sends the name back. Pipedrive gets the new name on the
-    company's next sync. Run this after the #418 fix is deployed, or the names start repeating again.
+    Person.parse_name makes when Pipedrive sends the name back. A name that is one word repeated keeps
+    that word as both first_name and last_name.
+
+    With --live the changes are committed and the new names are sent to Pipedrive straight away, so a
+    Pipedrive webhook before the company's next sync can't bring the repeated name back. Run this after
+    the #418 fix is deployed, or the names start repeating again.
     """
     contacts = db.exec(select(Contact).order_by(Contact.id)).all()
     print(f'Checking {len(contacts)} contacts')
 
-    fixed_count = 0
+    fixed = []
     for contact in contacts:
         name = contact.name
         if not name or not name[0].islower() or not any(c.isupper() for c in name):
             continue
         words = name.split()
         unique_words = list(dict.fromkeys(words))
-        if len(unique_words) == len(words) or len(unique_words) < 2:
+        if len(unique_words) == 1:
+            unique_words *= 2
+        if len(unique_words) >= len(words):
             continue
 
         contact.first_name = unique_words[0][:255]
         contact.last_name = ' '.join(unique_words[1:])[:255]
         db.add(contact)
-        fixed_count += 1
+        fixed.append(contact)
         print(f'Contact {contact.id} (pd_person_id={contact.pd_person_id}): {name!r} -> {contact.name!r}')
 
-    print(f'Fixed {fixed_count} contacts')
+    print(f'Fixed {len(fixed)} contacts')
+    if not live:
+        return
+
+    db.commit()
+    for contact in fixed:
+        if not contact.pd_person_id:
+            continue
+        try:
+            await api.update_person(contact.pd_person_id, {'name': contact.name})
+            print(f'Updated Pipedrive person {contact.pd_person_id}')
+        except Exception as e:
+            print(f'Failed to update Pipedrive person {contact.pd_person_id}: {e}')
 
 
 @click.command()
@@ -691,7 +710,9 @@ def patch(command, live):
 
     start = datetime.now()
     with get_session() as db:
-        asyncio.run(command_lookup[command](db=db))
+        func = command_lookup[command]
+        kwargs = {'live': live} if 'live' in inspect.signature(func).parameters else {}
+        asyncio.run(func(db=db, **kwargs))
         if live:
             db.commit()
             print('Committing changes')
