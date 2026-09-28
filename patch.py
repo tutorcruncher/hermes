@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Admin, Stage
+from app.main_app.models import Admin, Contact, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -645,6 +645,42 @@ async def add_jewel_bdr_admin(db):
         f'Created admin {admin.id}: {admin.name} <{admin.username}> '
         f'tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
     )
+
+
+@command
+async def fix_repeated_contact_names(db):
+    """
+    Remove the repeated words from contact names damaged by #418.
+
+    Pipedrive puts a name that starts lowercase and has a capital (e.g. 'john Smith') all in last_name,
+    and Hermes kept its own first_name, so every sync sent the first name once more ('john john Smith')
+    until the name was over 255 characters and Pipedrive rejected it.
+
+    Only names that start lowercase, have a capital and repeat a word are changed. The new name is the
+    words in order without repeats: first_name is the first word and last_name the rest, the same split
+    Person.parse_name makes when Pipedrive sends the name back. Pipedrive gets the new name on the
+    company's next sync. Run this after the #418 fix is deployed, or the names start repeating again.
+    """
+    contacts = db.exec(select(Contact).order_by(Contact.id)).all()
+    print(f'Checking {len(contacts)} contacts')
+
+    fixed_count = 0
+    for contact in contacts:
+        name = contact.name
+        if not name or not name[0].islower() or not any(c.isupper() for c in name):
+            continue
+        words = name.split()
+        unique_words = list(dict.fromkeys(words))
+        if len(unique_words) == len(words) or len(unique_words) < 2:
+            continue
+
+        contact.first_name = unique_words[0][:255]
+        contact.last_name = ' '.join(unique_words[1:])[:255]
+        db.add(contact)
+        fixed_count += 1
+        print(f'Contact {contact.id} (pd_person_id={contact.pd_person_id}): {name!r} -> {contact.name!r}')
+
+    print(f'Fixed {fixed_count} contacts')
 
 
 @click.command()

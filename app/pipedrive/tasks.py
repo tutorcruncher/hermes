@@ -371,7 +371,7 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
     company = db.get(Company, contact.company_id)
 
     data = {
-        'name': contact.name,
+        'name': contact.name[:255] if contact.name else None,
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }

@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import select
 
-from app.main_app.models import Company, Deal
+from app.main_app.models import Company, Contact, Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
     _company_to_org_data,
@@ -379,6 +379,32 @@ class TestSyncPerson:
         mock_update.assert_called_once()
         payload = mock_update.call_args[0][1]
         assert 'marketing_status' not in payload
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_caps_name_at_255(self, mock_create, mock_get_session, db, test_company):
+        """Pipedrive rejects names over 255 characters, and first_name + last_name can reach 511."""
+        contact = db.create(Contact(first_name='a' * 255, last_name='b' * 255, company_id=test_company.id))
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 4444}}
+
+        await sync_person(contact.id)
+
+        payload = mock_create.call_args[0][0]
+        assert payload['name'] == 'a' * 255
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_without_name_does_not_raise(self, mock_create, mock_get_session, db, test_company):
+        """A contact with no first or last name has name None, which must not break the sync."""
+        contact = db.create(Contact(first_name=None, last_name=None, company_id=test_company.id))
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 5555}}
+
+        await sync_person(contact.id)
+
+        payload = mock_create.call_args[0][0]
+        assert payload['name'] is None
 
 
 class TestSyncDeal:
