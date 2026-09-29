@@ -355,6 +355,32 @@ class TestSyncPerson:
         assert payload['marketing_status'] == 'subscribed'
 
     @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_create_without_email_has_no_marketing_status(
+        self, mock_create, mock_get_session, db, test_contact
+    ):
+        """Test that a contact with no email is still created, without a marketing_status.
+
+        Pipedrive rejects a marketing status when the person has no primary email.
+        """
+        test_contact.pd_person_id = None
+        test_contact.email = None
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 4444}}
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_called_once()
+        payload = mock_create.call_args[0][0]
+        assert 'emails' not in payload
+        assert 'marketing_status' not in payload
+        db.refresh(test_contact)
+        assert test_contact.pd_person_id == 4444
+
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
     async def test_sync_person_update_does_not_set_marketing_status(

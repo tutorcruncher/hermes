@@ -150,7 +150,9 @@ async def sync_person(contact_id: int):
     if not pd_person_id:
         try:
             # Only on create — PD allows each status transition once, don't overwrite manual unsubscribes.
-            person_data['marketing_status'] = 'subscribed'
+            # PD rejects a marketing status without a primary email, so contacts with no email get none.
+            if 'emails' in person_data:
+                person_data['marketing_status'] = 'subscribed'
             result = await api.create_person(person_data)
             new_pd_person_id = result['data']['id']
 
