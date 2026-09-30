@@ -12,10 +12,6 @@ logger = logging.getLogger('hermes.pipedrive')
 
 _client: Optional[httpx.AsyncClient] = None
 
-RATE_LIMIT_STATUS_CODES = (
-    429,
-    403,  # ratelimiting by Cloudflare
-)
 max_retry = settings.pd_api_max_retry
 
 
@@ -39,6 +35,25 @@ def _extract_rate_limit_headers(response: httpx.Response) -> dict:
         'reset': response.headers.get('x-ratelimit-reset'),
         'daily_left': response.headers.get('x-daily-requests-left'),
     }
+
+
+def _is_rate_limited(response: httpx.Response) -> bool:
+    """
+    Whether the error response means Hermes is over Pipedrive's rate limit, so the request is worth retrying.
+    Pipedrive answers 429, and when requests keep coming Cloudflare blocks them with a 403 HTML page. Pipedrive's
+    own errors are JSON with success false, so a 403 with that body is a real refusal, e.g. 'Cannot update a
+    deleted organization.', which retrying cannot fix.
+    """
+    if response.status_code == 429:
+        return True
+    if response.status_code != 403:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return True
+    is_pipedrive_error = isinstance(body, dict) and body.get('success') is False
+    return not is_pipedrive_error
 
 
 async def pipedrive_request(
@@ -79,7 +94,7 @@ async def pipedrive_request(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if settings.pd_api_enable_retry and e.response.status_code in RATE_LIMIT_STATUS_CODES and retry < max_retry:
+            if settings.pd_api_enable_retry and _is_rate_limited(e.response) and retry < max_retry:
                 wait_time = (retry + 1) * 2
                 logger.warning(
                     f'Pipedrive API rate limit for {method} {endpoint}, retry {retry + 1}/{max_retry}, waiting {wait_time}s...'
