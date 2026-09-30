@@ -402,10 +402,12 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
     data = {
         'title': deal.name,
         'org_id': company.pd_org_id if company else None,
-        'person_id': contact.pd_person_id if contact else None,
         'owner_id': deal.admin.pd_owner_id if deal.admin else None,
         'status': deal.status,
     }
+    # Sending person_id None would remove the deal's person in Pipedrive, so only send a person Hermes knows
+    if contact and contact.pd_person_id:
+        data['person_id'] = contact.pd_person_id
 
     # Build custom_fields using field mapping
     custom_fields = {}
