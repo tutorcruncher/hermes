@@ -5,7 +5,7 @@ import httpx
 import logfire
 from sqlmodel import select
 
-from app.core.database import get_session
+from app.core.database import DBSession, get_session
 from app.core.locks import RedisLockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
@@ -29,15 +29,16 @@ SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from de
 _company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=300, max_hold_seconds=3600)
 
 
-async def sync_company_to_pipedrive(company_id: int, recreate_on_404: bool = False):
+async def sync_company_to_pipedrive(company_id: int, booked_contact_id: int | None = None):
     """
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
 
     When Pipedrive no longer has the org, a person or a deal, it is marked deleted in Hermes, as the delete webhook
-    would do. A sales call booking passes recreate_on_404=True, so a gone org or person is recreated instead; a
-    company or contact already marked deleted is still skipped. NARC companies are never synced.
+    would do. A sales call booking passes the booked contact, so the booking always reaches Pipedrive: the company
+    and that contact are brought back if they were marked deleted, and a gone org or person is recreated.
     """
+    recreate_on_404 = booked_contact_id is not None
     async with _company_sync_locks.acquire(company_id):
         with logfire.span('sync_company_to_pipedrive'):
             try:
@@ -46,11 +47,10 @@ async def sync_company_to_pipedrive(company_id: int, recreate_on_404: bool = Fal
                     if not company:
                         logger.warning(f'Company {company_id} not found, skipping sync')
                         return
+                    if booked_contact_id:
+                        _bring_back_for_booking(db, company, booked_contact_id)
                     if company.is_deleted:
                         logger.info(f'Company {company_id} is marked as deleted, skipping sync')
-                        return
-                    if company.narc:
-                        logger.info(f'Company {company_id} is NARC, skipping sync')
                         return
 
                     contact_ids = [
@@ -335,6 +335,24 @@ async def purge_company_from_pipedrive(company_id: int):
             logger.info(f'Purged company {company_id} from Pipedrive')
         except Exception as e:
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
+
+
+def _bring_back_for_booking(db: DBSession, company: Company, contact_id: int) -> None:
+    """
+    A sales call was booked, so the customer is live. If the company or the booked contact was marked deleted
+    (deleted or merged away in Pipedrive), bring it back so the sync recreates it and the booking is not lost.
+    """
+    contact = db.get(Contact, contact_id)
+    booked = [company]
+    if contact and contact.company_id == company.id:
+        booked.append(contact)
+    deleted = [obj for obj in booked if obj.is_deleted]
+    for obj in deleted:
+        obj.is_deleted = False
+        db.add(obj)
+        logger.warning(f'Sales call booked for deleted {type(obj).__name__} {obj.id}, bringing it back')
+    if deleted:
+        db.commit()
 
 
 def _is_deleted_in_pipedrive(e: Exception, method: str = 'GET') -> bool:

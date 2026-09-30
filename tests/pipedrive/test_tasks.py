@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import select
 
-from app.main_app.models import Company, Deal
+from app.main_app.models import Company, Contact, Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
     _company_to_org_data,
@@ -211,48 +211,47 @@ class TestSyncCompanyToPipedrive:
         mock_create_person.return_value = {'data': {'id': 1111}}
         mock_create_deal.return_value = {'data': {'id': 2222}}
 
-        await sync_company_to_pipedrive(test_company.id, recreate_on_404=True)
+        await sync_company_to_pipedrive(test_company.id, booked_contact_id=test_contact.id)
 
         mock_create_person.assert_called_once()
         db.refresh(test_contact)
         assert test_contact.is_deleted is False
         assert test_contact.pd_person_id == 1111
 
-    @pytest.mark.parametrize('pd_org_id', [999, None])
-    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
-    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
-    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
-    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
-    async def test_narc_company_not_synced(
-        self,
-        mock_get_org,
-        mock_create_org,
-        mock_get_person,
-        mock_create_person,
-        mock_get_deal,
-        mock_create_deal,
-        pd_org_id,
-        db,
-        test_company,
-        test_contact,
-        test_deal,
+    async def test_booking_sync_brings_back_deleted_company_and_contact(
+        self, mock_create_org, mock_create_person, db, test_company, test_contact
     ):
-        """A NARC company is never synced to Pipedrive, whether or not it still holds an org id"""
-        test_company.narc = True
-        test_company.pd_org_id = pd_org_id
+        """A sales call booked for a company and contact marked deleted brings both back into Pipedrive, and leaves
+        the company's other deleted contacts alone"""
+        test_company.is_deleted = True
+        test_company.pd_org_id = None
+        test_contact.is_deleted = True
+        test_contact.pd_person_id = None
         db.add(test_company)
+        db.add(test_contact)
         db.commit()
+        other_contact = db.create(
+            Contact(first_name='Other', last_name='Person', company_id=test_company.id, is_deleted=True)
+        )
 
-        await sync_company_to_pipedrive(test_company.id, recreate_on_404=True)
+        mock_create_org.return_value = {'data': {'id': 1000}}
+        mock_create_person.return_value = {'data': {'id': 1111}}
 
-        mock_get_org.assert_not_called()
-        mock_create_org.assert_not_called()
-        mock_get_person.assert_not_called()
-        mock_create_person.assert_not_called()
-        mock_get_deal.assert_not_called()
-        mock_create_deal.assert_not_called()
+        await sync_company_to_pipedrive(test_company.id, booked_contact_id=test_contact.id)
+
+        mock_create_org.assert_called_once()
+        mock_create_person.assert_called_once()
+        db.refresh(test_company)
+        db.refresh(test_contact)
+        db.refresh(other_contact)
+        assert test_company.is_deleted is False
+        assert test_company.pd_org_id == 1000
+        assert test_contact.is_deleted is False
+        assert test_contact.pd_person_id == 1111
+        assert other_contact.is_deleted is True
+        assert other_contact.pd_person_id is None
 
 
 class TestSyncOrganization:

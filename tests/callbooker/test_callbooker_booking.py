@@ -5,7 +5,6 @@ Tests for callbooker booking flow.
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-import pytest
 from pytz import utc
 from sqlmodel import select
 
@@ -682,26 +681,23 @@ class TestSalesCallBooking:
         assert company.pd_org_id == 1000
         assert company.is_deleted is False
 
-    @pytest.mark.parametrize('pd_org_id', [999, None])
     @patch('app.pipedrive.api.pipedrive_request')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_sales_call_does_not_sync_narc_company(
-        self, mock_gcal_builder, mock_pipedrive, pd_org_id, client, db, test_pipeline, test_stage, test_config
+    async def test_sales_call_for_deleted_company_reaches_pipedrive(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
     ):
-        """A booking for a NARC company creates the meeting activity but never syncs the company, its persons or its
-        deal to Pipedrive"""
+        """A booking for a company and contact that were marked deleted brings them back, so the meeting reaches
+        Pipedrive with its org, person and deal"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
         mock_pipedrive.return_value = {'data': {'id': 1000}}
 
         admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
         company = db.create(
-            Company(
-                name='Junes Ltd',
-                sales_person_id=admin.id,
-                price_plan='payg',
-                country='GB',
-                narc=True,
-                pd_org_id=pd_org_id,
+            Company(name='Junes Ltd', sales_person_id=admin.id, price_plan='payg', country='GB', is_deleted=True)
+        )
+        contact = db.create(
+            Contact(
+                first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id, is_deleted=True
             )
         )
 
@@ -713,9 +709,22 @@ class TestSalesCallBooking:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-        assert [(c.args[0], c.kwargs['method']) for c in mock_pipedrive.call_args_list] == [('activities', 'POST')]
+        assert [(c.args[0], c.kwargs['method']) for c in mock_pipedrive.call_args_list] == [
+            ('organizations', 'POST'),
+            ('persons', 'POST'),
+            ('deals', 'POST'),
+            ('activities', 'POST'),
+        ]
+        activity_data = get_pipedrive_call_data(mock_pipedrive, 'activities', 'POST')
+        assert activity_data['org_id'] == 1000
+        assert activity_data['deal_id'] == 1000
+        assert activity_data['participants'] == [{'person_id': 1000, 'primary': True}]
         db.refresh(company)
-        assert company.pd_org_id == pd_org_id
+        db.refresh(contact)
+        assert company.is_deleted is False
+        assert company.pd_org_id == 1000
+        assert contact.is_deleted is False
+        assert contact.pd_person_id == 1000
 
 
 class TestSupportCallBooking:
