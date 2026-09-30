@@ -10,6 +10,7 @@ from app.callbooker.google import AdminGoogleCalendar
 from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.utils import iso_8601_to_datetime
+from app.common.utils import sign_args_with_key
 from app.core.config import settings
 from app.core.database import DBSession
 from app.exceptions import MeetingBookingError
@@ -229,11 +230,16 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     tracking_params = {'tc_source': company.utm_source or 'call_booker'}
     if company.utm_campaign:
         tracking_params['tc_campaign'] = company.utm_campaign
+    if company.tc2_cligency_id:
+        signup_sig = sign_args_with_key(company.tc2_cligency_id, key=settings.tc2_api_key)
+    else:
+        signup_sig = ''
     template_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
         'admin_name': admin.first_name,
         'tc2_cligency_id': company.tc2_cligency_id or '',
+        'signup_sig': signup_sig,
         'tc2_cligency_url': company.tc2_cligency_url or '',
         'signup_tracking_params': urlencode(tracking_params),
     }

@@ -8,6 +8,8 @@ from unittest.mock import patch
 from pytz import utc
 from sqlmodel import select
 
+from app.common.utils import sign_args_with_key
+from app.core.config import settings
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from tests.helpers import fake_gcal_builder
 
@@ -721,7 +723,7 @@ class TestSignupLinkAttribution:
         assert company.utm_campaign == 'tc-home-US'
 
         description = captured_events[0]['description']
-        assert '/start/1/?cli_id=&tc_source=google.com&tc_campaign=tc-home-US"' in description
+        assert '/start/1/?cli_id=&s=&tc_source=google.com&tc_campaign=tc-home-US"' in description
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -751,7 +753,8 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        assert '/start/1/?cli_id=10&tc_source=bing.com"' in description
+        sig = sign_args_with_key(10, key=settings.tc2_api_key)
+        assert f'/start/1/?cli_id=10&s={sig}&tc_source=bing.com"' in description
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -780,7 +783,8 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        assert '/start/1/?cli_id=10&tc_source=call_booker"' in description
+        sig = sign_args_with_key(10, key=settings.tc2_api_key)
+        assert f'/start/1/?cli_id=10&s={sig}&tc_source=call_booker"' in description
 
 
 class TestCallbookerValidation:
