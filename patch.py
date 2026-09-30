@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Admin, Contact, Stage
+from app.main_app.models import Admin, Company, Contact, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -660,13 +660,19 @@ async def fix_repeated_contact_names(db, live=False):
     Only names that start lowercase, have a capital and repeat a word are changed. The new name is the
     words in order without repeats: first_name is the first word and last_name the rest, the same split
     Person.parse_name makes when Pipedrive sends the name back. A name that is one word repeated keeps
-    that word as both first_name and last_name.
+    that word as both first_name and last_name. Contacts of deleted or narc companies are skipped, as
+    Hermes no longer syncs them.
 
     With --live the changes are committed and the new names are sent to Pipedrive straight away, so a
     Pipedrive webhook before the company's next sync can't bring the repeated name back. Run this after
     the #418 fix is deployed, or the names start repeating again.
     """
-    contacts = db.exec(select(Contact).order_by(Contact.id)).all()
+    contacts = db.exec(
+        select(Contact)
+        .join(Company)
+        .where(Company.is_deleted == False, Company.narc == False)  # noqa: E712
+        .order_by(Contact.id)
+    ).all()
     print(f'Checking {len(contacts)} contacts')
 
     fixed = []

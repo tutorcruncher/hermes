@@ -6,7 +6,7 @@ from unittest.mock import call, patch
 
 from click.testing import CliRunner
 
-from app.main_app.models import Contact
+from app.main_app.models import Company, Contact
 from patch import fix_repeated_contact_names, patch as patch_command
 
 
@@ -38,8 +38,20 @@ class TestFixRepeatedContactNames:
         assert not mock_pd.called
 
     @patch('app.pipedrive.api.pipedrive_request')
-    def test_fix_repeated_contact_names_live_updates_pipedrive(self, mock_pd, db, test_company):
+    def test_fix_repeated_contact_names_live_updates_pipedrive(self, mock_pd, db, test_admin, test_company):
         mock_pd.side_effect = [{'data': {'id': 101}}, Exception('404 Not Found')]
+        deleted_company = db.create(
+            Company(name='Deleted', price_plan='payg', country='GB', sales_person_id=test_admin.id, is_deleted=True)
+        )
+        narc_company = db.create(
+            Company(name='Narc', price_plan='payg', country='GB', sales_person_id=test_admin.id, narc=True)
+        )
+        in_deleted_company = db.create(
+            Contact(first_name='tom', last_name='tom tom Hill', pd_person_id=103, company_id=deleted_company.id)
+        )
+        in_narc_company = db.create(
+            Contact(first_name='sam', last_name='sam sam Hill', pd_person_id=104, company_id=narc_company.id)
+        )
         synced = db.create(
             Contact(first_name='john', last_name='john john Smith', pd_person_id=101, company_id=test_company.id)
         )
@@ -61,3 +73,5 @@ class TestFixRepeatedContactNames:
         assert (synced.first_name, synced.last_name) == ('john', 'Smith')
         assert (failed.first_name, failed.last_name) == ('anna', 'Lee')
         assert (not_in_pd.first_name, not_in_pd.last_name) == ('mo', 'Khan')
+        assert (in_deleted_company.first_name, in_deleted_company.last_name) == ('tom', 'tom tom Hill')
+        assert (in_narc_company.first_name, in_narc_company.last_name) == ('sam', 'sam sam Hill')
