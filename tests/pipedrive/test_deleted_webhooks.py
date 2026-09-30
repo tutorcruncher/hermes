@@ -303,6 +303,35 @@ class TestPipedriveOrganizationMergeDeletion:
         assert company2.pd_org_id is None
         assert company2.is_deleted is True
 
+    async def test_merge_with_missing_winner_keeps_existing_company(self, client, db, test_admin):
+        """Test that a merged hermes_id led by an id Hermes doesn't have makes the first existing company the winner"""
+        company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                COMPANY_PD_FIELD_MAP['hermes_id']: f'99999, {company1.id}, {company2.id}',
+                'name': 'Merged Company',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company1)
+        assert company1.name == 'Merged Company'
+        assert company1.pd_org_id == 100
+        assert company1.is_deleted is False
+
+        db.refresh(company2)
+        assert company2.pd_org_id is None
+        assert company2.is_deleted is True
+
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_merged_loser_not_recreated_on_tc2_callback(
         self, mock_create_org, client, db, test_admin, sample_tc_webhook_data

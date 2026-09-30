@@ -183,6 +183,24 @@ class TestPipedriveWebhookEdgeCases:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
+    async def test_org_webhook_merged_hermes_ids_not_found(self, client, db):
+        """Test organization webhook with merged hermes_ids that Hermes has none of"""
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: '99998, 99999',
+                'name': 'Test Org',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Company)).all() == []
+
     async def test_person_webhook_no_id_or_hermes_id(self, client, db):
         """Test person webhook with no hermes_id or id"""
         webhook_data = {
@@ -1004,6 +1022,52 @@ class TestPipedrivePersonMergeDeletion:
         db.refresh(contact3)
         assert contact3.pd_person_id is None
         assert contact3.is_deleted is True
+
+    async def test_person_merge_with_missing_winner_keeps_existing_contact(self, client, db, test_company):
+        """Test that a merged hermes_id led by an id Hermes doesn't have makes the first existing contact the winner"""
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {contact1.id}, {contact2.id}',
+                'name': 'Jane Winner',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact1)
+        assert contact1.first_name == 'Jane'
+        assert contact1.pd_person_id == 400
+        assert contact1.is_deleted is False
+
+        db.refresh(contact2)
+        assert contact2.pd_person_id is None
+        assert contact2.is_deleted is True
 
     async def test_person_merge_updates_org_link(self, client, db, test_admin):
         """Test merge where winner gets new org_id, verify company_id is updated"""

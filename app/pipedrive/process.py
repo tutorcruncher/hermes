@@ -92,16 +92,13 @@ class PipedriveObjProcessor:
         else:
             if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
                 if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
-                    hermes_ids = list(map(int, map(lambda x: x.strip(), str(new_pd_obj.hermes_id).split(','))))
-                    winner_id = hermes_ids[0]
-                    # The winner's id repeats when two merged objects held the same hermes_id
-                    loser_ids = [i for i in hermes_ids[1:] if i != winner_id]
+                    hermes_ids = list(dict.fromkeys(int(i.strip()) for i in str(new_pd_obj.hermes_id).split(',')))
+                    # Pipedrive still holds hermes_ids that no Hermes object has, so the winner is the first id that exists
+                    existing_ids = [i for i in hermes_ids if self.db.get(self.hermes_model, i)]
+                    new_pd_obj.hermes_id = existing_ids[0] if existing_ids else hermes_ids[0]
+                    logger.info(f'Detected merged entity, using first existing hermes_id: {new_pd_obj.hermes_id}')
 
-                    # Take the first ID from comma-separated list (primary entity after merge)
-                    new_pd_obj.hermes_id = winner_id
-                    logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
-
-                    self._mark_merged_losers_deleted(loser_ids)
+                    self._mark_merged_losers_deleted(existing_ids[1:])
 
                 hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
                 if hermes_obj:
