@@ -142,8 +142,8 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_clears_deleted(self, client, db, test_company, test_admin):
-        """Test that update webhook after deletion clears is_deleted flag (org recreated in Pipedrive)"""
+    async def test_deletion_then_update_webhook_keeps_deleted(self, client, db, test_company, test_admin):
+        """Test that update webhook after deletion updates the company but keeps it deleted"""
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
@@ -180,8 +180,8 @@ class TestPipedriveOrganizationDeletion:
 
         db.refresh(test_company)
         assert test_company.name == 'Updated Name'
-        # pd_org_id won't be set by webhook update - only by lookup during process
-        assert test_company.is_deleted is False
+        assert test_company.pd_org_id is None
+        assert test_company.is_deleted is True
 
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
@@ -255,6 +255,35 @@ class TestPipedriveOrganizationMergeDeletion:
             'data': {
                 'id': 100,
                 COMPANY_PD_FIELD_MAP['hermes_id']: f'{company1.id}, {company2.id}',
+                'name': 'Merged Company',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company1)
+        assert company1.name == 'Merged Company'
+        assert company1.pd_org_id == 100
+        assert company1.is_deleted is False
+
+        db.refresh(company2)
+        assert company2.pd_org_id is None
+        assert company2.is_deleted is True
+
+    async def test_merge_with_repeated_winner_keeps_winner(self, client, db, test_admin):
+        """Test that a winner id repeated in the merged hermes_id is not marked as a loser"""
+        company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                COMPANY_PD_FIELD_MAP['hermes_id']: f'{company1.id}, {company2.id}, {company1.id}',
                 'name': 'Merged Company',
             },
             'previous': None,
