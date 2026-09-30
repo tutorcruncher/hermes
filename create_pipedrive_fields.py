@@ -22,12 +22,14 @@ ORGANIZATION_FIELDS = [
     {'name': 'paid_invoice_count', 'field_type': 'double'},
     {'name': 'website', 'field_type': 'text'},
     {'name': 'price_plan', 'field_type': 'text'},
-    {'name': 'estimated_income', 'field_type': 'text'},
+    {'name': 'estimated_monthly_income', 'field_type': 'text'},
     {'name': 'support_person_id', 'field_type': 'double'},
     {'name': 'bdr_person_id', 'field_type': 'double'},
     {'name': 'signup_questionnaire', 'field_type': 'text'},
     {'name': 'utm_source', 'field_type': 'text'},
     {'name': 'utm_campaign', 'field_type': 'text'},
+    {'name': 'signup_email', 'field_type': 'varchar'},
+    {'name': 'signup_phone', 'field_type': 'varchar'},
     {'name': 'created', 'field_type': 'date'},
     {'name': 'pay0_dt', 'field_type': 'date'},
     {'name': 'pay1_dt', 'field_type': 'date'},
@@ -55,12 +57,24 @@ DEAL_FIELDS = [
     {'name': 'tc2_status', 'field_type': 'text'},
     {'name': 'website', 'field_type': 'text'},
     {'name': 'price_plan', 'field_type': 'text'},
-    {'name': 'estimated_income', 'field_type': 'text'},
+    {'name': 'estimated_monthly_income', 'field_type': 'text'},
 ]
 
 
-async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: dict):
-    """Create a custom field in Pipedrive."""
+async def existing_field_names(client: httpx.AsyncClient, entity_type: str) -> set[str]:
+    """Pipedrive allows two custom fields with the same name, so check before creating."""
+    url = f'https://api.pipedrive.com/v1/{entity_type}Fields'
+    response = await client.get(url, params={'api_token': settings.pd_api_key, 'limit': 500})
+    response.raise_for_status()
+    return {field['name'] for field in response.json()['data']}
+
+
+async def create_field(client: httpx.AsyncClient, entity_type: str, field_data: dict, existing: set[str]):
+    """Create a custom field in Pipedrive, unless one with that name already exists."""
+    if field_data['name'] in existing:
+        print(f'- {entity_type} field already exists: {field_data["name"]}')
+        return
+
     url = f'https://api.pipedrive.com/v1/{entity_type}Fields'
 
     params = {
@@ -110,16 +124,19 @@ async def main():
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Create organization fields
         print('=== Organization Fields ===')
+        existing = await existing_field_names(client, 'organization')
         for field in ORGANIZATION_FIELDS:
-            await create_field(client, 'organization', field)
+            await create_field(client, 'organization', field, existing)
 
         print('\n=== Person Fields ===')
+        existing = await existing_field_names(client, 'person')
         for field in PERSON_FIELDS:
-            await create_field(client, 'person', field)
+            await create_field(client, 'person', field, existing)
 
         print('\n=== Deal Fields ===')
+        existing = await existing_field_names(client, 'deal')
         for field in DEAL_FIELDS:
-            await create_field(client, 'deal', field)
+            await create_field(client, 'deal', field, existing)
 
     print('\n✓ Done! Now run: make setup-fields')
 

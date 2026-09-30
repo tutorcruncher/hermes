@@ -29,6 +29,8 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'signup_questionnaire': 'd4db234b06f753a951c0de94456740f270e0f2ed',
     'utm_source': 'd30bf32a173cdfa780901d5eeb92a8f2d1ccd980',
     'utm_campaign': '4be5bf6e60e2a01e2653532e872cd15b5308da23',
+    'signup_email': '947c107172aafa62b4823358cacd69d03b725f21',
+    'signup_phone': 'e651b58add3ed5e1af88a3bfd9d5d5adacc46964',
     'created': '02ccf8be2c19db0d88f46b9fac20982f43cf1394',
     'pay0_dt': '8ca7c3d5c4d2a343ddfbca712606e27ad9714188',
     'pay1_dt': '291ac593816f0a5ab018f61905274312008c8c9b',
