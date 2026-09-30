@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.callbooker.google import AdminGoogleCalendar
@@ -24,7 +24,7 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     if event.email:
         contact = db.exec(
             select(Contact)
-            .where(Contact.company_id == company.id, Contact.email == event.email)
+            .where(Contact.company_id == company.id, func.lower(Contact.email) == event.email)
             .order_by(Contact.id.desc())
         ).first()
     else:
@@ -51,13 +51,12 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
 
     The company is found by:
     - Submitted company_id (if provided)
-    - Contact's email (if they exist) and get company from that
+    - The contact with the submitted email (if they exist) and get company from that
+    - A contact with the submitted phone, and get company from that
     - Company name
 
-    The contact is found by:
-    - Contact's email
-    - Contact's phone
-    - Their last name
+    The contact is only ever the one with the submitted email, so the calendar invite goes to the email that was
+    typed in. A contact found by phone only identifies the company.
 
     If neither exist, they are created.
     """
@@ -68,18 +67,21 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     if event.company_id:
         company = db.get(Company, event.company_id)
 
-    # Try to find contact by email or phone, then get their company
+    # Try to find the contact by email, then get their company
     if not company and event.email:
-        contact = db.exec(select(Contact).where(Contact.email == event.email).order_by(Contact.id.desc())).first()
+        contact = db.exec(
+            select(Contact).where(func.lower(Contact.email) == event.email).order_by(Contact.id.desc())
+        ).first()
         if contact:
             logger.info(f'Found contact {contact.id} by email')
             company = db.get(Company, contact.company_id)
 
+    # Try to find the company from a contact with the same phone
     if not company and event.phone:
-        contact = db.exec(select(Contact).where(Contact.phone == event.phone).order_by(Contact.id.desc())).first()
-        if contact:
-            logger.info(f'Found contact {contact.id} by phone')
-            company = db.get(Company, contact.company_id)
+        phone_contact = db.exec(select(Contact).where(Contact.phone == event.phone).order_by(Contact.id.desc())).first()
+        if phone_contact:
+            logger.info(f'Found company {phone_contact.company_id} from contact {phone_contact.id} by phone')
+            company = db.get(Company, phone_contact.company_id)
 
     # Try to find company by name
     if not company:
@@ -92,27 +94,10 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     # Create company if not found
     if not company:
         company_data = event.company_dict()
+        company_data['bdr_person_id'] = _resolve_bdr_person_id(company_data['bdr_person_id'], db)
         company = Company(**company_data)
         db.add(company)
-        try:
-            db.commit()
-        except IntegrityError:
-            # Previously tc2_admin_id was passed as bdr_id, but with the rebuild we expect the hermes_admin_id.
-            # So this handles those old urls.
-            db.rollback()
-            bdr_id = company_data.get('bdr_person_id')
-            if not bdr_id:
-                raise
-
-            admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_id)).one_or_none()
-            if not admin:
-                logger.error(f'Could not find admin with tc2_admin_id {bdr_id}')
-                raise
-
-            company.bdr_person_id = admin.id
-            db.add(company)
-            db.commit()
-
+        db.commit()
         db.refresh(company)
         logger.info(f'Created company {company.id}')
 
@@ -120,12 +105,28 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     contact = contact or await get_or_create_contact(company, event, db)
     logger.info(f'Got company {company.id} and contact {contact.id}')
 
-    # Mark that company has booked a call
-    company.has_booked_call = True
-    db.add(company)
-    db.commit()
-
     return company, contact
+
+
+def _resolve_bdr_person_id(bdr_person_id: int | None, db: DBSession) -> int | None:
+    """
+    Get the Hermes admin id for the submitted bdr_person_id.
+
+    Old callbooker links pass the BDR's tc2_admin_id rather than their Hermes admin id, so both are accepted. An
+    unknown id is logged and dropped so that the booking still goes through.
+    """
+    if not bdr_person_id:
+        return None
+
+    if db.get(Admin, bdr_person_id):
+        return bdr_person_id
+
+    admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_person_id)).one_or_none()
+    if admin:
+        return admin.id
+
+    logger.error(f'Could not find admin with id or tc2_admin_id {bdr_person_id}, booking without a BDR')
+    return None
 
 
 async def book_meeting(
@@ -173,7 +174,7 @@ def _check_no_duplicate_meeting(contact_id: int, meeting_dt: datetime, db: DBSes
             Meeting.start_time >= two_hours_before,
             Meeting.start_time <= two_hours_after,
         )
-    ).one_or_none()
+    ).first()
 
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
