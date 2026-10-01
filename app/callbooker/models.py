@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from functools import cached_property
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 def _convert_to_utc(v: datetime) -> datetime:
@@ -38,7 +38,7 @@ class CBSalesCall(BaseModel):
     company_id: Optional[int] = None
     name: str
     website: Optional[str] = None
-    email: str
+    email: str = Field(min_length=1)
     country: str
     phone: Optional[str] = None
     company_name: str
