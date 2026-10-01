@@ -30,7 +30,7 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     else:
         contact = db.exec(
             select(Contact)
-            .where(Contact.company_id == company.id, Contact.last_name.ilike(event.last_name))
+            .where(Contact.company_id == company.id, func.lower(Contact.last_name) == func.lower(event.last_name))
             .order_by(Contact.id.desc())
         ).first()
 
@@ -78,7 +78,9 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     # Try to find company by name
     if not company:
         company = db.exec(
-            select(Company).where(Company.name.ilike(event.company_name)).order_by(Company.id.desc())
+            select(Company)
+            .where(func.lower(Company.name) == func.lower(event.company_name))
+            .order_by(Company.id.desc())
         ).first()
         if company:
             logger.info(f'Found company {company.id} by name')
