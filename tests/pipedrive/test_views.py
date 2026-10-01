@@ -2,8 +2,11 @@
 Tests for Pipedrive webhook endpoint.
 """
 
-from app.main_app.models import Pipeline, Stage
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from unittest.mock import patch
+
+from app.main_app.models import Contact, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP
+from app.pipedrive.tasks import sync_person
 
 
 class TestPipedriveWebhookEndpoint:
@@ -555,3 +558,44 @@ class TestPipedriveWebhookEndpoint:
         assert contact is not None
         assert contact.first_name == 'Test'
         assert contact.last_name == 'Person'
+
+
+def _lowercase_name_webhook(contact: Contact) -> dict:
+    return {
+        'meta': {'entity': 'person', 'action': 'change'},
+        'data': {
+            'id': contact.pd_person_id,
+            CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+            'name': 'john Smith',
+            'first_name': '',
+            'last_name': 'john Smith',
+        },
+        'previous': {},
+    }
+
+
+class TestPipedriveLowercaseNameWebhook:
+    """Pipedrive puts a name that starts lowercase ('john Smith') all in last_name with an empty first_name (#418)"""
+
+    async def test_person_webhook_with_empty_first_name_splits_name(self, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=_lowercase_name_webhook(contact))
+
+        assert r.status_code == 200
+        db.refresh(contact)
+        assert contact.first_name == 'john'
+        assert contact.last_name == 'Smith'
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_next_sync_does_not_repeat_first_name(self, mock_api, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+        client.post(client.app.url_path_for('pipedrive-callback'), json=_lowercase_name_webhook(contact))
+        mock_api.return_value = {'data': {'id': 999, 'name': 'john Smith', 'first_name': '', 'last_name': 'john Smith'}}
+
+        await sync_person(contact.id)
+
+        sent_names = [
+            c.kwargs['data']['name'] for c in mock_api.call_args_list if 'name' in (c.kwargs.get('data') or {})
+        ]
+        assert sent_names == []
