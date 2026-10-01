@@ -345,20 +345,28 @@ class TestSalesCallBooking:
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_sales_call_finds_company_by_phone_and_invites_typed_email(
+    async def test_sales_call_phone_match_alone_does_not_pick_the_company(
         self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
     ):
-        """Test a phone match finds the company, but the booking and invite use a new contact with the typed email"""
+        """Test an unknown email whose phone belongs to another company's contact gets a new company"""
         captured_events = []
         mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email=test_admin.email)
-        company = db.create(Company(name='Unique Phone Company', sales_person_id=test_admin.id, price_plan='payg'))
+        phone_company = db.create(
+            Company(
+                name='Unique Phone Company',
+                sales_person_id=test_admin.id,
+                price_plan='payg',
+                country='AU',
+                estimated_income='98765',
+            )
+        )
         old_contact = db.create(
             Contact(
                 first_name='John',
                 last_name='Doe',
                 email='original@example.com',
                 phone='+1234567890',
-                company_id=company.id,
+                company_id=phone_company.id,
             )
         )
 
@@ -372,29 +380,44 @@ class TestSalesCallBooking:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-        assert [c.id for c in db.exec(select(Company)).all()] == [company.id]
+        new_company = db.exec(select(Company).where(Company.name == 'Another Name')).one()
+        assert new_company.id != phone_company.id
+        assert new_company.has_booked_call is True
+        assert phone_company.has_booked_call is False
 
         contact = db.exec(select(Contact).where(Contact.email == 'newemail@example.com')).one()
-        assert contact.id != old_contact.id
-        assert contact.company_id == company.id
-        assert contact.first_name == 'Different'
-        assert contact.last_name == 'Name'
+        assert contact.company_id == new_company.id
         assert contact.phone == '+1234567890'
+        assert db.exec(select(Contact).where(Contact.company_id == phone_company.id)).all() == [old_contact]
+        assert old_contact.email == 'original@example.com'
 
         meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == new_company.id
         assert meeting.contact_id == contact.id
-        assert [a['email'] for a in captured_events[0]['attendees']] == [test_admin.email, 'newemail@example.com']
+        deal = db.exec(select(Deal)).one()
+        assert deal.company_id == new_company.id
+        assert meeting.deal_id == deal.id
+
+        event = captured_events[0]
+        assert [a['email'] for a in event['attendees']] == [test_admin.email, 'newemail@example.com']
+        assert '- Company Name: Another Name\n' in event['description']
+        assert '- Estimated Monthly Revenue: 1000\n' in event['description']
+        assert '- Country: GB\n' in event['description']
+        assert 'Unique Phone Company' not in event['description']
+        assert '98765' not in event['description']
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_sales_call_phone_match_to_contact_without_email_books_typed_email(
+    async def test_sales_call_phone_of_contact_without_email_books_typed_email(
         self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
     ):
-        """Test a phone match to a contact with no email still books, with the invite going to the typed email"""
+        """Test a contact with the same phone and no email doesn't stop the booking going to the typed email"""
         captured_events = []
         mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email=test_admin.email)
-        company = db.create(Company(name='Old Company', sales_person_id=test_admin.id, price_plan='payg'))
-        db.create(Contact(first_name='Old', last_name='Student', phone='+447700900001', company_id=company.id))
+        old_company = db.create(Company(name='Old Company', sales_person_id=test_admin.id, price_plan='payg'))
+        old_contact = db.create(
+            Contact(first_name='Old', last_name='Student', phone='+447700900001', company_id=old_company.id)
+        )
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['phone'] = '+447700900001'
@@ -405,11 +428,119 @@ class TestSalesCallBooking:
         assert r.json() == {'status': 'ok'}
 
         contact = db.exec(select(Contact).where(Contact.email == 'brain@junes.com')).one()
-        assert contact.company_id == company.id
+        assert contact.company.name == 'Junes Ltd'
+        assert contact.company_id != old_company.id
+        assert db.exec(select(Contact).where(Contact.company_id == old_company.id)).all() == [old_contact]
 
         meeting = db.exec(select(Meeting)).one()
         assert meeting.contact_id == contact.id
         assert [a['email'] for a in captured_events[0]['attendees']] == [test_admin.email, 'brain@junes.com']
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_new_email_at_known_company_matches_by_name(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test a new email with a known phone and the company's name books on that company as a new contact"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email=test_admin.email)
+        company = db.create(Company(name='Junes Ltd', sales_person_id=test_admin.id, price_plan='payg', country='GB'))
+        old_contact = db.create(
+            Contact(
+                first_name='Brain',
+                last_name='Junes',
+                email='old@junes.com',
+                phone='+447700900002',
+                company_id=company.id,
+            )
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(email='new@junes.com', phone='+447700900002', company_name='junes ltd')
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert db.exec(select(Company)).all() == [company]
+        contact = db.exec(select(Contact).where(Contact.email == 'new@junes.com')).one()
+        assert contact.company_id == company.id
+        assert contact.id != old_contact.id
+        assert old_contact.email == 'old@junes.com'
+
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == company.id
+        assert meeting.contact_id == contact.id
+        assert [a['email'] for a in captured_events[0]['attendees']] == [test_admin.email, 'new@junes.com']
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_email_match_wins_over_phone_and_name(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test the company of the contact with the typed email is used, even when the phone and name point elsewhere"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email=test_admin.email)
+        email_company = db.create(Company(name='Email Company', sales_person_id=test_admin.id, price_plan='payg'))
+        email_contact = db.create(
+            Contact(first_name='Brain', last_name='Junes', email='Brain@Junes.com', company_id=email_company.id)
+        )
+        phone_company = db.create(Company(name='Phone Company', sales_person_id=test_admin.id, price_plan='payg'))
+        db.create(Contact(first_name='Other', last_name='Person', phone='+447700900003', company_id=phone_company.id))
+        name_company = db.create(Company(name='Junes Ltd', sales_person_id=test_admin.id, price_plan='payg'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['phone'] = '+447700900003'
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert len(db.exec(select(Contact)).all()) == 2
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == email_company.id
+        assert meeting.contact_id == email_contact.id
+        assert phone_company.has_booked_call is False
+        assert name_company.has_booked_call is False
+        assert [a['email'] for a in captured_events[0]['attendees']] == [test_admin.email, 'Brain@Junes.com']
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_rebooking_after_phone_match_stays_on_its_own_company(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test a second booking with the same email finds the company made by the first, not the phone's company"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
+        phone_company = db.create(Company(name='Phone Company', sales_person_id=test_admin.id, price_plan='payg'))
+        db.create(
+            Contact(
+                first_name='Other',
+                last_name='Person',
+                email='other@example.com',
+                phone='+447700900004',
+                company_id=phone_company.id,
+            )
+        )
+
+        first_dt = datetime(2030, 7, 3, 9, tzinfo=utc)
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(phone='+447700900004', meeting_dt=first_dt.isoformat())
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+        assert r.status_code == 200
+
+        meeting_data.update(company_name='Renamed Ltd', meeting_dt=(first_dt + timedelta(hours=3)).isoformat())
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+        assert r.status_code == 200
+
+        first_company = db.exec(select(Company).where(Company.name == 'Junes Ltd')).one()
+        assert db.exec(select(Company).where(Company.name == 'Renamed Ltd')).all() == []
+        contact = db.exec(select(Contact).where(Contact.email == 'brain@junes.com')).one()
+        assert contact.company_id == first_company.id
+        meetings = db.exec(select(Meeting).order_by(Meeting.start_time)).all()
+        assert [(m.company_id, m.contact_id) for m in meetings] == [(first_company.id, contact.id)] * 2
+        assert phone_company.has_booked_call is False
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -647,32 +778,25 @@ class TestSalesCallBooking:
 
     @patch('app.pipedrive.api.pipedrive_request')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_duplicate_phone_contacts_uses_most_recent_company(
+    async def test_phone_of_one_company_and_name_of_another_books_on_the_named_company(
         self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
     ):
-        """Test that when contacts in two companies share a phone, the newest contact's company gets the booking"""
+        """Test that when the phone belongs to one company's contact and the name to another, the named one is used"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
         mock_pipedrive.return_value = {'data': {'id': 999}}
 
         admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
-        old_company = db.create(Company(name='Old Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
-        new_company = db.create(Company(name='New Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+        phone_company = db.create(
+            Company(name='Phone Company', sales_person_id=admin.id, price_plan='payg', country='GB')
+        )
+        named_company = db.create(Company(name='Junes Ltd', sales_person_id=admin.id, price_plan='payg', country='GB'))
         db.create(
             Contact(
                 phone='+1234567890',
                 email='old@example.com',
                 first_name='Old',
                 last_name='Contact',
-                company_id=old_company.id,
-            )
-        )
-        db.create(
-            Contact(
-                phone='+1234567890',
-                email='new@example.com',
-                first_name='New',
-                last_name='Contact',
-                company_id=new_company.id,
+                company_id=phone_company.id,
             )
         )
 
@@ -685,16 +809,44 @@ class TestSalesCallBooking:
         assert r.json() == {'status': 'ok'}
 
         contact = db.exec(select(Contact).where(Contact.email == 'different@example.com')).one()
-        assert contact.company_id == new_company.id
+        assert contact.company_id == named_company.id
 
         meeting = db.exec(select(Meeting)).one()
         assert meeting.contact_id == contact.id
-        assert meeting.company_id == new_company.id
+        assert meeting.company_id == named_company.id
 
         deal = db.exec(select(Deal)).one()
-        assert deal.company_id == new_company.id
+        assert deal.company_id == named_company.id
         assert deal.contact_id == contact.id
         assert meeting.deal_id == deal.id
+
+        assert db.exec(select(Deal).where(Deal.company_id == phone_company.id)).all() == []
+        assert [c.email for c in db.exec(select(Contact).where(Contact.company_id == phone_company.id)).all()] == [
+            'old@example.com'
+        ]
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_with_company_id_reuses_contact_with_mixed_case_email(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test a company_id booking reuses that company's contact when its stored email differs only in case"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
+        company = db.create(Company(name='Junes Ltd', sales_person_id=test_admin.id, price_plan='payg'))
+        existing_contact = db.create(
+            Contact(first_name='Brain', last_name='Junes', email='BRAIN@junes.com', company_id=company.id)
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(email='Brain@Junes.COM', company_id=company.id)
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert db.exec(select(Contact)).all() == [existing_contact]
+        assert db.exec(select(Meeting)).one().contact_id == existing_contact.id
 
     async def test_sales_call_two_meetings_in_window_returns_400(
         self, client, db, test_pipeline, test_stage, test_config
@@ -775,6 +927,30 @@ class TestSupportCallBooking:
 
         meeting = db.exec(select(Meeting)).first()
         assert meeting.meeting_type == Meeting.TYPE_SUPPORT
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_reuses_contact_with_mixed_case_email(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test a support booking reuses the company's contact when its stored email differs only in case"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email='support@example.com')
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+        existing_contact = db.create(
+            Contact(first_name='Brain', last_name='Junes', email='Brain@Junes.com', company_id=company.id)
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data.update(email='BRAIN@JUNES.COM', company_id=company.id)
+
+        r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert db.exec(select(Contact)).all() == [existing_contact]
+        assert db.exec(select(Meeting)).one().contact_id == existing_contact.id
 
     async def test_support_call_requires_existing_company(self, client, db):
         """Test that support call requires existing company"""

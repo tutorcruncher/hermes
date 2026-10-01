@@ -52,11 +52,10 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     The company is found by:
     - Submitted company_id (if provided)
     - The contact with the submitted email (if they exist) and get company from that
-    - A contact with the submitted phone, and get company from that
     - Company name
 
     The contact is only ever the one with the submitted email, so the calendar invite goes to the email that was
-    typed in. A contact found by phone only identifies the company.
+    typed in.
 
     If neither exist, they are created.
     """
@@ -75,13 +74,6 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
         if contact:
             logger.info(f'Found contact {contact.id} by email')
             company = db.get(Company, contact.company_id)
-
-    # Try to find the company from a contact with the same phone
-    if not company and event.phone:
-        phone_contact = db.exec(select(Contact).where(Contact.phone == event.phone).order_by(Contact.id.desc())).first()
-        if phone_contact:
-            logger.info(f'Found company {phone_contact.company_id} from contact {phone_contact.id} by phone')
-            company = db.get(Company, phone_contact.company_id)
 
     # Try to find company by name
     if not company:
