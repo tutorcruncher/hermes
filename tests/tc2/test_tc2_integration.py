@@ -895,8 +895,8 @@ class TestTC2EdgeCases:
         assert len(contacts) == 1
 
     @patch('app.pipedrive.api.pipedrive_request')
-    async def test_contact_to_person_data_excludes_empty_email_and_phone(self, mock_api, db, test_admin):
-        """Test that _contact_to_person_data excludes emails/phones fields when empty"""
+    async def test_contact_to_person_data_excludes_empty_phone(self, mock_api, db, test_admin):
+        """Test that _contact_to_person_data excludes the phones field when empty"""
         from app.pipedrive.tasks import sync_person
 
         mock_api.return_value = {'data': {'id': 999}}
@@ -904,8 +904,10 @@ class TestTC2EdgeCases:
         # Create company first
         company = db.create(Company(name='Test Company', sales_person_id=test_admin.id, price_plan='payg'))
 
-        # Create contact without email and phone
-        contact = db.create(Contact(first_name='Test', last_name='User', email=None, phone=None, company_id=company.id))
+        # Create contact without phone
+        contact = db.create(
+            Contact(first_name='Test', last_name='User', email='test@example.com', phone=None, company_id=company.id)
+        )
 
         await sync_person(contact.id)
 
@@ -913,8 +915,7 @@ class TestTC2EdgeCases:
         assert mock_api.called
         call_data = mock_api.call_args.kwargs['data']
 
-        # emails and phones fields should NOT be present
-        assert 'emails' not in call_data
+        # phones field should NOT be present
         assert 'phones' not in call_data
         assert call_data['name'] == 'Test User'
 

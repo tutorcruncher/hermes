@@ -148,6 +148,10 @@ async def sync_person(contact_id: int):
                 pd_person_id = None
 
     if not pd_person_id:
+        if 'emails' not in person_data:
+            # e.g. TC2 hides a cligency's email when its owner signs up again with the same email
+            logger.info(f'Contact {contact_id} has no email, skipping person create')
+            return
         try:
             # Only on create — PD allows each status transition once, don't overwrite manual unsubscribes.
             person_data['marketing_status'] = 'subscribed'
