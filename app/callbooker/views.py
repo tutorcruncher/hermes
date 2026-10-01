@@ -43,7 +43,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
     except MeetingBookingError as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
-    company_id, meeting_id = meeting.company_id, meeting.id
+    company_id, contact_id, meeting_id = meeting.company_id, meeting.contact_id, meeting.id
     try:
         company.has_booked_call = True
         db.add(company)
@@ -56,7 +56,10 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
     except Exception as e:
         # The meeting is already booked and the invite sent, so log the failure rather than failing the booking.
         db.rollback()
-        logger.error(f'Booked meeting {meeting_id} for company {company_id} without a deal: {e}', exc_info=True)
+        logger.error(
+            f'Booked meeting {meeting_id} for company {company_id} and contact {contact_id} without a deal: {e}',
+            exc_info=True,
+        )
 
     # Queue background tasks to sync to Pipedrive
     background_tasks.add_task(sync_company_to_pipedrive, company_id)

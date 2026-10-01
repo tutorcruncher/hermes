@@ -11,7 +11,7 @@ from sqlmodel import select
 from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
 from app.callbooker.process import _build_meeting_template_vars, book_meeting
-from app.main_app.models import Company, Config, Deal, Meeting, Pipeline, Stage
+from app.main_app.models import Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from tests.factories import CompanyFactory
 from tests.helpers import fake_gcal_builder
 
@@ -120,14 +120,17 @@ class TestCallbookerProcessEdgeCases:
         assert r.json() == {'status': 'ok'}
 
         company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
         meeting = db.exec(select(Meeting)).one()
         assert meeting.company_id == company.id
         assert meeting.deal_id is None
         assert db.exec(select(Deal)).all() == []
         assert company.has_booked_call is True
-        assert ('ERROR', f'Booked meeting {meeting.id} for company {company.id} without a deal: Config not found') in [
-            (rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker'
-        ]
+        assert (
+            'ERROR',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            'Config not found',
+        ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
         assert [(c.args[0].__name__, c.args[1]) for c in mock_add_task.call_args_list] == [
             ('sync_company_to_pipedrive', company.id),
             ('sync_meeting_to_pipedrive', meeting.id),
@@ -169,13 +172,15 @@ class TestCallbookerProcessEdgeCases:
         assert r.json() == {'status': 'ok'}
 
         company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
         meeting = db.exec(select(Meeting)).one()
         assert meeting.deal_id is None
         assert db.exec(select(Deal)).all() == []
         assert company.has_booked_call is True
         assert (
             'ERROR',
-            f'Booked meeting {meeting.id} for company {company.id} without a deal: Stage {stage_id} not found',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            f'Stage {stage_id} not found',
         ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
 
     @patch('fastapi.BackgroundTasks.add_task')

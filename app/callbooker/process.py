@@ -86,12 +86,17 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     # Create company if not found
     if not company:
         company_data = event.company_dict()
-        company_data['bdr_person_id'] = _resolve_bdr_person_id(company_data['bdr_person_id'], db)
+        bdr_id = company_data['bdr_person_id']
+        company_data['bdr_person_id'] = _resolve_bdr_person_id(bdr_id, db)
         company = Company(**company_data)
         db.add(company)
         db.commit()
         db.refresh(company)
         logger.info(f'Created company {company.id}')
+        if bdr_id and not company.bdr_person_id:
+            logger.error(
+                f'Could not find admin with id or tc2_admin_id {bdr_id}, created company {company.id} without a BDR'
+            )
 
     # Get or create contact
     contact = contact or await get_or_create_contact(company, event, db)
@@ -105,7 +110,7 @@ def _resolve_bdr_person_id(bdr_person_id: int | None, db: DBSession) -> int | No
     Get the Hermes admin id for the submitted bdr_person_id.
 
     Old callbooker links pass the BDR's tc2_admin_id rather than their Hermes admin id, so both are accepted. An
-    unknown id is logged and dropped so that the booking still goes through.
+    unknown id gives None so that the booking still goes through.
     """
     if not bdr_person_id:
         return None
@@ -114,11 +119,7 @@ def _resolve_bdr_person_id(bdr_person_id: int | None, db: DBSession) -> int | No
         return bdr_person_id
 
     admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_person_id)).one_or_none()
-    if admin:
-        return admin.id
-
-    logger.error(f'Could not find admin with id or tc2_admin_id {bdr_person_id}, booking without a BDR')
-    return None
+    return admin.id if admin else None
 
 
 async def book_meeting(

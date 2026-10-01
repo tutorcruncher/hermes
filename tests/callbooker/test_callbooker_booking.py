@@ -580,7 +580,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_with_bdr_person(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config, caplog
     ):
         """Test booking sales call with the BDR's Hermes admin id"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -605,11 +605,12 @@ class TestSalesCallBooking:
 
         company = db.exec(select(Company)).one()
         assert company.bdr_person_id == bdr_person.id
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_with_bdr_person_resolves_tc2_admin_id(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config, caplog
     ):
         """Test booking sales call when tc2_admin_id is passed as bdr_person_id gets resolved to admin.id"""
         mock_gcal_builder.side_effect = fake_gcal_builder()
@@ -634,6 +635,7 @@ class TestSalesCallBooking:
 
         company = db.exec(select(Company)).one()
         assert company.bdr_person_id == bdr_person.id
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -655,8 +657,11 @@ class TestSalesCallBooking:
         company = db.exec(select(Company)).one()
         assert company.bdr_person_id is None
         assert db.exec(select(Meeting)).one().company_id == company.id
-        assert ('ERROR', 'Could not find admin with id or tc2_admin_id 999999, booking without a BDR') in [
-            (rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker'
+        assert [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            (
+                'ERROR',
+                f'Could not find admin with id or tc2_admin_id 999999, created company {company.id} without a BDR',
+            )
         ]
 
     @patch('fastapi.BackgroundTasks.add_task')
