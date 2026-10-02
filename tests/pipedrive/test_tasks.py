@@ -768,7 +768,10 @@ class TestSyncPerson:
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     async def test_sync_person_caps_name_at_255(self, mock_create, mock_get_session, db, test_company):
         """Pipedrive rejects names over 255 characters, and first_name + last_name can reach 511."""
-        contact = db.create(Contact(first_name='a' * 255, last_name='b' * 255, company_id=test_company.id))
+        # The email is needed because sync_person skips creating a person for a contact with no email
+        contact = db.create(
+            Contact(first_name='a' * 255, last_name='b' * 255, email='long@example.com', company_id=test_company.id)
+        )
         mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 4444}}
 
@@ -781,7 +784,10 @@ class TestSyncPerson:
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     async def test_sync_person_without_name_does_not_raise(self, mock_create, mock_get_session, db, test_company):
         """A contact with no first or last name has name None, which must not break the sync."""
-        contact = db.create(Contact(first_name=None, last_name=None, company_id=test_company.id))
+        # The email is needed because sync_person skips creating a person for a contact with no email
+        contact = db.create(
+            Contact(first_name=None, last_name=None, email='noname@example.com', company_id=test_company.id)
+        )
         mock_get_session.return_value = SessionMock(db)
         mock_create.return_value = {'data': {'id': 5555}}
 
