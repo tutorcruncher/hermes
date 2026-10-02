@@ -955,7 +955,7 @@ class TestSalesCallBooking:
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_failed_sales_call_creates_no_deal(
-        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config, caplog
     ):
         """Test a booking rejected because the admin is busy leaves no deal and doesn't mark the company as booked"""
         requested_time = datetime(2030, 7, 3, 10, tzinfo=utc)
@@ -971,8 +971,14 @@ class TestSalesCallBooking:
         assert r.json() == {'status': 'error', 'message': 'Admin is not free at this time.'}
         assert db.exec(select(Deal)).all() == []
         assert db.exec(select(Meeting)).all() == []
-        assert db.exec(select(Company)).one().has_booked_call is False
+        company = db.exec(select(Company)).one()
+        assert company.has_booked_call is False
         assert not mock_add_task.called
+        contact = db.exec(select(Contact)).one()
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            f'Failed to book a sales call with admin {sales_person.id} for company {company.id} and contact '
+            f'{contact.id} at 2030-07-03 10:00:00+00:00: Admin is not free at this time.'
+        ]
 
 
 class TestSupportCallBooking:
@@ -1036,8 +1042,8 @@ class TestSupportCallBooking:
 
         assert r.status_code == 404
 
-    async def test_support_call_handles_booking_error(self, client, db):
-        """Test that support call handles MeetingBookingError"""
+    async def test_support_call_handles_booking_error(self, client, db, caplog):
+        """Test that support call handles MeetingBookingError and logs it as an error"""
         admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
         company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
         db.create(Contact(first_name='Test', last_name='Contact', company_id=company.id))
@@ -1050,6 +1056,11 @@ class TestSupportCallBooking:
 
         assert r.status_code == 400
         assert r.json()['status'] == 'error'
+        contact = db.exec(select(Contact).where(Contact.last_name == 'Junes')).one()
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            f'Failed to book a support call with admin {admin.id} for company {company.id} and contact {contact.id} '
+            f'at 2030-07-03 09:00:00+00:00: Contact must have an email address to book a meeting.'
+        ]
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')

@@ -37,10 +37,14 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
 
     The meeting is booked before the deal is created, so a problem creating the deal never fails a booking.
     """
+    company, contact = await get_or_create_contact_company(event, db)
     try:
-        company, contact = await get_or_create_contact_company(event, db)
         meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
     except MeetingBookingError as e:
+        logger.error(
+            f'Failed to book a sales call with admin {event.admin_id} for company {company.id} and contact '
+            f'{contact.id} at {event.meeting_dt}: {e}'
+        )
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
     company_id, contact_id, meeting_id = meeting.company_id, meeting.contact_id, meeting.id
@@ -85,6 +89,10 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
         db.add(meeting)
         db.commit()
     except (MeetingBookingError, DealCreationError) as e:
+        logger.error(
+            f'Failed to book a support call with admin {event.admin_id} for company {company.id} and contact '
+            f'{contact.id} at {event.meeting_dt}: {e}'
+        )
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
     return {'status': 'ok'}
