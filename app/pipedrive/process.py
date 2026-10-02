@@ -1,14 +1,30 @@
 import logging
 from functools import cached_property
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from app.core.database import DBSession
+from app.core.database import DBSession, get_session
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline, Stage
+from app.pipedrive import api
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person
 
 logger = logging.getLogger('hermes.pipedrive')
+
+VALID_PRICE_PLANS = (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
+
+
+def _contact_from_pd_person(pd_person: Person, company_id: int) -> Contact:
+    return Contact(
+        pd_person_id=pd_person.id,
+        company_id=company_id,
+        first_name=pd_person.first_name[:255] if pd_person.first_name else None,
+        last_name=pd_person.last_name[:255] if pd_person.last_name else None,
+        email=pd_person.email,
+        phone=pd_person.phone,
+    )
 
 
 class PipedriveObjProcessor:
@@ -80,8 +96,13 @@ class PipedriveObjProcessor:
     ) -> Company | Contact | Deal:
         raise NotImplementedError
 
-    async def _add_obj(self, new_pd_obj: Organisation | Person | PDDeal) -> Company | Contact | Deal:
+    async def _add_obj(self, new_pd_obj: Organisation | Person | PDDeal) -> Company | Contact | Deal | None:
+        """Build a new Hermes object from the Pipedrive one, or return None when it cannot be stored in Hermes"""
         raise NotImplementedError
+
+    def _on_created(self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal) -> None:
+        """Runs after a brand-new object from Pipedrive has been saved"""
+        pass
 
     async def process(
         self, old_pd_obj: Organisation | Person | PDDeal | None, new_pd_obj: Organisation | Person | PDDeal | None
@@ -124,7 +145,9 @@ class PipedriveObjProcessor:
                 else:
                     # The object is brand new
                     new_obj = await self._add_obj(new_pd_obj)
-                    await self.save_obj(new_obj, new_pd_obj, 'Created')
+                    if new_obj:
+                        await self.save_obj(new_obj, new_pd_obj, 'Created')
+                        self._on_created(new_obj, new_pd_obj)
 
 
 class OrganisationProcessor(PipedriveObjProcessor):
@@ -195,16 +218,13 @@ class PersonProcessor(PipedriveObjProcessor):
     def custom_field_names(self):
         return [f for f in list(CONTACT_PD_FIELD_MAP.keys()) if f != 'hermes_id']
 
-    async def _add_obj(self, pd_obj: Person) -> Contact:
+    async def _add_obj(self, pd_obj: Person) -> Contact | None:
+        if not pd_obj.org_id:
+            # Comparing pd_org_id with None would match every company without a Pipedrive organisation
+            logger.info(f'Skipping Pipedrive person {pd_obj.id}: it has no organisation and a contact needs a company')
+            return None
         company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
-        return Contact(
-            pd_person_id=pd_obj.id,
-            company_id=company.id,
-            first_name=pd_obj.first_name,
-            last_name=pd_obj.last_name,
-            email=pd_obj.email,
-            phone=pd_obj.phone,
-        )
+        return _contact_from_pd_person(pd_obj, company.id)
 
     async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
         hermes_obj.is_deleted = False
@@ -239,10 +259,19 @@ class PDDealProcessor(PipedriveObjProcessor):
     def custom_field_names(self):
         return [f for f in list(DEAL_PD_FIELD_MAP.keys()) if f != 'hermes_id']
 
+    def __init__(self, db: DBSession):
+        super().__init__(db)
+        # (deal id, Pipedrive person id) pairs whose person the view fetches in a background task
+        self.contacts_to_fetch: list[tuple[int, int]] = []
+
     def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
         pass
 
-    async def _add_obj(self, pd_obj: PDDeal) -> Deal:
+    async def _add_obj(self, pd_obj: PDDeal) -> Deal | None:
+        if not pd_obj.org_id:
+            # Comparing pd_org_id with None would match every company without a Pipedrive organisation
+            logger.info(f'Skipping Pipedrive deal {pd_obj.id}: it has no organisation and a deal needs a company')
+            return None
         company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
         pipeline = self.db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == pd_obj.pipeline_id)).one()
         stage = self.db.exec(select(Stage).where(Stage.pd_stage_id == pd_obj.stage_id)).one()
@@ -257,11 +286,17 @@ class PDDealProcessor(PipedriveObjProcessor):
             'stage_id': stage.id,
         }
 
-        contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
-        if contact:
-            kwargs['contact_id'] = contact.id
+        if pd_obj.person_id:
+            contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
+            if contact:
+                kwargs['contact_id'] = contact.id
         kwargs.update({f: getattr(pd_obj, f) for f in self.custom_field_names})
         return Deal(**kwargs)
+
+    def _on_created(self, hermes_obj: Deal, pd_obj: PDDeal) -> None:
+        # A deal made outside Hermes can link a person whose own webhook was skipped because it had no organisation
+        if not hermes_obj.contact_id and pd_obj.person_id:
+            self.contacts_to_fetch.append((hermes_obj.id, pd_obj.person_id))
 
     async def _update_obj(self, hermes_obj: Deal, pd_obj: PDDeal) -> Deal:
         if pd_obj.title and pd_obj.title[:255] != hermes_obj.name:
@@ -340,3 +375,85 @@ class PDStageProcessor(PipedriveObjProcessor):
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
             hermes_obj.name = pd_obj.name[:255]
         return hermes_obj
+
+
+def find_or_create_pd_contact(db: DBSession, pd_person: Person, company: Company) -> tuple[Contact | None, str]:
+    """
+    Find or create the contact for a Pipedrive person linked to a deal of `company`, returning it with the outcome.
+
+    The callbooker books into the newest contact with the booker's email, so a new contact is only created when no
+    other contact has its email. Otherwise it would take over another company's bookings. Flushes, never commits.
+    """
+    contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person.id)).one_or_none()
+    if contact:
+        return contact, 'existing'
+    if pd_person.hermes_id:
+        # Hermes created this person, so its contact already exists
+        return None, 'hermes_id'
+    if not pd_person.email:
+        # The callbooker rejects a booking that matches, by phone, a contact with no email
+        return None, 'no_email'
+
+    # Deleted contacts count too, because the callbooker's email lookup doesn't skip them
+    same_email = db.exec(select(Contact).where(func.lower(Contact.email) == pd_person.email.lower())).all()
+    if len(same_email) == 1:
+        match = same_email[0]
+        if match.company_id == company.id and not match.is_deleted and not match.pd_person_id:
+            match.pd_person_id = pd_person.id
+            db.add(match)
+            db.flush()
+            return match, 'adopted'
+    if same_email:
+        return None, 'email_elsewhere'
+
+    contact = _contact_from_pd_person(pd_person, company.id)
+    db.add(contact)
+    db.flush()
+    return contact, 'created'
+
+
+async def create_contact_for_pd_deal(deal_id: int, pd_person_id: int):
+    """
+    Background task that links a deal created outside Hermes to its Pipedrive person, creating the contact if needed.
+
+    The person is fetched with no DB session open, because the Pipedrive rate limiter can wait for minutes.
+    """
+    try:
+        pd_person = Person(**(await api.get_person(pd_person_id))['data'])
+        with get_session() as db:
+            deal = db.get(Deal, deal_id)
+            if not deal or deal.contact_id or deal.status == Deal.STATUS_DELETED:
+                return
+            company = db.get(Company, deal.company_id)
+            if company.is_deleted or company.narc or company.price_plan not in VALID_PRICE_PLANS:
+                # A later booking that needs a new deal for this company would fail on its price plan
+                logger.info(
+                    f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: company {company.id} is deleted, '
+                    f'NARC or has price plan {company.price_plan!r}'
+                )
+                return
+            try:
+                contact, outcome = find_or_create_pd_contact(db, pd_person, company)
+                if contact:
+                    deal.contact_id = contact.id
+                    db.add(deal)
+                db.commit()
+            except IntegrityError:
+                # The other web process added a contact for the same person first
+                db.rollback()
+                contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person_id)).one_or_none()
+                if not contact:
+                    raise
+                deal = db.get(Deal, deal_id)
+                if deal.contact_id:
+                    return
+                deal.contact_id = contact.id
+                db.add(deal)
+                db.commit()
+                outcome = 'existing'
+        if outcome == 'hermes_id':
+            logger.warning(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it has a hermes_id')
+        else:
+            logger.info(f'Pipedrive person {pd_person_id} for deal {deal_id}: {outcome}')
+    except Exception as e:
+        logger.error(f'Error adding Pipedrive person {pd_person_id} to deal {deal_id}: {e}', exc_info=True)

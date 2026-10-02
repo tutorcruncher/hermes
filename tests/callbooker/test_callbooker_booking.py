@@ -3,7 +3,7 @@ Tests for callbooker booking flow.
 """
 
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from pytz import utc
 from sqlmodel import select
@@ -1815,3 +1815,109 @@ class TestCallbookerValidation:
         assert activity_data['due_date']
         assert activity_data['due_time']
         assert activity_data['owner_id'] == admin.pd_owner_id
+
+
+class TestSalesCallForPipedriveLead:
+    """
+    Bookings by people whose Pipedrive deal reached Hermes first. A lead's person has no organisation in Pipedrive,
+    so it only becomes a contact through its deal.
+    """
+
+    PD_PERSON_RESPONSE = {
+        'data': {
+            'id': 300,
+            'name': 'Lead Person',
+            'first_name': 'Lead',
+            'last_name': 'Person',
+            'emails': [{'value': 'lead@example.com', 'primary': True, 'label': 'work'}],
+            'phones': [{'value': '+44 7700 900123', 'primary': True, 'label': 'work'}],
+            'org_id': None,
+        }
+    }
+
+    @staticmethod
+    def deal_webhook(owner_id: int) -> dict:
+        """A Pipedrive deal made outside Hermes for organisation 456 and person 300"""
+        return {
+            'meta': {'entity': 'deal', 'action': 'create'},
+            'data': {
+                'id': 900,
+                'title': 'Lead Deal',
+                'status': 'open',
+                'owner_id': owner_id,
+                'org_id': 456,
+                'person_id': 300,
+                'pipeline_id': 1,
+                'stage_id': 1,
+            },
+            'previous': None,
+        }
+
+    @patch('app.callbooker.views.sync_meeting_to_pipedrive', new_callable=AsyncMock)
+    @patch('app.callbooker.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    @patch('app.pipedrive.api.get_person', new_callable=AsyncMock)
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_lead_email_books_into_lead_company(
+        self, mock_gcal_builder, mock_get_person, mock_sync_company, mock_sync_meeting, client, db, test_config
+    ):
+        """A booking with the lead's email goes to the lead's company, contact and open deal"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events)
+        mock_get_person.return_value = self.PD_PERSON_RESPONSE
+        sales_person = db.create(
+            Admin(first_name='Steve', last_name='Jobs', username='climan@example.com', pd_owner_id=77)
+        )
+        lead_company = db.create(
+            Company(name='Lead Co', sales_person_id=sales_person.id, price_plan='payg', pd_org_id=456)
+        )
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.deal_webhook(owner_id=77))
+        assert r.status_code == 200
+        db.expire_all()
+        lead_contact = db.exec(select(Contact).where(Contact.pd_person_id == 300)).one()
+        lead_deal = db.exec(select(Deal).where(Deal.pd_deal_id == 900)).one()
+
+        meeting_data = {**CB_MEETING_DATA, 'email': 'lead@example.com', 'company_name': 'Another Name'}
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.expire_all()
+        assert [c.id for c in db.exec(select(Company)).all()] == [lead_company.id]
+        assert [c.id for c in db.exec(select(Contact)).all()] == [lead_contact.id]
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == lead_company.id
+        assert meeting.contact_id == lead_contact.id
+        assert meeting.deal_id == lead_deal.id
+        assert captured_events[0]['attendees'] == [{'email': 'climan@example.com'}, {'email': 'lead@example.com'}]
+
+    @patch('app.callbooker.views.sync_meeting_to_pipedrive', new_callable=AsyncMock)
+    @patch('app.callbooker.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    @patch('app.pipedrive.api.get_person', new_callable=AsyncMock)
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_lead_with_existing_customer_email_keeps_booking_company(
+        self, mock_gcal_builder, mock_get_person, mock_sync_company, mock_sync_meeting, client, db, test_config
+    ):
+        """A lead whose email an existing customer has doesn't take over that customer's bookings"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_get_person.return_value = self.PD_PERSON_RESPONSE
+        sales_person = db.create(
+            Admin(first_name='Steve', last_name='Jobs', username='climan@example.com', pd_owner_id=77)
+        )
+        db.create(Company(name='Lead Co', sales_person_id=sales_person.id, price_plan='payg', pd_org_id=456))
+        customer_company = db.create(Company(name='Customer Co', sales_person_id=sales_person.id, price_plan='payg'))
+        customer = db.create(
+            Contact(first_name='Lead', last_name='Person', email='lead@example.com', company_id=customer_company.id)
+        )
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.deal_webhook(owner_id=77))
+        assert r.status_code == 200
+
+        meeting_data = {**CB_MEETING_DATA, 'email': 'lead@example.com'}
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.expire_all()
+        assert db.exec(select(Contact).where(Contact.email == 'lead@example.com')).one().id == customer.id
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == customer_company.id
+        assert meeting.contact_id == customer.id

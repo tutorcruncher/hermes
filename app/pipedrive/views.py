@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.database import DBSession, get_db
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person, PipedriveEvent
@@ -10,6 +10,7 @@ from app.pipedrive.process import (
     PDPipelineProcessor,
     PDStageProcessor,
     PersonProcessor,
+    create_contact_for_pd_deal,
 )
 
 logger = logging.getLogger('hermes.pipedrive')
@@ -18,7 +19,12 @@ router = APIRouter(prefix='/pipedrive', tags=['pipedrive'])
 
 
 @router.post('/callback/', name='pipedrive-callback')
-async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
+async def pipedrive_callback(
+    event: dict,
+    background_tasks: BackgroundTasks,
+    # 'function' closes the session before the background tasks run, so none is held while they wait on Pipedrive
+    db: DBSession = Depends(get_db, scope='function'),
+):
     """
     Process Pipedrive webhooks: Pipedrive → Hermes (no TC2 sync)
 
@@ -58,7 +64,10 @@ async def pipedrive_callback(event: dict, db: DBSession = Depends(get_db)):
                 new_data = PDDeal(**webhook_event.data)
             if webhook_event.previous:
                 old_data = PDDeal(**webhook_event.previous)
-            await PDDealProcessor(db).process(old_data, new_data)
+            deal_processor = PDDealProcessor(db)
+            await deal_processor.process(old_data, new_data)
+            for deal_id, pd_person_id in deal_processor.contacts_to_fetch:
+                background_tasks.add_task(create_contact_for_pd_deal, deal_id, pd_person_id)
 
         elif entity == 'pipeline':
             if webhook_event.data:

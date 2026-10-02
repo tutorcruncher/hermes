@@ -918,8 +918,12 @@ class TestDealToPDData:
         assert result['owner_id'] == 12345
         assert 'user_id' not in result
 
-    def test_deal_to_pd_data_includes_all_required_fields(self, db, test_deal):
+    def test_deal_to_pd_data_includes_all_required_fields(self, db, test_deal, test_contact):
         """Test that deal data includes all required fields for Pipedrive"""
+        test_contact.pd_person_id = 202
+        db.add(test_contact)
+        db.commit()
+
         result = _deal_to_pd_data(test_deal, db)
 
         # Basic fields
@@ -930,22 +934,29 @@ class TestDealToPDData:
 
         # Foreign key references
         assert 'org_id' in result
-        assert 'person_id' in result
+        assert result['person_id'] == 202
         assert 'owner_id' in result
 
         # Custom fields
         assert 'custom_fields' in result
 
     def test_deal_to_pd_data_handles_missing_contact(self, db, test_deal):
-        """Test that deal data handles deals without a contact"""
+        """Test that a deal without a contact sends no person_id, which would remove the deal's person in Pipedrive"""
         test_deal.contact_id = None
         db.add(test_deal)
         db.commit()
 
         result = _deal_to_pd_data(test_deal, db)
 
-        assert 'person_id' in result
-        assert result['person_id'] is None
+        assert 'person_id' not in result
+
+    def test_deal_to_pd_data_skips_contact_without_pd_person_id(self, db, test_deal, test_contact):
+        """Test that a contact not yet in Pipedrive sends no person_id"""
+        assert test_contact.pd_person_id is None
+
+        result = _deal_to_pd_data(test_deal, db)
+
+        assert 'person_id' not in result
 
     def test_deal_to_pd_data_maps_custom_fields(self, db, test_deal):
         """Test that deal custom fields are correctly mapped to Pipedrive field IDs"""
