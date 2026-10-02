@@ -1260,6 +1260,26 @@ class TestCallbookerValidation:
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_rejects_blank_company_name(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test an empty company name, or one of only spaces, is rejected rather than stripped to an empty name"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
+
+        for company_name in ['', '   ']:
+            meeting_data = dict(CB_MEETING_DATA, company_name=company_name)
+            r = client.post(
+                client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data}
+            )
+            assert r.status_code == 422
+
+        assert db.exec(select(Company)).all() == []
+        assert db.exec(select(Contact)).all() == []
+        assert db.exec(select(Meeting)).all() == []
+        assert not mock_add_task.called
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_with_single_name(
         self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
     ):
