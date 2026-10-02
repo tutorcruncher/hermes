@@ -719,6 +719,26 @@ class TestSyncPerson:
         assert payload['marketing_status'] == 'subscribed'
 
     @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_skips_create_without_email(self, mock_create, mock_get_session, db, test_contact):
+        """Test that no person is created in Pipedrive for a contact with no email.
+
+        Pipedrive rejects a marketing status when the person has no primary email.
+        """
+        test_contact.pd_person_id = None
+        test_contact.email = None
+        db.add(test_contact)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+
+        await sync_person(test_contact.id)
+
+        mock_create.assert_not_called()
+        db.refresh(test_contact)
+        assert test_contact.pd_person_id is None
+
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
     async def test_sync_person_update_does_not_set_marketing_status(
@@ -743,6 +763,32 @@ class TestSyncPerson:
         mock_update.assert_called_once()
         payload = mock_update.call_args[0][1]
         assert 'marketing_status' not in payload
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_caps_name_at_255(self, mock_create, mock_get_session, db, test_company):
+        """Pipedrive rejects names over 255 characters, and first_name + last_name can reach 511."""
+        contact = db.create(Contact(first_name='a' * 255, last_name='b' * 255, company_id=test_company.id))
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 4444}}
+
+        await sync_person(contact.id)
+
+        payload = mock_create.call_args[0][0]
+        assert payload['name'] == 'a' * 255
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    async def test_sync_person_without_name_does_not_raise(self, mock_create, mock_get_session, db, test_company):
+        """A contact with no first or last name has name None, which must not break the sync."""
+        contact = db.create(Contact(first_name=None, last_name=None, company_id=test_company.id))
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 5555}}
+
+        await sync_person(contact.id)
+
+        payload = mock_create.call_args[0][0]
+        assert payload['name'] is None
 
 
 class TestSyncDeal:

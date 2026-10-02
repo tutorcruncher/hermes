@@ -55,6 +55,8 @@ class Organisation(_HermesModel):
     )
     utm_source: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['utm_source'])
     utm_campaign: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['utm_campaign'])
+    signup_email: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['signup_email'])
+    signup_phone: Optional[str] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['signup_phone'])
     created: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['created'])
     pay0_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['pay0_dt'])
     pay1_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['pay1_dt'])
@@ -97,8 +99,10 @@ class Person(_HermesModel):
         """
         Parse name field into first_name and last_name.
         Pipedrive sends full name in 'name' field, we split it for internal use.
+        Pipedrive leaves first_name empty and puts the whole name in last_name when the name starts
+        lowercase (e.g. 'john Smith'), so we split whenever first_name is empty.
         """
-        if self.name and not self.first_name and not self.last_name:
+        if self.name and not self.first_name:
             name_parts = self.name[:255].split(' ', 1)
             if len(name_parts) > 1:
                 self.first_name = name_parts[0][:255]

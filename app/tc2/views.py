@@ -19,6 +19,10 @@ router = APIRouter(prefix='/tc2', tags=['tc2'])
 # arrive as near-simultaneous separate requests from TC2 batched webhooks.
 _cligency_locks = RedisLockRegistry('hermes:cligency-lck', lease_timeout_seconds=10, blocking_timeout_seconds=10)
 
+# The fields of TC2's short Client payload (ClientSimpleSerializer, plus model/url/is_deleted added by the webhook),
+# which TC2 sends for clients outside its detail queryset: deleted users, including deletes, and admin users.
+_SHORT_CLIENT_FIELDS = {'model', 'url', 'id', 'first_name', 'last_name', 'email', 'role_type', 'is_deleted'}
+
 
 @router.post('/callback/', name='tc2-callback')
 async def tc2_callback(
@@ -43,11 +47,18 @@ async def tc2_callback(
                 logger.info('Ignoring AGREE_TERMS event')
                 continue
 
+            subject = event.subject.model_dump()
+            # Enquiries have meta_agency null, and short payloads have no agency data. Any other payload without
+            # meta_agency must still fail validation below, so a TC2 contract break is logged as an error.
+            if ('meta_agency' in subject and subject['meta_agency'] is None) or subject.keys() <= _SHORT_CLIENT_FIELDS:
+                logger.info(f'Ignoring {event.action} for client {event.subject.id} as it has no meta_agency')
+                continue
+
             try:
                 async with _cligency_locks.acquire(event.subject.id):
                     # Process the client (creates/updates Company and Contacts)
                     with get_session() as db:
-                        company = await process_tc_client(TCClient(**event.subject.model_dump()), db)
+                        company = await process_tc_client(TCClient(**subject), db)
 
                     if company:
                         # Queue background task to sync to Pipedrive

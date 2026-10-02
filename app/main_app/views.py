@@ -1,7 +1,12 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlmodel import select
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
+from app.common.utils import get_bearer
+from app.core.config import settings
 from app.core.database import DBSession, get_db
 from app.main_app.models import Admin, Company
 
@@ -199,11 +204,14 @@ def get_country(cf_ipcountry: str = Header(None)):
 
 
 @router.get('/companies/', name='get-companies')
-async def get_companies(request: Request, db: DBSession = Depends(get_db)):
+async def get_companies(request: Request, authorization: Optional[str] = Header(None), db: DBSession = Depends(get_db)):
     """
     Get the first 10 companies by query parameters.
     Example: /companies/?name=Test&country=GB
     """
+    if get_bearer(authorization) != settings.tc2_api_key:
+        return JSONResponse({'status': 'error', 'message': 'Unauthorized'}, status_code=403)
+
     query_params = {k: v for k, v in request.query_params.items() if v is not None}
     if not query_params:
         raise HTTPException(status_code=422, detail='Must provide at least one query parameter')
