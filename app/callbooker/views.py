@@ -41,8 +41,10 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
     try:
         meeting = await book_meeting(company=company, contact=contact, event=event, db=db)
     except MeetingBookingError as e:
-        logger.error(
-            f'Failed to book a sales call with admin {event.admin_id} for company {company.id} and contact '
+        # Mostly expected refusals (already booked, rep busy), so not an error. Failures we don't expect are
+        # logged as errors where they happen in book_meeting.
+        logger.info(
+            f'Did not book a sales call with admin {event.admin_id} for company {company.id} and contact '
             f'{contact.id} at {event.meeting_dt}: {e}'
         )
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
@@ -89,8 +91,8 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
         db.add(meeting)
         db.commit()
     except (MeetingBookingError, DealCreationError) as e:
-        logger.error(
-            f'Failed to book a support call with admin {event.admin_id} for company {company.id} and contact '
+        logger.info(
+            f'Did not book a support call with admin {event.admin_id} for company {company.id} and contact '
             f'{contact.id} at {event.meeting_dt}: {e}'
         )
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)

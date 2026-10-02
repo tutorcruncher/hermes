@@ -975,10 +975,12 @@ class TestSalesCallBooking:
         assert company.has_booked_call is False
         assert not mock_add_task.called
         contact = db.exec(select(Contact)).one()
-        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
-            f'Failed to book a sales call with admin {sales_person.id} for company {company.id} and contact '
+        # An expected refusal is logged, but not as an error, so it doesn't go to Sentry
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
+        assert (
+            f'Did not book a sales call with admin {sales_person.id} for company {company.id} and contact '
             f'{contact.id} at 2030-07-03 10:00:00+00:00: Admin is not free at this time.'
-        ]
+        ) in [rec.getMessage() for rec in caplog.records if rec.levelname == 'INFO']
 
 
 class TestSupportCallBooking:
@@ -1057,10 +1059,11 @@ class TestSupportCallBooking:
         assert r.status_code == 400
         assert r.json()['status'] == 'error'
         contact = db.exec(select(Contact).where(Contact.last_name == 'Junes')).one()
-        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
-            f'Failed to book a support call with admin {admin.id} for company {company.id} and contact {contact.id} '
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
+        assert (
+            f'Did not book a support call with admin {admin.id} for company {company.id} and contact {contact.id} '
             f'at 2030-07-03 09:00:00+00:00: Contact must have an email address to book a meeting.'
-        ]
+        ) in [rec.getMessage() for rec in caplog.records if rec.levelname == 'INFO']
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')

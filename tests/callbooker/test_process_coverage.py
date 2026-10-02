@@ -69,7 +69,7 @@ class TestCallbookerProcessEdgeCases:
 
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
-        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config
+        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config, caplog
     ):
         """Test that booking raises error when admin doesn't exist"""
         mock_check_gcal.return_value = True
@@ -92,6 +92,11 @@ class TestCallbookerProcessEdgeCases:
 
         assert r.status_code == 400
         assert 'Admin not found' in r.json()['message']
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        # Unlike an expected refusal, a missing admin is logged as an error, once
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            f'Admin 999 not found, could not book a call for contact {contact.id}'
+        ]
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')

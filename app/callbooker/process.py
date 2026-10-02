@@ -142,6 +142,7 @@ async def book_meeting(
 
     admin = db.get(Admin, event.admin_id)
     if not admin:
+        logger.error(f'Admin {event.admin_id} not found, could not book a call for contact {contact.id}')
         raise MeetingBookingError('Admin not found.')
 
     meeting_start = event.meeting_dt
