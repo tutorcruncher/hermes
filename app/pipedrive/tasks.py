@@ -341,7 +341,10 @@ def _bring_back_for_booking(db: DBSession, company: Company, contact_id: int) ->
     """
     A sales call was booked, so the customer is live. If the company or the booked contact was marked deleted
     (deleted or merged away in Pipedrive), bring it back so the sync recreates it and the booking is not lost.
+    A NARC company is left as it is: TC2 would delete it from Pipedrive again on its next update.
     """
+    if company.narc:
+        return
     contact = db.get(Contact, contact_id)
     booked = [company]
     if contact and contact.company_id == company.id:

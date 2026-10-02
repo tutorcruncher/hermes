@@ -253,6 +253,33 @@ class TestSyncCompanyToPipedrive:
         assert other_contact.is_deleted is True
         assert other_contact.pd_person_id is None
 
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_booking_sync_leaves_deleted_narc_company_deleted(
+        self, mock_create_org, mock_create_person, db, test_company, test_contact
+    ):
+        """A sales call booked for a deleted NARC company does not bring it back, as TC2 would delete it from
+        Pipedrive again"""
+        test_company.is_deleted = True
+        test_company.narc = True
+        test_company.pd_org_id = None
+        test_contact.is_deleted = True
+        test_contact.pd_person_id = None
+        db.add(test_company)
+        db.add(test_contact)
+        db.commit()
+
+        await sync_company_to_pipedrive(test_company.id, booked_contact_id=test_contact.id)
+
+        mock_create_org.assert_not_called()
+        mock_create_person.assert_not_called()
+        db.refresh(test_company)
+        db.refresh(test_contact)
+        assert test_company.is_deleted is True
+        assert test_company.pd_org_id is None
+        assert test_contact.is_deleted is True
+        assert test_contact.pd_person_id is None
+
 
 class TestSyncOrganization:
     """Test sync_organization function"""
