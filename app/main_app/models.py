@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import ClassVar, List, Optional
 
+from sqlalchemy import Index, func
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.core.config import settings
@@ -268,6 +269,10 @@ class Contact(SQLModel, table=True):
 
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
+
+
+# Contacts are looked up by email ignoring case
+Index('ix_contact_email_lower', func.lower(Contact.email))
 
 
 class Deal(SQLModel, table=True):
