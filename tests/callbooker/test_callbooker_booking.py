@@ -9,7 +9,7 @@ from pytz import utc
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
-from tests.helpers import fake_gcal_builder
+from tests.helpers import fake_gcal_builder, pipedrive_http_error
 
 CB_MEETING_DATA = {
     'name': 'Brain Junes',
@@ -640,6 +640,91 @@ class TestSalesCallBooking:
 
         deal = db.exec(select(Deal).where(Deal.contact_id == contact2.id)).one()
         assert deal is not None
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_recreates_org_gone_from_pipedrive(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """A booking for a company whose org is gone from Pipedrive recreates the org, so the booked customer
+        reaches Pipedrive"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+
+        def pipedrive_side_effect(endpoint, method='GET', **kwargs):
+            if endpoint == 'organizations/999':
+                raise pipedrive_http_error(404, endpoint)
+            return {'data': {'id': 1000}}
+
+        mock_pipedrive.side_effect = pipedrive_side_effect
+
+        admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+        company = db.create(
+            Company(name='Junes Ltd', sales_person_id=admin.id, price_plan='payg', country='GB', pd_org_id=999)
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['admin_id'] = admin.id
+        meeting_data['company_id'] = company.id
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert [(c.args[0], c.kwargs['method']) for c in mock_pipedrive.call_args_list] == [
+            ('organizations/999', 'GET'),
+            ('organizations', 'POST'),
+            ('persons', 'POST'),
+            ('deals', 'POST'),
+            ('activities', 'POST'),
+        ]
+        db.refresh(company)
+        assert company.pd_org_id == 1000
+        assert company.is_deleted is False
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_for_deleted_company_reaches_pipedrive(
+        self, mock_gcal_builder, mock_pipedrive, client, db, test_pipeline, test_stage, test_config
+    ):
+        """A booking for a company and contact that were marked deleted brings them back, so the meeting reaches
+        Pipedrive with its org, person and deal"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        mock_pipedrive.return_value = {'data': {'id': 1000}}
+
+        admin = db.create(Admin(first_name='Sales', last_name='Person', username='sales@example.com'))
+        company = db.create(
+            Company(name='Junes Ltd', sales_person_id=admin.id, price_plan='payg', country='GB', is_deleted=True)
+        )
+        contact = db.create(
+            Contact(
+                first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id, is_deleted=True
+            )
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['admin_id'] = admin.id
+        meeting_data['company_id'] = company.id
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert [(c.args[0], c.kwargs['method']) for c in mock_pipedrive.call_args_list] == [
+            ('organizations', 'POST'),
+            ('persons', 'POST'),
+            ('deals', 'POST'),
+            ('activities', 'POST'),
+        ]
+        activity_data = get_pipedrive_call_data(mock_pipedrive, 'activities', 'POST')
+        assert activity_data['org_id'] == 1000
+        assert activity_data['deal_id'] == 1000
+        assert activity_data['participants'] == [{'person_id': 1000, 'primary': True}]
+        db.refresh(company)
+        db.refresh(contact)
+        assert company.is_deleted is False
+        assert company.pd_org_id == 1000
+        assert contact.is_deleted is False
+        assert contact.pd_person_id == 1000
 
 
 class TestSupportCallBooking:

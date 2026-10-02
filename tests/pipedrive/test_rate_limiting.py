@@ -9,12 +9,16 @@ import asyncio
 import threading
 import time
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from aiohttp import web
 from sqlmodel import select
 
 from app.main_app.models import Company
+from app.pipedrive import api
+from tests.helpers import MockResponse
 
 
 @pytest.fixture(scope='session')
@@ -600,3 +604,63 @@ class TestCloudflareRateLimiting:
                 await api.pipedrive_request('organizations/404')
 
             assert mock_request.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_403_pipedrive_error_does_not_retry(self, mock_request, monkeypatch, caplog):
+        """A 403 with Pipedrive's own JSON error body is a real refusal, not Cloudflare, so it is not retried"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        mock_request.return_value = MockResponse(
+            json_data={'success': False, 'error': 'Cannot update a deleted organization.', 'code': 'ERR_FORBIDDEN'},
+            status_code=403,
+            headers={'x-ratelimit-limit': '100', 'x-ratelimit-remaining': '88', 'x-ratelimit-reset': '2'},
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await api.pipedrive_request('organizations/21407', method='PATCH', data={'name': 'Test Org'})
+
+        assert mock_request.call_count == 1
+        assert 'Cannot update a deleted organization.' in caplog.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'body',
+        [
+            '<html><body>This error is produced by Cloudflare</body></html>',
+            '',
+            'null',
+            '[]',
+            '"blocked"',
+            '{"success": true}',
+        ],
+        ids=['cloudflare-html', 'empty', 'json-null', 'json-list', 'json-string', 'success-true'],
+    )
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_403_without_pipedrive_error_body_retries(self, mock_request, body, monkeypatch):
+        """A 403 that is not Pipedrive's JSON error, such as Cloudflare's HTML page or an empty body, is retried"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        request = httpx.Request('GET', 'https://example.pipedrive.com/api/v2/organizations/999')
+        mock_request.side_effect = [
+            httpx.Response(403, text=body, request=request),
+            MockResponse(json_data={'data': {'id': 999}}),
+        ]
+
+        result = await api.pipedrive_request('organizations/999')
+
+        assert result == {'data': {'id': 999}}
+        assert mock_request.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_429_with_pipedrive_error_body_retries(self, mock_request, monkeypatch):
+        """A 429 is always retried, even though Pipedrive sends it with its JSON error body"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        mock_request.side_effect = [
+            MockResponse(json_data={'success': False, 'error': 'Request over limit'}, status_code=429),
+            MockResponse(json_data={'data': {'id': 999}}),
+        ]
+
+        result = await api.pipedrive_request('organizations/999')
+
+        assert result == {'data': {'id': 999}}
+        assert mock_request.call_count == 2

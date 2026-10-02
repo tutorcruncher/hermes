@@ -46,7 +46,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=400)
 
     # Queue background tasks to sync to Pipedrive
-    background_tasks.add_task(sync_company_to_pipedrive, company.id)
+    background_tasks.add_task(sync_company_to_pipedrive, company.id, booked_contact_id=contact.id)
     background_tasks.add_task(sync_meeting_to_pipedrive, meeting.id)
 
     return {'status': 'ok'}
