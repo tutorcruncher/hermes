@@ -92,15 +92,13 @@ class PipedriveObjProcessor:
         else:
             if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
                 if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
-                    hermes_ids = list(map(int, map(lambda x: x.strip(), str(new_pd_obj.hermes_id).split(','))))
-                    winner_id = hermes_ids[0]
-                    loser_ids = hermes_ids[1:]
+                    hermes_ids = list(dict.fromkeys(int(i.strip()) for i in str(new_pd_obj.hermes_id).split(',')))
+                    # Pipedrive still holds hermes_ids that no Hermes object has, so the winner is the first id that exists
+                    existing_ids = [i for i in hermes_ids if self.db.get(self.hermes_model, i)]
+                    new_pd_obj.hermes_id = existing_ids[0] if existing_ids else hermes_ids[0]
+                    logger.info(f'Detected merged entity, using first existing hermes_id: {new_pd_obj.hermes_id}')
 
-                    # Take the first ID from comma-separated list (primary entity after merge)
-                    new_pd_obj.hermes_id = winner_id
-                    logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
-
-                    self._mark_merged_losers_deleted(loser_ids)
+                    self._mark_merged_losers_deleted(existing_ids[1:])
 
                 hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
                 if hermes_obj:
@@ -137,9 +135,16 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return [
             f
             for f in list(COMPANY_PD_FIELD_MAP.keys())
-            # receive_marketing_emails is TC2-authoritative; Pipedrive must not write it back.
+            # receive_marketing_emails and tc2_status are TC2-authoritative; Pipedrive must not write them back.
             if f
-            not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url', 'receive_marketing_emails']
+            not in [
+                'hermes_id',
+                'bdr_person_id',
+                'support_person_id',
+                'tc2_cligency_url',
+                'receive_marketing_emails',
+                'tc2_status',
+            ]
         ]
 
     async def _add_obj(self, pd_obj: Organisation) -> Company:
@@ -157,8 +162,7 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return Company(**kwargs)
 
     async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
-        hermes_obj.is_deleted = False
-
+        # is_deleted is left as it is: un-deleting would let the next TC2 sync push the company's old deals
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
             hermes_obj.name = pd_obj.name[:255]
         if pd_obj.address_country and hermes_obj.country != pd_obj.address_country:
