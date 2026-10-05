@@ -115,6 +115,34 @@ class TestTC2Integration:
         assert updated_company.id == company.id
         assert updated_company.receive_marketing_emails is False
 
+    def _post_client_webhook(self, client, db, client_data: dict) -> Company:
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            json={'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': client_data}], '_request_time': 1},
+        )
+        assert r.status_code == 200
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == client_data['id'])).one()
+        db.refresh(company)
+        return company
+
+    @patch('httpx.AsyncClient.request')
+    async def test_tc2_webhook_syncs_operate_as_ea(self, mock_request, client, db, test_admin, sample_tc_client_data):
+        """
+        operate_as_ea is TC2-authoritative and syncable: it is stored when the company is created and
+        replaced by each later webhook. A payload without it (TC2 before it sends the field) counts as False.
+        """
+        mock_request.return_value = create_mock_response({'data': {'id': 999}})
+        sample_tc_client_data['model'] = 'Client'
+
+        sample_tc_client_data['meta_agency']['operate_as_ea'] = True
+        assert self._post_client_webhook(client, db, sample_tc_client_data).operate_as_ea is True
+
+        del sample_tc_client_data['meta_agency']['operate_as_ea']
+        assert self._post_client_webhook(client, db, sample_tc_client_data).operate_as_ea is False
+
+        sample_tc_client_data['meta_agency']['operate_as_ea'] = True
+        assert self._post_client_webhook(client, db, sample_tc_client_data).operate_as_ea is True
+
     @patch('httpx.AsyncClient.request')
     async def test_tc2_webhook_triggers_pipedrive_sync(
         self, mock_request, client, db, test_admin, sample_tc_client_data
