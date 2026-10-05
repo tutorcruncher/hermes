@@ -37,6 +37,7 @@ class _TCAgency(BaseModel):
     price_plan: str
     narc: Optional[bool] = False
     receive_marketing_emails: Optional[bool] = False
+    operate_as_ea: bool = False
     signup_questionnaire: Optional[str] = None
     pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None
