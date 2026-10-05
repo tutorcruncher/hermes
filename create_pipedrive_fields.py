@@ -39,6 +39,7 @@ ORGANIZATION_FIELDS = [
     {'name': 'email_confirmed_dt', 'field_type': 'date'},
     {'name': 'card_saved_dt', 'field_type': 'date'},
     {'name': 'receive_marketing_emails', 'field_type': 'enum', 'options': [{'label': 'Yes'}, {'label': 'No'}]},
+    {'name': 'operate_as_ea', 'field_type': 'enum', 'options': [{'label': 'Yes'}, {'label': 'No'}]},
 ]
 
 PERSON_FIELDS = [

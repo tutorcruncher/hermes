@@ -9,7 +9,7 @@ organisation, where Zapier reads them for the offline conversion import.
 import pytest
 
 from app.main_app.models import Company
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from app.pipedrive.field_mappings import COMPANY_PD_ENUM_OPTION_MAP, COMPANY_PD_FIELD_MAP
 from app.pipedrive.models import Organisation
 from app.pipedrive.process import OrganisationProcessor
 from app.pipedrive.tasks import _company_to_org_data
@@ -98,7 +98,7 @@ class TestFieldMapIntegrity:
     def test_every_synced_field_exists_on_the_organisation_model(self):
         """
         Only the names custom_field_names yields are read off the parsed organisation. The ones it
-        excludes (hermes_id, the admin ids, tc2_cligency_url, receive_marketing_emails) are
+        excludes (hermes_id, the admin ids, tc2_cligency_url, receive_marketing_emails, operate_as_ea) are
         deliberately absent from the model so Pipedrive cannot write them back.
         """
         processor = OrganisationProcessor.__new__(OrganisationProcessor)
@@ -118,10 +118,13 @@ class TestFieldMapIntegrity:
     def test_no_placeholder_field_ids(self):
         """
         Fails until the new Pipedrive custom fields have been created and their real ids pasted in.
-        Deploying a placeholder would send Pipedrive a custom-field key that does not exist.
+        Deploying a placeholder would send Pipedrive a custom-field key that does not exist, and a
+        missing Yes/No option id would silently leave a bool field out of every sync.
 
-            python create_pipedrive_fields.py   # creates them in Pipedrive
+            python create_pipedrive_fields.py   # creates them in Pipedrive, printing ids and option ids
             make setup-fields                   # writes field_mappings_override.py with the ids
         """
         placeholders = {name: fid for name, fid in COMPANY_PD_FIELD_MAP.items() if fid.startswith('REPLACE_ME')}
+        missing_options = {name: opts for name, opts in COMPANY_PD_ENUM_OPTION_MAP.items() if None in opts.values()}
         assert placeholders == {}
+        assert missing_options == {}

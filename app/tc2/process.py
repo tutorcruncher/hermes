@@ -25,6 +25,7 @@ COMPANY_SYNCABLE_FIELDS = {
     'tc2_status',
     'narc',
     'receive_marketing_emails',
+    'operate_as_ea',
     'paid_invoice_count',
     'signup_questionnaire',
 }
@@ -155,6 +156,7 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             price_plan=tc_client.meta_agency.price_plan,
             narc=tc_client.meta_agency.narc or False,
             receive_marketing_emails=tc_client.meta_agency.receive_marketing_emails or False,
+            operate_as_ea=tc_client.meta_agency.operate_as_ea,
             pay0_dt=tc_client.meta_agency.pay0_dt,
             pay1_dt=tc_client.meta_agency.pay1_dt,
             pay3_dt=tc_client.meta_agency.pay3_dt,
