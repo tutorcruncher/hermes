@@ -8,6 +8,7 @@ from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+from app.pipedrive.tasks import sync_company_to_pipedrive
 
 
 class TestPipedriveWebhookMergedEntities:
@@ -1024,7 +1025,7 @@ class TestPipedrivePersonMergeDeletion:
         assert contact3.is_deleted is True
 
     async def test_person_merge_with_missing_winner_keeps_existing_contact(self, client, db, test_company):
-        """Test that a merged hermes_id led by an id Hermes doesn't have makes the first existing contact the winner"""
+        """Test that a merged hermes_id led by an id Hermes doesn't have updates the contact linked to the person"""
         contact1 = db.create(
             Contact(
                 first_name='John',
@@ -1118,6 +1119,208 @@ class TestPipedrivePersonMergeDeletion:
         db.refresh(contact2)
         assert contact2.pd_person_id is None
         assert contact2.is_deleted is True
+
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_person_merge_leaves_deleted_contact_deleted(
+        self,
+        mock_get_org,
+        mock_update_org,
+        mock_get_person,
+        mock_update_person,
+        mock_create_person,
+        client,
+        db,
+        test_admin,
+    ):
+        """
+        Test that a merged hermes_id listing a deleted contact before the linked one updates the linked one, and the
+        deleted one, which has no Pipedrive id, stays deleted so the company sync doesn't create a duplicate person
+        """
+        company = db.create(Company(name='Company', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        deleted = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=company.id,
+            )
+        )
+        linked = db.create(
+            Contact(
+                first_name='John',
+                last_name='Linked',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {deleted.id}, {linked.id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(linked)
+        assert (linked.first_name, linked.last_name, linked.pd_person_id, linked.is_deleted) == (
+            'Jane',
+            'Merged',
+            400,
+            False,
+        )
+        db.refresh(deleted)
+        assert (deleted.first_name, deleted.last_name, deleted.pd_person_id, deleted.is_deleted) == (
+            'John',
+            'Deleted',
+            None,
+            True,
+        )
+
+        mock_get_org.return_value = {'data': {'id': 100, 'name': 'Company'}}
+        mock_get_person.return_value = {'data': {'id': 400}}
+
+        await sync_company_to_pipedrive(company.id)
+
+        mock_get_person.assert_called_once_with(400)
+        mock_create_person.assert_not_called()
+
+    async def test_person_merge_with_only_deleted_contacts_updates_nothing(self, client, db, test_company):
+        """Test that a merged hermes_id listing only deleted contacts leaves them deleted and unchanged"""
+        deleted = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {deleted.id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deleted)
+        assert (deleted.first_name, deleted.last_name, deleted.pd_person_id, deleted.is_deleted) == (
+            'John',
+            'Deleted',
+            None,
+            True,
+        )
+        assert db.exec(select(Contact)).all() == [deleted]
+
+    async def test_person_merge_updates_linked_contact_not_listed(self, client, db, test_company):
+        """Test that a merged person updates the contact linked to it even when its hermes_id lists only others"""
+        listed = [
+            db.create(
+                Contact(
+                    first_name='John',
+                    last_name=f'Listed {i}',
+                    email=f'john{i}@example.com',
+                    pd_person_id=None,
+                    is_deleted=True,
+                    company_id=test_company.id,
+                )
+            )
+            for i in range(2)
+        ]
+        linked = db.create(
+            Contact(
+                first_name='John',
+                last_name='Linked',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{listed[0].id}, {listed[1].id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(linked)
+        assert (linked.first_name, linked.last_name, linked.pd_person_id, linked.is_deleted) == (
+            'Jane',
+            'Merged',
+            400,
+            False,
+        )
+        for contact in listed:
+            db.refresh(contact)
+            assert (contact.first_name, contact.pd_person_id, contact.is_deleted) == ('John', None, True)
+
+    async def test_person_update_leaves_deleted_contact_deleted(self, client, db, test_company):
+        """Test that a person update for a deleted contact, which has no Pipedrive id, doesn't bring it back"""
+        contact = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+                'name': 'Jane Restored',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact)
+        assert (contact.pd_person_id, contact.is_deleted) == (None, True)
 
     async def test_person_deletion_marks_as_deleted(self, client, db, test_company):
         """Test that deletion webhook sets is_deleted=True on Contact"""
