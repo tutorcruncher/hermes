@@ -16,6 +16,7 @@ from app.pipedrive import field_mappings
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
     _company_to_org_data,
+    _contact_to_person_data,
     _deal_to_pd_data,
     _meeting_to_activity_data,
     partial_sync_deal_from_company,
@@ -26,6 +27,25 @@ from app.pipedrive.tasks import (
     sync_person,
 )
 from tests.helpers import pipedrive_http_error
+
+PD_ADDRESS_SUBFIELDS = (
+    'value',
+    'street_number',
+    'route',
+    'subpremise',
+    'locality',
+    'sublocality',
+    'admin_area_level_1',
+    'admin_area_level_2',
+    'country',
+    'postal_code',
+    'formatted_address',
+)
+
+
+def _pd_custom_fields(sent: dict) -> dict:
+    """Custom fields as Pipedrive returns them: every field, including ones Hermes doesn't map and empty ones"""
+    return {'0919c9a7b7dd1166626ee6d5931d4560aea2d608': None, 'c6ccb56c5a4b82149a7c9de4687dc0914581b0c0': 'GB', **sent}
 
 
 class SessionMock:
@@ -537,6 +557,67 @@ class TestSyncOrganization:
         mock_get.assert_called_once_with(999)
         mock_update.assert_called_once()
 
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_unchanged_does_not_patch(
+        self, mock_get, mock_update, mock_get_session, db, test_company
+    ):
+        """An org Pipedrive already holds as Hermes has it is not PATCHed, though Pipedrive returns every custom field
+        and address subfield"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+        sent = _company_to_org_data(test_company)
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {
+            'data': {
+                'id': 999,
+                'name': sent['name'],
+                'owner_id': sent['owner_id'],
+                'website': None,
+                'address': {**dict.fromkeys(PD_ADDRESS_SUBFIELDS), 'value': 'GB', 'country': 'GB'},
+                'custom_fields': _pd_custom_fields(sent['custom_fields']),
+            }
+        }
+
+        await sync_organization(test_company.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_update.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_patches_changed_custom_field_and_address(
+        self, mock_get, mock_update, mock_get_session, db, test_company
+    ):
+        """A changed custom field or address subfield PATCHes custom_fields and address, and not the unchanged name"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+        sent = _company_to_org_data(test_company)
+        price_plan_field = COMPANY_PD_FIELD_MAP['price_plan']
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {
+            'data': {
+                'id': 999,
+                'name': sent['name'],
+                'owner_id': sent['owner_id'],
+                'address': {**dict.fromkeys(PD_ADDRESS_SUBFIELDS), 'value': 'US', 'country': 'US'},
+                'custom_fields': _pd_custom_fields({**sent['custom_fields'], price_plan_field: 'startup'}),
+            }
+        }
+
+        await sync_organization(test_company.id)
+
+        mock_update.assert_called_once_with(
+            999, {'address': {'value': 'GB', 'country': 'GB'}, 'custom_fields': sent['custom_fields']}
+        )
+        assert sent['custom_fields'][price_plan_field] == 'payg'
+
 
 class TestSyncPerson:
     """Test sync_person function"""
@@ -790,6 +871,38 @@ class TestSyncPerson:
         assert 'marketing_status' not in payload
 
     @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_sync_person_unchanged_does_not_patch(
+        self, mock_get, mock_update, mock_get_session, db, test_contact
+    ):
+        """A person Pipedrive already holds as Hermes has it is not PATCHed, though Pipedrive returns every custom
+        field"""
+        test_contact.pd_person_id = 999
+        db.add(test_contact)
+        db.commit()
+        sent = _contact_to_person_data(test_contact, db)
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {
+            'data': {
+                'id': 999,
+                'name': sent['name'],
+                'org_id': sent['org_id'],
+                'owner_id': sent['owner_id'],
+                'emails': [{'label': 'work', 'value': test_contact.email, 'primary': True}],
+                'phones': [],
+                'marketing_status': 'unsubscribed',
+                'custom_fields': _pd_custom_fields(sent['custom_fields']),
+            }
+        }
+
+        await sync_person(test_contact.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_update.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     async def test_sync_person_caps_name_at_255(self, mock_create, mock_get_session, db, test_company):
         """Pipedrive rejects names over 255 characters, and first_name + last_name can reach 511."""
@@ -863,6 +976,36 @@ class TestSyncDeal:
         mock_update.assert_not_called()
         db.refresh(test_deal)
         assert test_deal.pd_deal_id == 999
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    async def test_sync_deal_unchanged_does_not_patch(self, mock_get, mock_update, mock_get_session, db, test_deal):
+        """A deal Pipedrive already holds as Hermes has it is not PATCHed, though Pipedrive returns every custom
+        field"""
+        test_deal.pd_deal_id = 999
+        db.add(test_deal)
+        db.commit()
+        sent = _deal_to_pd_data(test_deal, db)
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {
+            'data': {
+                'id': 999,
+                'title': sent['title'],
+                'org_id': sent['org_id'],
+                'owner_id': sent['owner_id'],
+                'status': Deal.STATUS_OPEN,
+                'pipeline_id': 7,
+                'stage_id': 42,
+                'custom_fields': _pd_custom_fields(sent['custom_fields']),
+            }
+        }
+
+        await sync_deal(test_deal.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_update.assert_not_called()
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
