@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import ClassVar, List, Optional
 
+from sqlalchemy import Index, func
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.core.config import settings
@@ -147,6 +148,7 @@ class Company(SQLModel, table=True):
     PP_PAYG: ClassVar[str] = 'payg'
     PP_STARTUP: ClassVar[str] = 'startup'
     PP_ENTERPRISE: ClassVar[str] = 'enterprise'
+    PRICE_PLANS: ClassVar[tuple[str, ...]] = (PP_PAYG, PP_STARTUP, PP_ENTERPRISE)
 
     # Core fields
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -172,11 +174,17 @@ class Company(SQLModel, table=True):
     gclid: Optional[str] = Field(default=None, max_length=255)
     signup_questionnaire: Optional[str] = Field(default=None)
 
+    # Sent to Google with the click id so it can fall back to matching the person. A snapshot of
+    # what was given at signup, so it can differ from the contact details on the company now.
+    signup_email: Optional[str] = Field(default=None, max_length=255)
+    signup_phone: Optional[str] = Field(default=None, max_length=255)
+
     # Flags
     has_booked_call: bool = Field(default=False)
     has_signed_up: bool = Field(default=False)
     narc: bool = Field(default=False)
     receive_marketing_emails: bool = Field(default=False)
+    operate_as_ea: bool = Field(default=False)
     is_deleted: bool = Field(default=False)
 
     # Fields synced to/from Pipedrive
@@ -263,6 +271,10 @@ class Contact(SQLModel, table=True):
 
     def __str__(self):
         return f'{self.first_name} {self.last_name} ({self.email})'
+
+
+# Contacts are looked up by email ignoring case
+Index('ix_contact_email_lower', func.lower(Contact.email))
 
 
 class Deal(SQLModel, table=True):

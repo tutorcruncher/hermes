@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
 from functools import cached_property
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
+
+from app.main_app.models import Company
 
 
 def _convert_to_utc(v: datetime) -> datetime:
@@ -38,10 +40,11 @@ class CBSalesCall(BaseModel):
     company_id: Optional[int] = None
     name: str
     website: Optional[str] = None
-    email: str
+    email: str = Field(min_length=1)
     country: str
     phone: Optional[str] = None
-    company_name: str
+    # Stripped before the length check, so a name of only spaces is rejected too
+    company_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     estimated_income: str | int
     currency: str
     meeting_dt: datetime
@@ -55,9 +58,8 @@ class CBSalesCall(BaseModel):
     @field_validator('price_plan')
     @classmethod
     def _price_plan(cls, v):
-        valid_plans = ('payg', 'startup', 'enterprise')
-        if v not in valid_plans:
-            raise ValueError(f'price_plan must be one of {valid_plans}')
+        if v not in Company.PRICE_PLANS:
+            raise ValueError(f'price_plan must be one of {Company.PRICE_PLANS}')
         return v
 
     @cached_property
