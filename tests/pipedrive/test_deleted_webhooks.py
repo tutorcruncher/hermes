@@ -143,12 +143,11 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_leaves_company_deleted(self, client, db, test_company, test_admin):
+    async def test_deletion_then_update_webhook_brings_company_back(self, client, db, test_company, test_admin):
         """
-        Test that an update webhook after deletion leaves the company deleted: brought back without its pd_org_id,
-        its next sync would create a duplicate org
+        Test that an update webhook after deletion, as Pipedrive sends when the org is restored, links the company to
+        the org again and brings it back
         """
-        original_name = test_company.name
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
@@ -168,7 +167,7 @@ class TestPipedriveOrganizationDeletion:
         assert test_company.is_deleted is True
         assert test_company.pd_org_id is None
 
-        # Org gets recreated in Pipedrive (manual or via sync) - update webhook arrives
+        # The org is restored in Pipedrive
         update_webhook = {
             'meta': {'entity': 'organization', 'action': 'updated'},
             'data': {
@@ -184,7 +183,7 @@ class TestPipedriveOrganizationDeletion:
         assert r.status_code == 200
 
         db.refresh(test_company)
-        assert (test_company.name, test_company.pd_org_id, test_company.is_deleted) == (original_name, None, True)
+        assert (test_company.name, test_company.pd_org_id, test_company.is_deleted) == ('Updated Name', 999, False)
 
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)

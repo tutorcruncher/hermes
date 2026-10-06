@@ -151,9 +151,12 @@ class _LinkedObjProcessor(PipedriveObjProcessor):
     """
     Orgs and deals are found by the Pipedrive id Hermes links to them before their hermes_id, because a merged org's
     hermes_id can list ids that are no Hermes company's or belong to another live company. With none linked, the
-    hermes_id's first object is used only if it is live and not linked to another Pipedrive object: brought back
-    without its Pipedrive id, a deleted one's next sync would create a duplicate. The other merged ids are not marked
-    deleted, as a merged-away object's next sync gets a 404/410 from Pipedrive and marks it deleted.
+    hermes_id's first object is used if it is not linked to another Pipedrive object, and the org webhook links the
+    company to the org. A company whose org was merged away or deleted is brought back that way, so the surviving org's
+    deals find it. A deleted deal is not brought back, as a deal webhook doesn't link it and its next sync would create
+    a duplicate. A NARC company is never linked, as its next TC2 update would delete the org from Pipedrive. The other
+    merged ids are not marked deleted, as a merged-away object's next sync gets a 404/410 from Pipedrive and marks it
+    deleted.
     """
 
     def _find_obj(self, pd_obj: Organisation | PDDeal) -> Company | Deal | None:
@@ -168,12 +171,14 @@ class _LinkedObjProcessor(PipedriveObjProcessor):
             return None
 
         record = f'{self.hermes_model.__name__} {hermes_id} from Pipedrive {self.pd_model.__name__} {pd_obj.id}'
-        deleted = hermes_obj.status == Deal.STATUS_DELETED if isinstance(hermes_obj, Deal) else hermes_obj.is_deleted
-        if deleted:
-            logger.warning(f'Not updating {record}: it is deleted')
-            return None
         if linked_id := getattr(hermes_obj, self.pd_id_field):
             logger.warning(f'Not updating {record}: it is linked to {self.pd_id_field} {linked_id}')
+            return None
+        if isinstance(hermes_obj, Deal) and hermes_obj.status == Deal.STATUS_DELETED:
+            logger.warning(f'Not updating {record}: it is deleted')
+            return None
+        if isinstance(hermes_obj, Company) and hermes_obj.narc:
+            logger.warning(f'Not updating {record}: it is NARC')
             return None
         return hermes_obj
 
@@ -215,6 +220,9 @@ class OrganisationProcessor(_LinkedObjProcessor):
         return Company(**kwargs)
 
     async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
+        if hermes_obj.pd_org_id != pd_obj.id:
+            logger.info(f'Linking Company {hermes_obj.id} to pd_org_id {pd_obj.id} (deleted: {hermes_obj.is_deleted})')
+            hermes_obj.pd_org_id = pd_obj.id
         hermes_obj.is_deleted = False
 
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
@@ -258,7 +266,11 @@ class PersonProcessor(PipedriveObjProcessor):
             # Comparing pd_org_id with None would match every company without a Pipedrive organisation
             logger.info(f'Skipping Pipedrive person {pd_obj.id}: it has no organisation and a contact needs a company')
             return None
-        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+        if not company:
+            # The org's own webhook can come after the person's, or the org was deleted
+            logger.warning(f'Skipping Pipedrive person {pd_obj.id}: no company is linked to pd_org_id {pd_obj.org_id}')
+            return None
         return _contact_from_pd_person(pd_obj, company.id)
 
     async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
@@ -304,7 +316,11 @@ class PDDealProcessor(_LinkedObjProcessor):
             # Comparing pd_org_id with None would match every company without a Pipedrive organisation
             logger.info(f'Skipping Pipedrive deal {pd_obj.id}: it has no organisation and a deal needs a company')
             return None
-        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+        if not company:
+            # The org's own webhook can come after the deal's, or the org was deleted. The deal's next change adds it
+            logger.warning(f'Skipping Pipedrive deal {pd_obj.id}: no company is linked to pd_org_id {pd_obj.org_id}')
+            return None
         pipeline = self.db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == pd_obj.pipeline_id)).one()
         stage = self.db.exec(select(Stage).where(Stage.pd_stage_id == pd_obj.stage_id)).one()
 
@@ -352,8 +368,13 @@ class PDDealProcessor(_LinkedObjProcessor):
                 hermes_obj.stage_id = stage.id
 
         if pd_obj.org_id:
-            company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
-            if company.id != hermes_obj.company_id:
+            company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+            if not company:
+                logger.warning(
+                    f'Keeping company {hermes_obj.company_id} on Deal {hermes_obj.id}: no company is linked to '
+                    f'pd_org_id {pd_obj.org_id}'
+                )
+            elif company.id != hermes_obj.company_id:
                 hermes_obj.company_id = company.id
 
         if pd_obj.person_id:
