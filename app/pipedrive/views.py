@@ -10,8 +10,8 @@ from app.pipedrive.process import (
     PDPipelineProcessor,
     PDStageProcessor,
     PersonProcessor,
-    create_contact_for_pd_deal,
 )
+from app.pipedrive.tasks import create_contact_for_pd_deal
 
 logger = logging.getLogger('hermes.pipedrive')
 

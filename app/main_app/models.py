@@ -148,6 +148,7 @@ class Company(SQLModel, table=True):
     PP_PAYG: ClassVar[str] = 'payg'
     PP_STARTUP: ClassVar[str] = 'startup'
     PP_ENTERPRISE: ClassVar[str] = 'enterprise'
+    PRICE_PLANS: ClassVar[tuple[str, ...]] = (PP_PAYG, PP_STARTUP, PP_ENTERPRISE)
 
     # Core fields
     id: Optional[int] = Field(default=None, primary_key=True)

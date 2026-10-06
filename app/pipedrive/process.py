@@ -2,18 +2,14 @@ import logging
 from functools import cached_property
 
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from app.core.database import DBSession, get_session
+from app.core.database import DBSession
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline, Stage
-from app.pipedrive import api
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person
 
 logger = logging.getLogger('hermes.pipedrive')
-
-VALID_PRICE_PLANS = (Company.PP_PAYG, Company.PP_STARTUP, Company.PP_ENTERPRISE)
 
 
 def _contact_from_pd_person(pd_person: Person, company_id: int) -> Contact:
@@ -397,8 +393,12 @@ def find_or_create_pd_contact(db: DBSession, pd_person: Person, company: Company
     if pd_person.hermes_id:
         # Hermes created this person, so its contact already exists
         return None, 'hermes_id'
+    if pd_person.org_id and pd_person.org_id != company.pd_org_id:
+        # Syncing the contact would move the person out of their own organisation in Pipedrive
+        return None, 'other_org'
     if not pd_person.email:
-        # The callbooker rejects a booking that matches, by phone, a contact with no email
+        # The callbooker can't book a contact with no email, and without one the person can't be checked against
+        # the existing contacts below
         return None, 'no_email'
 
     # Deleted contacts count too, because the callbooker's email lookup doesn't skip them
@@ -417,50 +417,3 @@ def find_or_create_pd_contact(db: DBSession, pd_person: Person, company: Company
     db.add(contact)
     db.flush()
     return contact, 'created'
-
-
-async def create_contact_for_pd_deal(deal_id: int, pd_person_id: int):
-    """
-    Background task that links a deal created outside Hermes to its Pipedrive person, creating the contact if needed.
-
-    The person is fetched with no DB session open, because the Pipedrive rate limiter can wait for minutes.
-    """
-    try:
-        pd_person = Person(**(await api.get_person(pd_person_id))['data'])
-        with get_session() as db:
-            deal = db.get(Deal, deal_id)
-            if not deal or deal.contact_id or deal.status == Deal.STATUS_DELETED:
-                return
-            company = db.get(Company, deal.company_id)
-            if company.is_deleted or company.narc or company.price_plan not in VALID_PRICE_PLANS:
-                # A later booking that needs a new deal for this company would fail on its price plan
-                logger.info(
-                    f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: company {company.id} is deleted, '
-                    f'NARC or has price plan {company.price_plan!r}'
-                )
-                return
-            try:
-                contact, outcome = find_or_create_pd_contact(db, pd_person, company)
-                if contact:
-                    deal.contact_id = contact.id
-                    db.add(deal)
-                db.commit()
-            except IntegrityError:
-                # The other web process added a contact for the same person first
-                db.rollback()
-                contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person_id)).one_or_none()
-                if not contact:
-                    raise
-                deal = db.get(Deal, deal_id)
-                if deal.contact_id:
-                    return
-                deal.contact_id = contact.id
-                db.add(deal)
-                db.commit()
-                outcome = 'existing'
-        if outcome == 'hermes_id':
-            logger.warning(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it has a hermes_id')
-        else:
-            logger.info(f'Pipedrive person {pd_person_id} for deal {deal_id}: {outcome}')
-    except Exception as e:
-        logger.error(f'Error adding Pipedrive person {pd_person_id} to deal {deal_id}: {e}', exc_info=True)

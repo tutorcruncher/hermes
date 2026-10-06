@@ -4,6 +4,8 @@ from typing import Annotated, Optional
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 
+from app.main_app.models import Company
+
 
 def _convert_to_utc(v: datetime) -> datetime:
     """Convert datetime to UTC and validate it's in the future"""
@@ -56,9 +58,8 @@ class CBSalesCall(BaseModel):
     @field_validator('price_plan')
     @classmethod
     def _price_plan(cls, v):
-        valid_plans = ('payg', 'startup', 'enterprise')
-        if v not in valid_plans:
-            raise ValueError(f'price_plan must be one of {valid_plans}')
+        if v not in Company.PRICE_PLANS:
+            raise ValueError(f'price_plan must be one of {Company.PRICE_PLANS}')
         return v
 
     @cached_property
