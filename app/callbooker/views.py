@@ -68,7 +68,7 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
         )
 
     # Queue background tasks to sync to Pipedrive
-    background_tasks.add_task(sync_company_to_pipedrive, company_id)
+    background_tasks.add_task(sync_company_to_pipedrive, company_id, booked_contact_id=contact_id)
     background_tasks.add_task(sync_meeting_to_pipedrive, meeting_id)
 
     return {'status': 'ok'}

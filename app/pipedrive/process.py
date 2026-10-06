@@ -11,6 +11,23 @@ from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Pers
 logger = logging.getLogger('hermes.pipedrive')
 
 
+def mark_deleted_from_pipedrive(db: DBSession, obj: Company | Contact | Deal, pd_id_field: str) -> None:
+    """
+    Record in Hermes that the object no longer exists in Pipedrive: a deal gets the deleted status, a company or
+    contact is flagged is_deleted, and the Pipedrive id is cleared. The row is kept because its data may still be
+    useful. Used by the delete webhook and by syncs that get a 404/410 from Pipedrive.
+    """
+    pd_id = getattr(obj, pd_id_field)
+    if isinstance(obj, Deal):
+        obj.status = Deal.STATUS_DELETED
+    else:
+        obj.is_deleted = True
+    setattr(obj, pd_id_field, None)
+    db.add(obj)
+    db.commit()
+    logger.info(f'Cleared {pd_id_field} {pd_id} from {type(obj).__name__}:{obj.id} (marked as deleted in Pipedrive)')
+
+
 class PipedriveObjProcessor:
     hermes_model = NotImplemented
     pd_model = NotImplemented
@@ -41,27 +58,11 @@ class PipedriveObjProcessor:
         return obj
 
     async def delete_obj(self, pd_obj: Organisation | Person | PDDeal):
-        # For deletions, we just clear the pd_*_id field to indicate the object no longer exists in Pipedrive
-        # We don't delete from Hermes because the data may still be useful
         hermes_obj = self.db.exec(
             select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == pd_obj.id)
         ).one_or_none()
         if hermes_obj:
-            if self.hermes_model == Deal:
-                hermes_obj.status = Deal.STATUS_DELETED
-            if self.hermes_model == Company:
-                hermes_obj.is_deleted = True
-            if self.hermes_model == Contact:
-                hermes_obj.is_deleted = True
-            setattr(hermes_obj, self.pd_id_field, None)
-            self.db.add(hermes_obj)
-            self.db.commit()
-            logger.info(
-                'Cleared %s from %s:%s (marked as deleted in Pipedrive)',
-                self.pd_id_field,
-                self.hermes_model.__name__,
-                hermes_obj.id,
-            )
+            mark_deleted_from_pipedrive(self.db, hermes_obj, self.pd_id_field)
         return None
 
     def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:

@@ -9,6 +9,7 @@ from sqlmodel import select
 
 from app.main_app.models import Company
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from tests.helpers import pipedrive_http_error
 
 
 @pytest.fixture
@@ -183,12 +184,14 @@ class TestPipedriveOrganizationDeletion:
         # pd_org_id won't be set by webhook update - only by lookup during process
         assert test_company.is_deleted is False
 
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
-    async def test_normal_flow_recreates_on_404(
-        self, mock_create_org, mock_get_org, client, db, test_company, sample_tc_webhook_data
+    async def test_normal_flow_marks_deleted_on_404(
+        self, mock_create_org, mock_get_org, mock_create_person, client, db, test_company, sample_tc_webhook_data
     ):
-        """Test normal flow: org with pd_org_id but NOT deleted recreates on 404"""
+        """A TC2 callback for a company whose org is gone from Pipedrive marks it deleted, as the delete webhook
+        would have done, instead of recreating the org"""
         test_company.tc2_cligency_id = 1004
         test_company.tc2_agency_id = 2004
         test_company.pd_org_id = 999
@@ -196,27 +199,21 @@ class TestPipedriveOrganizationDeletion:
         db.add(test_company)
         db.commit()
 
-        # Simulate 404 from Pipedrive
-        from httpx import HTTPStatusError, Request, Response
-
-        mock_get_org.side_effect = HTTPStatusError(
-            '404 Not Found',
-            request=Request('GET', 'https://api.pipedrive.com/organizations/999'),
-            response=Response(404),
-        )
-        mock_create_org.return_value = {'data': {'id': 1001}}
+        mock_get_org.side_effect = pipedrive_http_error(404, 'organizations/999')
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1004, tc2_agency_id=2004)
         r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
 
         assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
 
         mock_get_org.assert_called_once()
-        mock_create_org.assert_called_once()
+        mock_create_org.assert_not_called()
+        mock_create_person.assert_not_called()
 
         db.refresh(test_company)
-        assert test_company.pd_org_id == 1001
-        assert test_company.is_deleted is False
+        assert test_company.pd_org_id is None
+        assert test_company.is_deleted is True
 
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_normal_flow_creates_new_org(self, mock_create_org, client, db, test_company, sample_tc_webhook_data):
