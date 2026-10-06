@@ -14,7 +14,7 @@ class TestPipedriveWebhookMergedEntities:
     """Test Pipedrive webhook handling for merged entities"""
 
     async def test_org_merged_with_comma_separated_hermes_ids(self, client, db, test_admin):
-        """Test that merged organizations with comma-separated hermes_ids are handled"""
+        """Test that a merged org updates its own company and leaves the other listed company for its own sync"""
         # Create two companies
         company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
         company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
@@ -40,10 +40,10 @@ class TestPipedriveWebhookMergedEntities:
         assert company1.name == 'Merged Company'
         assert company1.pd_org_id == 100
 
-        # Company 2 should be marked as deleted
+        # Company 2 is left as it is: its next sync finds its org gone and marks it deleted
         db.refresh(company2)
-        assert company2.pd_org_id is None
-        assert company2.is_deleted is True
+        assert company2.pd_org_id == 200
+        assert company2.is_deleted is False
 
     async def test_person_merged_with_comma_separated_hermes_ids(self, client, db, test_company):
         """Test that merged persons with comma-separated hermes_ids are handled"""
@@ -1596,3 +1596,157 @@ class TestPipedriveWebhookMergeJoinedDealValues:
             'https://secure.tutorcruncher.com/clients/2/',
             15,
         )
+
+
+class TestPipedriveWebhookPipedriveLink:
+    """
+    A merged org's hermes_id can list ids that are no Hermes company's or another live company's, so org and deal
+    webhooks use the record Hermes links to the Pipedrive id, and never delete the other listed records
+    """
+
+    def _org_webhook(self, name: str, hermes_id: str) -> dict:
+        return {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {'id': 100, 'name': name, 'custom_fields': _org_custom_fields(hermes_id=hermes_id)},
+            'previous': None,
+        }
+
+    def _deal_webhook(self, title: str, hermes_id: str) -> dict:
+        return {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': title,
+                'status': 'open',
+                'custom_fields': _deal_custom_fields(hermes_id=hermes_id),
+            },
+            'previous': None,
+        }
+
+    async def test_merged_org_updates_linked_company(self, client, db, test_admin):
+        """Test that the company linked to the org is updated, not the companies its hermes_id lists"""
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        linked = db.create(Company(name='Prominent Education', pd_org_id=100, **kwargs))
+        other_org = db.create(Company(name='LoopLearners', pd_org_id=300, **kwargs))
+        unlinked = db.create(Company(name='Unlinked', **kwargs))
+
+        webhook_data = self._org_webhook('Prominent Education Ltd', f'99999, {other_org.id}, {unlinked.id}')
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (linked, other_org, unlinked):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (linked, other_org, unlinked)] == [
+            ('Prominent Education Ltd', 100, False),
+            ('LoopLearners', 300, False),
+            ('Unlinked', None, False),
+        ]
+
+    async def test_org_with_no_linked_company_skips_company_of_another_org(self, client, db, test_admin):
+        """Test that with no company linked to the org, a listed company linked to another org is left alone"""
+        other_org = db.create(Company(name='Edulinx', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=300))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('WeAre Education Ltd', f'{other_org.id}, 99999'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(other_org)
+        assert (other_org.name, other_org.pd_org_id, other_org.is_deleted) == ('Edulinx', 300, False)
+        assert db.exec(select(Company)).all() == [other_org]
+
+    async def test_merged_org_skips_deleted_company(self, client, db, test_admin):
+        """
+        Test that a deleted company the org lists first stays deleted: brought back without pd_org_id, its next sync
+        would create a duplicate org
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        deleted = db.create(Company(name='Price Education Limited', is_deleted=True, **kwargs))
+        other_org = db.create(Company(name='Other', pd_org_id=300, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Price Education Ltd', f'{deleted.id}, {other_org.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (deleted, other_org):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (deleted, other_org)] == [
+            ('Price Education Limited', None, True),
+            ('Other', 300, False),
+        ]
+
+    async def test_org_updates_unlinked_company_by_hermes_id(self, client, db, test_admin):
+        """Test that with no company linked to the org, its live hermes_id company with no pd_org_id is updated"""
+        company = db.create(Company(name='Believe Tuition', sales_person_id=test_admin.id, price_plan='payg'))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Believe Tuition Ltd', str(company.id)),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert (company.name, company.pd_org_id, company.is_deleted) == ('Believe Tuition Ltd', None, False)
+
+    async def test_deal_webhook_skips_deleted_deal(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """
+        Test that a deleted deal stays deleted: brought back without pd_deal_id, its next sync would create a
+        duplicate deal
+        """
+        deal = db.create(
+            Deal(
+                name='Deal 1',
+                status=Deal.STATUS_DELETED,
+                admin_id=test_admin.id,
+                company_id=test_company.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+            )
+        )
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 reopened', str(deal.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert (deal.name, deal.status, deal.pd_deal_id) == ('Deal 1', Deal.STATUS_DELETED, None)
+
+    async def test_deal_webhook_updates_linked_deal(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that the deal linked to the Pipedrive deal is updated, not the deal its hermes_id names"""
+        kwargs = {
+            'admin_id': test_admin.id,
+            'company_id': test_company.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        linked = db.create(Deal(name='Deal 1', pd_deal_id=800, **kwargs))
+        other = db.create(Deal(name='Deal 2', pd_deal_id=900, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 renamed', str(other.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for deal in (linked, other):
+            db.refresh(deal)
+        assert [(d.name, d.pd_deal_id) for d in (linked, other)] == [('Deal 1 renamed', 800), ('Deal 2', 900)]

@@ -143,8 +143,12 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_clears_deleted(self, client, db, test_company, test_admin):
-        """Test that update webhook after deletion clears is_deleted flag (org recreated in Pipedrive)"""
+    async def test_deletion_then_update_webhook_leaves_company_deleted(self, client, db, test_company, test_admin):
+        """
+        Test that an update webhook after deletion leaves the company deleted: brought back without its pd_org_id,
+        its next sync would create a duplicate org
+        """
+        original_name = test_company.name
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
@@ -180,9 +184,7 @@ class TestPipedriveOrganizationDeletion:
         assert r.status_code == 200
 
         db.refresh(test_company)
-        assert test_company.name == 'Updated Name'
-        # pd_org_id won't be set by webhook update - only by lookup during process
-        assert test_company.is_deleted is False
+        assert (test_company.name, test_company.pd_org_id, test_company.is_deleted) == (original_name, None, True)
 
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
@@ -242,8 +244,8 @@ class TestPipedriveOrganizationDeletion:
 class TestPipedriveOrganizationMergeDeletion:
     """Test organization merge scenarios with deletion"""
 
-    async def test_merge_marks_loser_deleted(self, client, db, test_admin):
-        """Test that merged loser orgs are marked as deleted"""
+    async def test_merge_leaves_loser_to_its_sync(self, client, db, test_admin):
+        """Test that a merge leaves the loser company as it is, for its next sync to find its org gone"""
         company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
         company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
 
@@ -268,8 +270,8 @@ class TestPipedriveOrganizationMergeDeletion:
         assert company1.is_deleted is False
 
         db.refresh(company2)
-        assert company2.pd_org_id is None
-        assert company2.is_deleted is True
+        assert company2.pd_org_id == 200
+        assert company2.is_deleted is False
 
     @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
     async def test_merged_loser_not_recreated_on_tc2_callback(
@@ -299,8 +301,8 @@ class TestPipedriveOrganizationMergeDeletion:
         assert company.pd_org_id is None
         assert company.is_deleted is True
 
-    async def test_merge_loser_only_processed_once(self, client, db, test_admin):
-        """Test that merged losers are only marked deleted once, not on subsequent callbacks"""
+    async def test_repeated_merge_webhooks_keep_loser(self, client, db, test_admin):
+        """Test that every merge webhook updates the winner and none of them deletes the loser"""
         company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
         company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
 
@@ -317,9 +319,8 @@ class TestPipedriveOrganizationMergeDeletion:
         r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
         assert r.status_code == 200
 
-        db.refresh(company2)
-        assert company2.is_deleted is True
-        assert company2.pd_org_id is None
+        db.refresh(company1)
+        assert company1.name == 'Merged Company'
 
         webhook_data['data']['name'] = 'Updated Merged Company'
         r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
@@ -329,8 +330,7 @@ class TestPipedriveOrganizationMergeDeletion:
         assert company1.name == 'Updated Merged Company'
 
         db.refresh(company2)
-        assert company2.is_deleted is True
-        assert company2.pd_org_id is None
+        assert (company2.name, company2.pd_org_id, company2.is_deleted) == ('Company 2', 200, False)
 
 
 class TestNewCompanyCreationFlow:
