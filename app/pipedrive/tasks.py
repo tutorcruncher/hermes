@@ -3,6 +3,7 @@ from datetime import datetime
 
 import httpx
 import logfire
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.core.database import DBSession, get_session
@@ -15,7 +16,8 @@ from app.pipedrive.field_mappings import (
     CONTACT_PD_FIELD_MAP,
     DEAL_PD_FIELD_MAP,
 )
-from app.pipedrive.process import mark_deleted_from_pipedrive
+from app.pipedrive.models import Person
+from app.pipedrive.process import find_or_create_pd_contact, mark_deleted_from_pipedrive
 
 logger = logging.getLogger('hermes.pipedrive')
 
@@ -341,6 +343,91 @@ async def purge_company_from_pipedrive(company_id: int):
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
 
 
+def _deal_company_needing_contact(db, deal_id: int, pd_person_id: int) -> int | None:
+    """The id of the deal's company if the deal can still get its Pipedrive person as its contact, otherwise None"""
+    deal = db.get(Deal, deal_id)
+    if not deal or deal.status == Deal.STATUS_DELETED:
+        logger.info(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: the deal is deleted')
+        return None
+    if deal.contact_id:
+        logger.info(
+            f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it already has contact {deal.contact_id}'
+        )
+        return None
+    company = db.get(Company, deal.company_id)
+    if company.is_deleted or company.narc or company.price_plan not in Company.PRICE_PLANS:
+        # A later booking that needs a new deal for this company would fail on its price plan
+        logger.info(
+            f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: company {company.id} is deleted, '
+            f'NARC or has price plan {company.price_plan!r}'
+        )
+        return None
+    return company.id
+
+
+async def create_contact_for_pd_deal(deal_id: int, pd_person_id: int) -> None:
+    """
+    Background task that links a deal created outside Hermes to its Pipedrive person, creating the contact if needed.
+
+    The person is fetched with no DB session open, because the Pipedrive rate limiter can wait for minutes. The contact
+    is found or created under the company's sync lock, so sync_person can't be creating a Pipedrive person for a
+    contact that is adopted here.
+    """
+    with logfire.span('create_contact_for_pd_deal'):
+        try:
+            with get_session() as db:
+                company_id = _deal_company_needing_contact(db, deal_id, pd_person_id)
+            if not company_id:
+                return
+            try:
+                pd_person = Person(**(await api.get_person(pd_person_id))['data'])
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code not in (404, 410):
+                    raise
+                logger.info(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it no longer exists')
+                return
+
+            async with _company_sync_locks.acquire(company_id):
+                with get_session() as db:
+                    # The deal can change while the person is fetched. If it moved company, the lock is the wrong one
+                    if _deal_company_needing_contact(db, deal_id, pd_person_id) != company_id:
+                        return
+                    deal = db.get(Deal, deal_id)
+                    company = db.get(Company, company_id)
+                    try:
+                        contact, outcome = find_or_create_pd_contact(db, pd_person, company)
+                        if contact:
+                            deal.contact_id = contact.id
+                            db.add(deal)
+                        db.commit()
+                    except IntegrityError:
+                        # The other web process added a contact for the same person first
+                        db.rollback()
+                        contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person_id)).one()
+                        deal = db.get(Deal, deal_id)
+                        if deal.contact_id:
+                            logger.info(
+                                f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: the other process '
+                                f'linked contact {deal.contact_id}'
+                            )
+                            return
+                        deal.contact_id = contact.id
+                        db.add(deal)
+                        db.commit()
+                        outcome = 'existing'
+                    contact_id = contact.id if contact else None
+
+            if outcome == 'hermes_id':
+                logger.warning(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it has a hermes_id')
+            else:
+                logger.info(
+                    f'Pipedrive person {pd_person_id} for deal {deal_id} of company {company_id}: {outcome}, '
+                    f'contact {contact_id}'
+                )
+        except Exception as e:
+            logger.error(f'Error adding Pipedrive person {pd_person_id} to deal {deal_id}: {e}', exc_info=True)
+
+
 def _bring_back_for_booking(db: DBSession, company: Company, contact_id: int) -> None:
     """
     A sales call was booked, so the customer is live. If the company or the booked contact was marked deleted
@@ -492,10 +579,12 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
     data = {
         'title': deal.name,
         'org_id': company.pd_org_id if company else None,
-        'person_id': contact.pd_person_id if contact else None,
         'owner_id': deal.admin.pd_owner_id if deal.admin else None,
         'status': deal.status,
     }
+    # Sending person_id None would remove the deal's person in Pipedrive, so only send a person Hermes knows
+    if contact and contact.pd_person_id:
+        data['person_id'] = contact.pd_person_id
 
     # Build custom_fields using field mapping
     custom_fields = {}
