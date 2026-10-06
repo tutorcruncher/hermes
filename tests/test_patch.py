@@ -6,8 +6,8 @@ from unittest.mock import call, patch
 
 from click.testing import CliRunner
 
-from app.main_app.models import Company, Contact
-from patch import fix_repeated_contact_names, patch as patch_command
+from app.main_app.models import Company, Contact, Deal
+from patch import fix_merge_joined_company_fields, fix_repeated_contact_names, patch as patch_command
 
 
 class TestFixRepeatedContactNames:
@@ -75,3 +75,63 @@ class TestFixRepeatedContactNames:
         assert (not_in_pd.first_name, not_in_pd.last_name) == ('mo', 'Khan')
         assert (in_deleted_company.first_name, in_deleted_company.last_name) == ('tom', 'tom tom Hill')
         assert (in_narc_company.first_name, in_narc_company.last_name) == ('sam', 'sam sam Hill')
+
+
+class TestFixMergeJoinedCompanyFields:
+    """Price plans and utm values joined by Pipedrive org merges (#437) are repaired, everything else is left alone"""
+
+    async def test_fix_merge_joined_company_fields(self, db, capsys, test_admin, test_pipeline, test_stage):
+        joined = db.create(
+            Company(
+                name='Joined',
+                sales_person_id=test_admin.id,
+                tc2_cligency_id=10,
+                price_plan='startup, payg',
+                utm_source='direct, none',
+                utm_campaign='global tutorcruncher brand, none',
+                website='https://first.example.com, https://second.example.com',
+                estimated_income='none, just starting out',
+            )
+        )
+        no_tc2 = db.create(
+            Company(name='No TC2', sales_person_id=test_admin.id, price_plan='enterprise, payg', utm_source='google')
+        )
+        clean = db.create(
+            Company(name='Clean', sales_person_id=test_admin.id, price_plan='enterprise', utm_source='google')
+        )
+        deleted = db.create(
+            Company(name='Deleted', sales_person_id=test_admin.id, price_plan='startup, payg', is_deleted=True)
+        )
+        deal_kwargs = {
+            'company_id': joined.id,
+            'admin_id': test_admin.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        open_deal = db.create(Deal(name='Open', price_plan='startup, payg', utm_source='direct, none', **deal_kwargs))
+        lost_deal = db.create(Deal(name='Lost', status=Deal.STATUS_LOST, utm_source='direct, none', **deal_kwargs))
+
+        await fix_merge_joined_company_fields(db)
+        db.commit()
+
+        assert (joined.price_plan, joined.utm_source, joined.utm_campaign, joined.website, joined.estimated_income) == (
+            'payg',
+            None,
+            None,
+            'https://first.example.com, https://second.example.com',
+            'none, just starting out',
+        )
+        assert (no_tc2.price_plan, no_tc2.utm_source) == ('payg', 'google')
+        assert (clean.price_plan, clean.utm_source) == ('enterprise', 'google')
+        assert deleted.price_plan == 'startup, payg'
+        assert (open_deal.price_plan, open_deal.utm_source) == ('payg', None)
+        assert lost_deal.utm_source == 'direct, none'
+        assert capsys.readouterr().out.splitlines() == [
+            f"Company {joined.id}: price_plan 'startup, payg' -> 'payg'",
+            f"Company {joined.id}: utm_source 'direct, none' -> None",
+            f"Company {joined.id}: utm_campaign 'global tutorcruncher brand, none' -> None",
+            f"Company {no_tc2.id}: price_plan 'enterprise, payg' -> 'payg' (no TC2 client, check the plan)",
+            f"Deal {open_deal.id}: price_plan 'startup, payg' -> 'payg'",
+            f"Deal {open_deal.id}: utm_source 'direct, none' -> None",
+            'Fixed 2 companies and 1 open deals',
+        ]

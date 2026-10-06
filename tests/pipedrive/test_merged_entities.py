@@ -1183,3 +1183,235 @@ class TestPipedrivePersonMergeDeletion:
         db.refresh(loser)
         assert loser.is_deleted is True
         assert loser.pd_person_id is None
+
+
+def _org_custom_fields(**values) -> dict:
+    """Org custom fields in the nested form Pipedrive v2 webhooks send them"""
+    return {COMPANY_PD_FIELD_MAP[f]: {'type': 'varchar', 'value': v} for f, v in values.items()}
+
+
+JOINED_ORG_VALUES = {
+    'price_plan': 'startup, payg',
+    'tc2_status': 'pending_email_conf, trial, terminated',
+    'website': 'https://first.example.com, https://second.example.com',
+    'utm_source': 'direct, none',
+    'utm_campaign': 'global tutorcruncher brand, none',
+    'estimated_income': '£0 - £50,000, just starting out',
+    'signup_questionnaire': '{"how-did-you-hear-about-us": ["Other"]}, {"how-did-you-hear-about-us": ["Google"]}',
+    'paid_invoice_count': '3, 15',
+}
+
+
+def _company_values(company: Company) -> tuple:
+    """The company fields an org webhook can change"""
+    return (
+        company.name,
+        company.price_plan,
+        company.tc2_status,
+        company.website,
+        company.utm_source,
+        company.utm_campaign,
+        company.estimated_income,
+        company.signup_questionnaire,
+        company.paid_invoice_count,
+    )
+
+
+class TestPipedriveWebhookMergeJoinedValues:
+    """Pipedrive joins merged orgs' custom field values with ', ', and Hermes must not copy them onto the company"""
+
+    def _create_company(self, db, test_admin, name: str, pd_org_id: int) -> Company:
+        return db.create(
+            Company(
+                name=name,
+                sales_person_id=test_admin.id,
+                pd_org_id=pd_org_id,
+                price_plan='startup',
+                tc2_status='trial',
+                website='https://first.example.com',
+                utm_source='google',
+                utm_campaign='global tutorcruncher brand',
+                estimated_income='£0 - £50,000',
+                signup_questionnaire='{"how-did-you-hear-about-us": ["Other"]}',
+                paid_invoice_count=3,
+            )
+        )
+
+    async def test_merged_org_keeps_company_values(self, client, db, test_admin):
+        """Test that a merged org's joined values leave the winner company's values as they were"""
+        company1 = self._create_company(db, test_admin, 'Company 1', 100)
+        company2 = self._create_company(db, test_admin, 'Company 2', 200)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Merged Company',
+                'custom_fields': _org_custom_fields(hermes_id=f'{company1.id}, {company2.id}', **JOINED_ORG_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company1)
+        assert _company_values(company1) == (
+            'Merged Company',
+            'startup',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£0 - £50,000',
+            '{"how-did-you-hear-about-us": ["Other"]}',
+            3,
+        )
+
+    async def test_joined_values_with_single_hermes_id_keep_company_values(self, client, db, test_admin):
+        """Test that joined values are ignored after Hermes has already set the org's hermes_id back to one id"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Renamed Company',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), **JOINED_ORG_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert _company_values(company) == (
+            'Renamed Company',
+            'startup',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£0 - £50,000',
+            '{"how-did-you-hear-about-us": ["Other"]}',
+            3,
+        )
+
+    async def test_single_values_with_commas_are_copied(self, client, db, test_admin):
+        """Test that one org's own values that contain commas are still copied onto the company"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Company 1',
+                'custom_fields': _org_custom_fields(
+                    hermes_id=str(company.id),
+                    price_plan='enterprise',
+                    estimated_income='£50,000 - £150,000',
+                    signup_questionnaire='{"how-did-you-hear-about-us": ["Other"], "lessons": ["Entirely remote"]}',
+                    paid_invoice_count='15',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert _company_values(company) == (
+            'Company 1',
+            'enterprise',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£50,000 - £150,000',
+            '{"how-did-you-hear-about-us": ["Other"], "lessons": ["Entirely remote"]}',
+            15,
+        )
+
+    async def test_joined_paid_invoice_count_does_not_drop_webhook(self, client, db, test_admin):
+        """Test that a joined paid_invoice_count no longer stops the rest of the org update"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Renamed Company',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), paid_invoice_count='50, 35, 41'),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert (company.name, company.paid_invoice_count) == ('Renamed Company', 3)
+
+    async def test_joined_paid_invoice_count_in_previous_does_not_drop_webhook(self, client, db, test_admin):
+        """Test that overwriting a joined paid_invoice_count in Pipedrive updates the company"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Company 1',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), paid_invoice_count='7'),
+            },
+            'previous': {'custom_fields': _org_custom_fields(paid_invoice_count='6, 13')},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert company.paid_invoice_count == 7
+
+    async def test_new_org_with_joined_values_gets_defaults(self, client, db, test_admin):
+        """Test that a new org's joined values are left out, so the new company gets the default values"""
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'create'},
+            'data': {
+                'id': 777,
+                'name': 'New Company',
+                'owner_id': test_admin.pd_owner_id,
+                'custom_fields': _org_custom_fields(
+                    price_plan='startup, payg',
+                    tc2_status='pending_email_conf, trial, terminated',
+                    paid_invoice_count='4, 63',
+                    website='https://first.example.com, https://second.example.com',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company).where(Company.pd_org_id == 777)).one()
+        assert (company.name, company.price_plan, company.tc2_status, company.paid_invoice_count, company.website) == (
+            'New Company',
+            'payg',
+            'pending_email_conf',
+            0,
+            None,
+        )
