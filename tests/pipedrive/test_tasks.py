@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from app.main_app.models import Company, Contact, Deal
+from app.pipedrive import field_mappings
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import (
     _company_to_org_data,
@@ -472,7 +473,9 @@ class TestSyncOrganization:
         db.refresh(test_company)
         assert test_company.pd_org_id == 888
 
-    async def test_company_to_org_data_sends_receive_marketing_emails_as_enum_option_ids(self, db, test_company, monkeypatch):
+    async def test_company_to_org_data_sends_receive_marketing_emails_as_enum_option_ids(
+        self, db, test_company, monkeypatch
+    ):
         """receive_marketing_emails syncs to Pipedrive as enum option IDs (single-option field)."""
         from app.pipedrive import field_mappings
 
@@ -488,6 +491,28 @@ class TestSyncOrganization:
 
         test_company.receive_marketing_emails = False
         assert _company_to_org_data(test_company)['custom_fields'][pd_field] == 102
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_sends_operate_as_ea_as_enum_option_ids(
+        self, mock_create, mock_get_session, db, test_company, monkeypatch
+    ):
+        """operate_as_ea goes to Pipedrive as its Yes/No option id, as Pipedrive has no boolean field type."""
+        monkeypatch.setitem(field_mappings.COMPANY_PD_ENUM_OPTION_MAP, 'operate_as_ea', {'yes': 201, 'no': 202})
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 888}}
+        pd_field = COMPANY_PD_FIELD_MAP['operate_as_ea']
+
+        sent = {}
+        for operate_as_ea in (True, False):
+            test_company.operate_as_ea = operate_as_ea
+            test_company.pd_org_id = None
+            db.add(test_company)
+            db.commit()
+            await sync_organization(test_company.id)
+            sent[operate_as_ea] = mock_create.call_args.args[0]['custom_fields'][pd_field]
+
+        assert sent == {True: 201, False: 202}
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
@@ -768,7 +793,6 @@ class TestSyncPerson:
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     async def test_sync_person_caps_name_at_255(self, mock_create, mock_get_session, db, test_company):
         """Pipedrive rejects names over 255 characters, and first_name + last_name can reach 511."""
-        # The email is needed because sync_person skips creating a person for a contact with no email
         contact = db.create(
             Contact(first_name='a' * 255, last_name='b' * 255, email='long@example.com', company_id=test_company.id)
         )
@@ -784,7 +808,6 @@ class TestSyncPerson:
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     async def test_sync_person_without_name_does_not_raise(self, mock_create, mock_get_session, db, test_company):
         """A contact with no first or last name has name None, which must not break the sync."""
-        # The email is needed because sync_person skips creating a person for a contact with no email
         contact = db.create(
             Contact(first_name=None, last_name=None, email='noname@example.com', company_id=test_company.id)
         )
