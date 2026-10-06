@@ -12,11 +12,11 @@ import logging
 from datetime import datetime
 
 import click
-from sqlalchemy import or_, text
+from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Admin, Company, Contact, Deal, Stage
+from app.main_app.models import Admin, Company, Contact, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -706,64 +706,6 @@ async def fix_repeated_contact_names(db, live=False):
             print(f'Updated Pipedrive person {contact.pd_person_id}')
         except Exception as e:
             print(f'Failed to update Pipedrive person {contact.pd_person_id}: {e}')
-
-
-MERGE_JOIN = ', '
-# The value each field gets when it holds merged Pipedrive orgs' values joined together
-MERGE_JOIN_FIXES = {'price_plan': Company.PP_PAYG, 'utm_source': None, 'utm_campaign': None}
-
-
-def _merge_joined(model: type[Company | Deal]):
-    """Filter for rows where any field in MERGE_JOIN_FIXES is joined"""
-    return or_(*(getattr(model, field).contains(MERGE_JOIN) for field in MERGE_JOIN_FIXES))
-
-
-def _fix_merge_joins(obj: Company | Deal) -> list[tuple[str, str, str | None]]:
-    """Apply MERGE_JOIN_FIXES to the joined fields, returning (field, old value, new value) for each change"""
-    changes = []
-    for field, new_value in MERGE_JOIN_FIXES.items():
-        value = getattr(obj, field)
-        if value and MERGE_JOIN in value:
-            setattr(obj, field, new_value)
-            changes.append((field, value, new_value))
-    return changes
-
-
-@command
-async def fix_merge_joined_company_fields(db):
-    """
-    Repair the price plans and utm values that merged Pipedrive orgs left joined on companies (#437).
-
-    Pipedrive joins the values of merged orgs with ', ' and Hermes used to copy them onto the company. A joined
-    price_plan stops new deals being made for the company, and a joined utm value goes into the signup link of the
-    sales call invite. Nothing shows which org's value is the real one, so a joined price_plan becomes payg, the plan
-    TC2 parsing falls back to for an unknown plan, and a joined utm value is cleared. Live companies and their open
-    deals are fixed. TC2 companies get their real values back on their next TC2 update; the plan of a company with no
-    TC2 client is a fallback nothing will correct, so those are marked in the output.
-
-    Run this after the #437 fix is deployed, or the next Pipedrive webhook copies the joined values back.
-    """
-    companies = db.exec(
-        select(Company).where(Company.is_deleted == False, _merge_joined(Company)).order_by(Company.id)  # noqa: E712
-    ).all()
-    for company in companies:
-        for field, old, new in _fix_merge_joins(company):
-            note = ' (no TC2 client, check the plan)' if field == 'price_plan' and not company.tc2_cligency_id else ''
-            print(f'Company {company.id}: {field} {old!r} -> {new!r}{note}')
-        db.add(company)
-
-    deals = db.exec(
-        select(Deal)
-        .join(Company)
-        .where(Company.is_deleted == False, Deal.status == Deal.STATUS_OPEN, _merge_joined(Deal))  # noqa: E712
-        .order_by(Deal.id)
-    ).all()
-    for deal in deals:
-        for field, old, new in _fix_merge_joins(deal):
-            print(f'Deal {deal.id}: {field} {old!r} -> {new!r}')
-        db.add(deal)
-
-    print(f'Fixed {len(companies)} companies and {len(deals)} open deals')
 
 
 @click.command()

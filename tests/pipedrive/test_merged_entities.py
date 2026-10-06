@@ -1474,7 +1474,7 @@ class TestPipedriveWebhookMergeJoinedDealValues:
     """Pipedrive joins merged deals' custom field values with ', ', and Hermes must not copy them onto the deal"""
 
     def _create_deal(self, db, test_admin, test_company, test_pipeline, test_stage, name: str, pd_deal_id: int) -> Deal:
-        """A deal as fix_merge_joined_company_fields leaves it: price_plan payg and no utm values"""
+        """A deal with no joined values and no utm values"""
         return db.create(
             Deal(
                 name=name,
