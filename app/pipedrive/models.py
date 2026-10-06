@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import date
 from typing import Any, Optional
@@ -10,15 +9,12 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_
 logger = logging.getLogger('hermes.pipedrive')
 
 
-def _ignore_merge_join(v: Any, info: ValidationInfo) -> Any:
-    """
-    Pipedrive joins the values of merged orgs with ', ' (e.g. 'startup, payg'), and they stay joined after the merge.
-    A joined value is no single org's value, so it is treated as not sent and Hermes keeps its own.
-    """
-    if isinstance(v, str) and ', ' in v:
-        logger.info(f'Ignoring {info.field_name} {v!r} from Pipedrive: it is the values of merged orgs joined together')
-        return None
-    return v
+def _log_merge_join(model: type[BaseModel], info: ValidationInfo) -> None:
+    """Log that a joined value is ignored, naming the field and the Pipedrive record"""
+    logger.info(
+        f'Ignoring {info.field_name} of Pipedrive {model.__name__} {info.data.get("id")}: '
+        'it is the values of merged records joined together'
+    )
 
 
 class _HermesModel(BaseModel):
@@ -44,7 +40,56 @@ class _HermesModel(BaseModel):
         return data
 
 
-class Organisation(_HermesModel):
+class _MergeableModel(_HermesModel):
+    """
+    Pipedrive joins the values of merged orgs or deals with ', ' (e.g. 'startup, payg'), and they stay joined after the
+    merge. A joined value is no single org's or deal's value, so it is treated as not sent and Hermes keeps its own.
+    """
+
+    @field_validator(
+        'tc2_status',
+        'website',
+        'price_plan',
+        'estimated_income',
+        'utm_source',
+        'utm_campaign',
+        'tc2_cligency_url',
+        'signup_email',
+        'signup_phone',
+        'gclid',
+        mode='before',
+        check_fields=False,
+    )
+    @classmethod
+    def ignore_merge_join(cls, v, info: ValidationInfo):
+        if isinstance(v, str) and ', ' in v:
+            _log_merge_join(cls, info)
+            return None
+        return v
+
+    @field_validator('paid_invoice_count', mode='before', check_fields=False)
+    @classmethod
+    def convert_to_int(cls, v, info: ValidationInfo):
+        if isinstance(v, str):
+            if ', ' in v:
+                _log_merge_join(cls, info)
+                return None
+            return int(v) if v.strip() else 0
+        return v
+
+    @field_validator('signup_questionnaire', mode='before', check_fields=False)
+    @classmethod
+    def ignore_merged_questionnaires(cls, v, info: ValidationInfo):
+        """
+        A questionnaire is a dict with ', ' of its own, so merged questionnaires show as one dict following another.
+        """
+        if isinstance(v, str) and '}, {' in v:
+            _log_merge_join(cls, info)
+            return None
+        return v
+
+
+class Organisation(_MergeableModel):
     """Pipedrive Organization schema - uses centralized field mapping"""
 
     id: Optional[int] = None
@@ -84,45 +129,6 @@ class Organisation(_HermesModel):
     card_saved_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['card_saved_dt'])
 
     model_config = ConfigDict(populate_by_name=True)
-
-    @field_validator('paid_invoice_count', mode='before')
-    @classmethod
-    def convert_to_int(cls, v, info: ValidationInfo):
-        v = _ignore_merge_join(v, info)
-        if isinstance(v, str):
-            return int(v) if v.strip() else 0
-        return v
-
-    @field_validator(
-        'tc2_status',
-        'website',
-        'price_plan',
-        'estimated_income',
-        'utm_source',
-        'utm_campaign',
-        'signup_email',
-        'signup_phone',
-        'gclid',
-        mode='before',
-    )
-    @classmethod
-    def ignore_merge_join(cls, v, info: ValidationInfo):
-        return _ignore_merge_join(v, info)
-
-    @field_validator('signup_questionnaire', mode='before')
-    @classmethod
-    def ignore_merged_questionnaires(cls, v):
-        """
-        The questionnaire is JSON, so it has ', ' of its own. Merged orgs' questionnaires joined together aren't JSON,
-        so they are treated as not sent.
-        """
-        if isinstance(v, str) and v:
-            try:
-                json.loads(v)
-            except ValueError:
-                logger.info("Ignoring signup_questionnaire from Pipedrive: it is merged orgs' questionnaires joined")
-                return None
-        return v
 
 
 class Person(_HermesModel):
@@ -200,7 +206,7 @@ class Person(_HermesModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class PDDeal(_HermesModel):
+class PDDeal(_MergeableModel):
     """Pipedrive Deal schema - uses centralized field mapping"""
 
     id: Optional[int] = None
@@ -230,13 +236,6 @@ class PDDeal(_HermesModel):
     estimated_income: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['estimated_income'])
 
     model_config = ConfigDict(populate_by_name=True)
-
-    @field_validator('paid_invoice_count', mode='before')
-    @classmethod
-    def convert_to_int(cls, v):
-        if isinstance(v, str):
-            return int(v) if v.strip() else 0
-        return v
 
 
 class Activity(_HermesModel):

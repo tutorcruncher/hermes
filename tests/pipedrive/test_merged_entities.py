@@ -1199,6 +1199,9 @@ JOINED_ORG_VALUES = {
     'estimated_income': '£0 - £50,000, just starting out',
     'signup_questionnaire': '{"how-did-you-hear-about-us": ["Other"]}, {"how-did-you-hear-about-us": ["Google"]}',
     'paid_invoice_count': '3, 15',
+    'signup_email': 'first@example.com, second@example.com',
+    'signup_phone': '+447700900001, +447700900002',
+    'gclid': 'first-gclid, second-gclid',
 }
 
 
@@ -1214,6 +1217,9 @@ def _company_values(company: Company) -> tuple:
         company.estimated_income,
         company.signup_questionnaire,
         company.paid_invoice_count,
+        company.signup_email,
+        company.signup_phone,
+        company.gclid,
     )
 
 
@@ -1234,6 +1240,9 @@ class TestPipedriveWebhookMergeJoinedValues:
                 estimated_income='£0 - £50,000',
                 signup_questionnaire='{"how-did-you-hear-about-us": ["Other"]}',
                 paid_invoice_count=3,
+                signup_email='first@example.com',
+                signup_phone='+447700900001',
+                gclid='first-gclid',
             )
         )
 
@@ -1268,6 +1277,9 @@ class TestPipedriveWebhookMergeJoinedValues:
             '£0 - £50,000',
             '{"how-did-you-hear-about-us": ["Other"]}',
             3,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
         )
 
     async def test_joined_values_with_single_hermes_id_keep_company_values(self, client, db, test_admin):
@@ -1300,6 +1312,9 @@ class TestPipedriveWebhookMergeJoinedValues:
             '£0 - £50,000',
             '{"how-did-you-hear-about-us": ["Other"]}',
             3,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
         )
 
     async def test_single_values_with_commas_are_copied(self, client, db, test_admin):
@@ -1338,6 +1353,9 @@ class TestPipedriveWebhookMergeJoinedValues:
             '£50,000 - £150,000',
             '{"how-did-you-hear-about-us": ["Other"], "lessons": ["Entirely remote"]}',
             15,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
         )
 
     async def test_joined_paid_invoice_count_does_not_drop_webhook(self, client, db, test_admin):
@@ -1414,4 +1432,167 @@ class TestPipedriveWebhookMergeJoinedValues:
             'pending_email_conf',
             0,
             None,
+        )
+
+
+def _deal_custom_fields(**values) -> dict:
+    """Deal custom fields in the nested form Pipedrive v2 webhooks send them"""
+    return {DEAL_PD_FIELD_MAP[f]: {'type': 'varchar', 'value': v} for f, v in values.items()}
+
+
+JOINED_DEAL_VALUES = {
+    'price_plan': 'startup, payg',
+    'tc2_status': 'pending_email_conf, trial',
+    'website': 'https://first.example.com, https://second.example.com',
+    'utm_source': 'direct, none',
+    'utm_campaign': 'global tutorcruncher brand, none',
+    'estimated_income': '£0 - £50,000, just starting out',
+    'signup_questionnaire': "{'how-did-you-hear-about-us': 'Other'}, {'how-did-you-hear-about-us': 'Google'}",
+    'tc2_cligency_url': 'https://secure.tutorcruncher.com/clients/1/, https://secure.tutorcruncher.com/clients/2/',
+    'paid_invoice_count': '3, 15',
+}
+
+
+def _deal_values(deal: Deal) -> tuple:
+    """The deal fields a deal webhook can change"""
+    return (
+        deal.name,
+        deal.status,
+        deal.price_plan,
+        deal.tc2_status,
+        deal.website,
+        deal.utm_source,
+        deal.utm_campaign,
+        deal.estimated_income,
+        deal.signup_questionnaire,
+        deal.tc2_cligency_url,
+        deal.paid_invoice_count,
+    )
+
+
+class TestPipedriveWebhookMergeJoinedDealValues:
+    """Pipedrive joins merged deals' custom field values with ', ', and Hermes must not copy them onto the deal"""
+
+    def _create_deal(self, db, test_admin, test_company, test_pipeline, test_stage, name: str, pd_deal_id: int) -> Deal:
+        """A deal as fix_merge_joined_company_fields leaves it: price_plan payg and no utm values"""
+        return db.create(
+            Deal(
+                name=name,
+                pd_deal_id=pd_deal_id,
+                admin_id=test_admin.id,
+                company_id=test_company.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                price_plan='payg',
+                tc2_status='trial',
+                website='https://first.example.com',
+                estimated_income='£0 - £50,000',
+                signup_questionnaire="{'how-did-you-hear-about-us': 'Other'}",
+                tc2_cligency_url='https://secure.tutorcruncher.com/clients/1/',
+                paid_invoice_count=3,
+            )
+        )
+
+    async def test_merged_deal_keeps_deal_values(self, client, db, test_admin, test_company, test_pipeline, test_stage):
+        """Test that a merged deal's joined values leave the deal's values as they were, and the rest still updates"""
+        deal1 = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+        deal2 = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 2', 900)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Merged Deal',
+                'status': 'won',
+                'custom_fields': _deal_custom_fields(hermes_id=f'{deal1.id}, {deal2.id}', **JOINED_DEAL_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal1)
+        assert _deal_values(deal1) == (
+            'Merged Deal',
+            Deal.STATUS_WON,
+            'payg',
+            'trial',
+            'https://first.example.com',
+            None,
+            None,
+            '£0 - £50,000',
+            "{'how-did-you-hear-about-us': 'Other'}",
+            'https://secure.tutorcruncher.com/clients/1/',
+            3,
+        )
+
+    async def test_joined_paid_invoice_count_does_not_drop_deal_webhook(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that a joined paid_invoice_count, now or before the change, doesn't stop the rest of the deal update"""
+        deal = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Deal 1',
+                'status': 'won',
+                'custom_fields': _deal_custom_fields(hermes_id=str(deal.id), paid_invoice_count='50, 35'),
+            },
+            'previous': {'status': 'open', 'custom_fields': _deal_custom_fields(paid_invoice_count='6, 13')},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert (deal.status, deal.paid_invoice_count) == (Deal.STATUS_WON, 3)
+
+    async def test_single_deal_values_are_copied(self, client, db, test_admin, test_company, test_pipeline, test_stage):
+        """Test that one deal's own values are copied, including commas and a questionnaire stored as a Python dict"""
+        deal = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Deal 1',
+                'status': 'open',
+                'custom_fields': _deal_custom_fields(
+                    hermes_id=str(deal.id),
+                    price_plan='enterprise',
+                    utm_source='google',
+                    estimated_income='£50,000 - £150,000',
+                    signup_questionnaire="{'how-did-you-hear-about-us': 'Other', 'lessons': 'Entirely remote'}",
+                    tc2_cligency_url='https://secure.tutorcruncher.com/clients/2/',
+                    paid_invoice_count='15',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert _deal_values(deal) == (
+            'Deal 1',
+            Deal.STATUS_OPEN,
+            'enterprise',
+            'trial',
+            'https://first.example.com',
+            'google',
+            None,
+            '£50,000 - £150,000',
+            "{'how-did-you-hear-about-us': 'Other', 'lessons': 'Entirely remote'}",
+            'https://secure.tutorcruncher.com/clients/2/',
+            15,
         )
