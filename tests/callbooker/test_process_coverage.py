@@ -14,7 +14,7 @@ from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
 from app.callbooker.process import _build_meeting_template_vars, book_meeting
 from app.core.config import settings
-from app.main_app.models import Config, Deal, Meeting, Pipeline, Stage
+from app.main_app.models import Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from tests.factories import CompanyFactory
 from tests.helpers import fake_gcal_builder
 
@@ -72,7 +72,7 @@ class TestCallbookerProcessEdgeCases:
 
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
-        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config
+        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config, caplog
     ):
         """Test that booking raises error when admin doesn't exist"""
         mock_check_gcal.return_value = True
@@ -95,13 +95,19 @@ class TestCallbookerProcessEdgeCases:
 
         assert r.status_code == 400
         assert 'Admin not found' in r.json()['message']
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        # Unlike an expected refusal, a missing admin is logged as an error, once
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            f'Admin 999 not found, could not book a call for contact {contact.id}'
+        ]
 
-    async def test_sales_call_no_config_raises_error(self, client, db, test_admin):
-        """Test that booking raises error when no config exists"""
-        # Ensure no Config exists
-        for config in db.exec(select(Config)).all():
-            db.delete(config)
-        db.commit()
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_without_config_books_without_deal(
+        self, mock_gcal_builder, mock_add_task, client, db, test_admin, caplog
+    ):
+        """Test that a missing config is logged and the meeting is still booked, without a deal"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
 
         future_dt = datetime.now(utc) + timedelta(days=1)
         meeting_data = {
@@ -118,26 +124,40 @@ class TestCallbookerProcessEdgeCases:
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
-        assert r.status_code == 400
-        assert 'Config not found' in r.json()['message']
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
 
+        company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == company.id
+        assert meeting.deal_id is None
+        assert db.exec(select(Deal)).all() == []
+        assert company.has_booked_call is True
+        assert (
+            'ERROR',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            'Config not found',
+        ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
+        assert [(c.args[0].__name__, c.args[1]) for c in mock_add_task.call_args_list] == [
+            ('sync_company_to_pipedrive', company.id),
+            ('sync_meeting_to_pipedrive', meeting.id),
+        ]
+
+    @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_sales_call_stage_not_found_raises_error(
-        self, mock_gcal_builder, client, db, test_admin, test_pipeline, test_config
+    async def test_sales_call_with_missing_stage_books_without_deal(
+        self, mock_gcal_builder, mock_add_task, client, db, test_admin, test_pipeline, test_config, caplog
     ):
-        """Test that booking raises error when stage referenced by pipeline doesn't exist"""
-        mock_gcal_builder.side_effect = fake_gcal_builder()
+        """Test that a pipeline pointing at a missing stage is logged and the meeting is still booked, without a deal"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
 
-        # Create a pipeline with an invalid dft_entry_stage_id
         stage = db.create(Stage(pd_stage_id=999, name='Test Stage'))
-        pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage.id))
-
-        # Update config to use this pipeline
+        stage_id = stage.id
+        pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage_id))
         test_config.payg_pipeline_id = pipeline.id
         db.add(test_config)
         db.commit()
-
-        # Delete the stage to simulate it being missing
         db.delete(stage)
         db.commit()
 
@@ -156,8 +176,20 @@ class TestCallbookerProcessEdgeCases:
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
-        assert r.status_code == 400
-        assert 'Stage' in r.json()['message'] and 'not found' in r.json()['message']
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.deal_id is None
+        assert db.exec(select(Deal)).all() == []
+        assert company.has_booked_call is True
+        assert (
+            'ERROR',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            f'Stage {stage_id} not found',
+        ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')

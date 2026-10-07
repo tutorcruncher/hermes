@@ -5,6 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.main_app.models import Company
+
 logger = logging.getLogger('tc2')
 
 
@@ -37,6 +39,7 @@ class _TCAgency(BaseModel):
     price_plan: str
     narc: Optional[bool] = False
     receive_marketing_emails: Optional[bool] = False
+    operate_as_ea: bool = False
     signup_questionnaire: Optional[str] = None
     pay0_dt: Optional[datetime] = None
     pay1_dt: Optional[datetime] = None
@@ -52,9 +55,8 @@ class _TCAgency(BaseModel):
     @classmethod
     def _price_plan(cls, v):
         plan = v.split('-')[-1]
-        valid_plans = ('payg', 'startup', 'enterprise')
-        if plan not in valid_plans:
-            plan = 'payg'
+        if plan not in Company.PRICE_PLANS:
+            plan = Company.PP_PAYG
             logger.warning(f'Invalid price plan {v}')
         return plan
 

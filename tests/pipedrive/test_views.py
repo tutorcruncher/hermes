@@ -2,8 +2,11 @@
 Tests for Pipedrive webhook endpoint.
 """
 
-from app.main_app.models import Pipeline, Stage
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from unittest.mock import patch
+
+from app.main_app.models import Contact, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP
+from app.pipedrive.tasks import sync_person
 
 
 class TestPipedriveWebhookEndpoint:
@@ -59,6 +62,58 @@ class TestPipedriveWebhookEndpoint:
 
         db.refresh(test_company)
         assert test_company.receive_marketing_emails is True
+
+    async def test_pipedrive_callback_does_not_overwrite_operate_as_ea(self, client, db, test_company):
+        """operate_as_ea is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.operate_as_ea = True
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Updated Name',
+                COMPANY_PD_FIELD_MAP['operate_as_ea']: 'No',
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+
+        db.refresh(test_company)
+        assert (test_company.name, test_company.operate_as_ea) == ('Updated Name', True)
+
+    async def test_pipedrive_callback_ignores_tc2_status(self, client, db, test_company):
+        """tc2_status is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.tc2_status = 'trial'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                    COMPANY_PD_FIELD_MAP['tc2_status']: {'type': 'varchar', 'value': 'terminated'},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.name == 'Updated Name'
+        assert test_company.tc2_status == 'trial'
 
     async def test_pipedrive_callback_organization_with_previous(self, client, db, test_company):
         """Test webhook for organization with previous data"""
@@ -468,7 +523,7 @@ class TestPipedriveWebhookEndpoint:
         db.refresh(test_company)
         assert test_company.name == 'Test Agency V2'
         assert test_company.paid_invoice_count == 10
-        assert test_company.tc2_status == 'trial'
+        assert test_company.tc2_status == 'pending_email_conf'
 
     async def test_pipedrive_callback_organization_creation_with_bdr_and_support(self, client, db, test_admin):
         """Test creating organization with BDR and support person IDs"""
@@ -555,3 +610,44 @@ class TestPipedriveWebhookEndpoint:
         assert contact is not None
         assert contact.first_name == 'Test'
         assert contact.last_name == 'Person'
+
+
+def _lowercase_name_webhook(contact: Contact) -> dict:
+    return {
+        'meta': {'entity': 'person', 'action': 'change'},
+        'data': {
+            'id': contact.pd_person_id,
+            CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+            'name': 'john Smith',
+            'first_name': '',
+            'last_name': 'john Smith',
+        },
+        'previous': {},
+    }
+
+
+class TestPipedriveLowercaseNameWebhook:
+    """Pipedrive puts a name that starts lowercase ('john Smith') all in last_name with an empty first_name (#418)"""
+
+    async def test_person_webhook_with_empty_first_name_splits_name(self, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=_lowercase_name_webhook(contact))
+
+        assert r.status_code == 200
+        db.refresh(contact)
+        assert contact.first_name == 'john'
+        assert contact.last_name == 'Smith'
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_next_sync_does_not_repeat_first_name(self, mock_api, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+        client.post(client.app.url_path_for('pipedrive-callback'), json=_lowercase_name_webhook(contact))
+        mock_api.return_value = {'data': {'id': 999, 'name': 'john Smith', 'first_name': '', 'last_name': 'john Smith'}}
+
+        await sync_person(contact.id)
+
+        sent_names = [
+            c.kwargs['data']['name'] for c in mock_api.call_args_list if 'name' in (c.kwargs.get('data') or {})
+        ]
+        assert sent_names == []

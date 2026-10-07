@@ -1,6 +1,7 @@
 import logging
 from functools import cached_property
 
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.core.database import DBSession
@@ -9,6 +10,34 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person
 
 logger = logging.getLogger('hermes.pipedrive')
+
+
+def _contact_from_pd_person(pd_person: Person, company_id: int) -> Contact:
+    return Contact(
+        pd_person_id=pd_person.id,
+        company_id=company_id,
+        first_name=pd_person.first_name[:255] if pd_person.first_name else None,
+        last_name=pd_person.last_name[:255] if pd_person.last_name else None,
+        email=pd_person.email,
+        phone=pd_person.phone,
+    )
+
+
+def mark_deleted_from_pipedrive(db: DBSession, obj: Company | Contact | Deal, pd_id_field: str) -> None:
+    """
+    Record in Hermes that the object no longer exists in Pipedrive: a deal gets the deleted status, a company or
+    contact is flagged is_deleted, and the Pipedrive id is cleared. The row is kept because its data may still be
+    useful. Used by the delete webhook and by syncs that get a 404/410 from Pipedrive.
+    """
+    pd_id = getattr(obj, pd_id_field)
+    if isinstance(obj, Deal):
+        obj.status = Deal.STATUS_DELETED
+    else:
+        obj.is_deleted = True
+    setattr(obj, pd_id_field, None)
+    db.add(obj)
+    db.commit()
+    logger.info(f'Cleared {pd_id_field} {pd_id} from {type(obj).__name__}:{obj.id} (marked as deleted in Pipedrive)')
 
 
 class PipedriveObjProcessor:
@@ -41,47 +70,95 @@ class PipedriveObjProcessor:
         return obj
 
     async def delete_obj(self, pd_obj: Organisation | Person | PDDeal):
-        # For deletions, we just clear the pd_*_id field to indicate the object no longer exists in Pipedrive
-        # We don't delete from Hermes because the data may still be useful
-        hermes_obj = self.db.exec(
-            select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == pd_obj.id)
-        ).one_or_none()
+        hermes_obj = self._linked_obj(pd_obj)
         if hermes_obj:
-            if self.hermes_model == Deal:
-                hermes_obj.status = Deal.STATUS_DELETED
-            if self.hermes_model == Company:
-                hermes_obj.is_deleted = True
-            if self.hermes_model == Contact:
-                hermes_obj.is_deleted = True
-            setattr(hermes_obj, self.pd_id_field, None)
-            self.db.add(hermes_obj)
-            self.db.commit()
-            logger.info(
-                'Cleared %s from %s:%s (marked as deleted in Pipedrive)',
-                self.pd_id_field,
-                self.hermes_model.__name__,
-                hermes_obj.id,
-            )
+            mark_deleted_from_pipedrive(self.db, hermes_obj, self.pd_id_field)
         return None
 
-    def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
-        """Mark merged losers as deleted and clear their Pipedrive ID,
-        since the entity no longer exists in Pipedrive after the merge."""
-        for loser_id in loser_ids:
-            loser_obj = self.db.get(self.hermes_model, loser_id)
-            if loser_obj and not loser_obj.is_deleted:
-                loser_obj.is_deleted = True
-                setattr(loser_obj, self.pd_id_field, None)
-                self.db.add(loser_obj)
-        self.db.commit()
+    def _linked_obj(self, pd_obj) -> Company | Contact | Deal | None:
+        """The Hermes object linked to the Pipedrive one by its Pipedrive id"""
+        return self.db.exec(
+            select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == pd_obj.id)
+        ).one_or_none()
+
+    def _find_obj(self, pd_obj) -> Company | Contact | Deal | None:
+        """
+        The Hermes object to update from the Pipedrive one: the one linked by Pipedrive id, else the one its hermes_id
+        names if that is linked to no other Pipedrive object. A hermes_id can be an id from before the move to Hermes
+        v3, which no object has or which a newer, unrelated object now has, or a duplicate Pipedrive person's, so
+        an object linked elsewhere is never updated from it. A merged object's hermes_id lists every merged id, see
+        _find_merged_obj.
+        """
+        hermes_id = getattr(pd_obj, 'hermes_id', None)
+        if isinstance(hermes_id, str) and ',' in hermes_id:
+            return self._find_merged_obj(pd_obj)
+
+        hermes_obj = self._linked_obj(pd_obj)
+        if hermes_obj or not hermes_id:
+            return hermes_obj
+
+        hermes_obj = self.db.get(self.hermes_model, hermes_id)
+        if not hermes_obj:
+            logger.warning(
+                f'Not updating from Pipedrive {self.pd_model.__name__} {pd_obj.id}: no {self.hermes_model.__name__} '
+                f'is linked to it or has hermes_id {hermes_id}'
+            )
+            return None
+        if linked_id := getattr(hermes_obj, self.pd_id_field):
+            logger.warning(
+                f'Not updating {self.hermes_model.__name__} {hermes_obj.id} from Pipedrive {self.pd_model.__name__} '
+                f'{pd_obj.id}: it is linked to {self.pd_id_field} {linked_id}'
+            )
+            return None
+        return hermes_obj
+
+    def _find_merged_obj(self, pd_obj) -> Company | Contact | Deal | None:
+        """
+        The object linked to the merged Pipedrive one wins, else the first live one its hermes_id lists that is linked
+        to no other Pipedrive object. The other live listed ones with no Pipedrive id are marked deleted, as their next
+        sync would create a duplicate. Listed ones linked to another Pipedrive object are left as they are: Pipedrive
+        sends a delete webhook for each merged-away object, which marks the object linked to it deleted, and a listed
+        id can be an old id that a newer, unrelated object now has. A deleted one has no Pipedrive id and is not
+        brought back, as its next sync would create a duplicate.
+        """
+        hermes_ids = list(dict.fromkeys(int(i.strip()) for i in str(pd_obj.hermes_id).split(',')))
+        listed = [obj for i in hermes_ids if (obj := self.db.get(self.hermes_model, i))]
+        unlinked = [obj for obj in listed if not obj.is_deleted and not getattr(obj, self.pd_id_field)]
+        winner = self._linked_obj(pd_obj) or next(iter(unlinked), None)
+
+        record = f'Pipedrive {self.pd_model.__name__} {pd_obj.id} with hermes_id {pd_obj.hermes_id}'
+        model_name = self.hermes_model.__name__
+        if winner:
+            logger.info(f'Detected merged entity, updating {model_name} {winner.id} from {record}')
+        elif listed:
+            logger.warning(
+                f'Not updating from {record}: every {model_name} it lists is deleted or linked to another '
+                f'{self.pd_id_field}'
+            )
+        else:
+            logger.warning(f'Not updating from {record}: no {model_name} is linked to it or listed in its hermes_id')
+
+        losers = [obj for obj in unlinked if obj is not winner]
+        for loser in losers:
+            loser.is_deleted = True
+            self.db.add(loser)
+        if losers:
+            self.db.commit()
+            logger.info(f'Marked {model_name} {[obj.id for obj in losers]} deleted: listed by {record}')
+        return winner
 
     async def _update_obj(
         self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal
     ) -> Company | Contact | Deal:
         raise NotImplementedError
 
-    async def _add_obj(self, new_pd_obj: Organisation | Person | PDDeal) -> Company | Contact | Deal:
+    async def _add_obj(self, new_pd_obj: Organisation | Person | PDDeal) -> Company | Contact | Deal | None:
+        """Build a new Hermes object from the Pipedrive one, or return None when it cannot be stored in Hermes"""
         raise NotImplementedError
+
+    def _on_created(self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal) -> None:
+        """Runs after a brand-new object from Pipedrive has been saved"""
+        pass
 
     async def process(
         self, old_pd_obj: Organisation | Person | PDDeal | None, new_pd_obj: Organisation | Person | PDDeal | None
@@ -89,45 +166,61 @@ class PipedriveObjProcessor:
         if not new_pd_obj:
             # The object has been deleted
             await self.delete_obj(old_pd_obj)
-        else:
-            if hasattr(new_pd_obj, 'hermes_id') and new_pd_obj.hermes_id:
-                if isinstance(new_pd_obj.hermes_id, str) and ',' in str(new_pd_obj.hermes_id):
-                    hermes_ids = list(map(int, map(lambda x: x.strip(), str(new_pd_obj.hermes_id).split(','))))
-                    winner_id = hermes_ids[0]
-                    loser_ids = hermes_ids[1:]
-
-                    # Take the first ID from comma-separated list (primary entity after merge)
-                    new_pd_obj.hermes_id = winner_id
-                    logger.info(f'Detected merged entity, using first hermes_id: {new_pd_obj.hermes_id}')
-
-                    self._mark_merged_losers_deleted(loser_ids)
-
-                hermes_obj = self.db.get(self.hermes_model, new_pd_obj.hermes_id)
-                if hermes_obj:
-                    # The obj exists in Hermes and therefore needs updated
-                    updated_obj = await self._update_obj(hermes_obj=hermes_obj, pd_obj=new_pd_obj)
-                    await self.save_obj(updated_obj, new_pd_obj, 'Updated')
-                else:
-                    # Somehow the object has been deleted in Hermes? Don't think this can happen
-                    logger.error(
-                        f'Object exists in Pipedrive with hermes_id {new_pd_obj.hermes_id} but not found in Hermes'
-                    )
-            else:
-                hermes_obj = self.db.exec(
-                    select(self.hermes_model).where(getattr(self.hermes_model, self.pd_id_field) == new_pd_obj.id)
-                ).one_or_none()
-                if hermes_obj:
-                    # The object exists in Hermes already, but the PD object doesn't have the hermes_id. It should
-                    # be updated in Hermes
-                    updated_obj = await self._update_obj(hermes_obj=hermes_obj, pd_obj=new_pd_obj)
-                    await self.save_obj(updated_obj, new_pd_obj, 'Updated')
-                else:
-                    # The object is brand new
-                    new_obj = await self._add_obj(new_pd_obj)
-                    await self.save_obj(new_obj, new_pd_obj, 'Created')
+        elif hermes_obj := self._find_obj(new_pd_obj):
+            updated_obj = await self._update_obj(hermes_obj=hermes_obj, pd_obj=new_pd_obj)
+            await self.save_obj(updated_obj, new_pd_obj, 'Updated')
+        elif not getattr(new_pd_obj, 'hermes_id', None):
+            # The object is brand new
+            new_obj = await self._add_obj(new_pd_obj)
+            if new_obj:
+                await self.save_obj(new_obj, new_pd_obj, 'Created')
+                self._on_created(new_obj, new_pd_obj)
 
 
-class OrganisationProcessor(PipedriveObjProcessor):
+class _LinkedObjProcessor(PipedriveObjProcessor):
+    """
+    Orgs and deals are found by the Pipedrive id Hermes links to them before their hermes_id, because a merged org's
+    hermes_id can list ids that are no Hermes company's or belong to another live company. With none linked, the
+    object _listed_id picks from the hermes_id is used if it is not linked to another Pipedrive object, and the org
+    webhook links the company to the org. A company whose org was merged away or deleted is brought back that way, so
+    the surviving org's deals find it. A deleted deal is not brought back, as a deal webhook doesn't link it and its next
+    sync would create a duplicate. A NARC company is never linked, as its next TC2 update would delete the org from
+    Pipedrive. The other merged ids are not marked deleted, as a merged-away object's next sync gets a 404/410 from
+    Pipedrive and marks it deleted.
+    """
+
+    def _listed_id(self, pd_obj: Organisation | PDDeal) -> int:
+        """The id the hermes_id lists first"""
+        return int(str(pd_obj.hermes_id).split(',')[0])
+
+    def _find_obj(self, pd_obj: Organisation | PDDeal) -> Company | Deal | None:
+        hermes_obj = self._linked_obj(pd_obj)
+        if hermes_obj or not pd_obj.hermes_id:
+            return hermes_obj
+
+        hermes_id = self._listed_id(pd_obj)
+        hermes_obj = self.db.get(self.hermes_model, hermes_id)
+        if not hermes_obj:
+            logger.warning(
+                f'Not updating from Pipedrive {self.pd_model.__name__} {pd_obj.id}: no {self.hermes_model.__name__} '
+                f'is linked to it or has hermes_id {pd_obj.hermes_id}'
+            )
+            return None
+
+        record = f'{self.hermes_model.__name__} {hermes_id} from Pipedrive {self.pd_model.__name__} {pd_obj.id}'
+        if linked_id := getattr(hermes_obj, self.pd_id_field):
+            logger.warning(f'Not updating {record}: it is linked to {self.pd_id_field} {linked_id}')
+            return None
+        if isinstance(hermes_obj, Deal) and hermes_obj.status == Deal.STATUS_DELETED:
+            logger.warning(f'Not updating {record}: it is deleted')
+            return None
+        if isinstance(hermes_obj, Company) and hermes_obj.narc:
+            logger.warning(f'Not updating {record}: it is NARC')
+            return None
+        return hermes_obj
+
+
+class OrganisationProcessor(_LinkedObjProcessor):
     hermes_model = Company
     pd_model = Organisation
     pd_id_field = 'pd_org_id'
@@ -137,9 +230,18 @@ class OrganisationProcessor(PipedriveObjProcessor):
         return [
             f
             for f in list(COMPANY_PD_FIELD_MAP.keys())
-            # receive_marketing_emails is TC2-authoritative; Pipedrive must not write it back.
+            # receive_marketing_emails, operate_as_ea and tc2_status are TC2-authoritative;
+            # Pipedrive must not write them back.
             if f
-            not in ['hermes_id', 'bdr_person_id', 'support_person_id', 'tc2_cligency_url', 'receive_marketing_emails']
+            not in [
+                'hermes_id',
+                'bdr_person_id',
+                'support_person_id',
+                'tc2_cligency_url',
+                'receive_marketing_emails',
+                'operate_as_ea',
+                'tc2_status',
+            ]
         ]
 
     async def _add_obj(self, pd_obj: Organisation) -> Company:
@@ -156,7 +258,43 @@ class OrganisationProcessor(PipedriveObjProcessor):
             kwargs['support_person_id'] = self.hermes_admin_ids[pd_obj.support_person_id]
         return Company(**kwargs)
 
+    def _listed_id(self, pd_obj: Organisation) -> int:
+        """
+        The first company the hermes_id lists that has a TC2 client, else the first id. TC2 updates only reach the
+        company with the TC2 client, so with another company linked the org would never get its TC2 data. While that
+        company is still linked to its merged-away org it is skipped, and it is linked on the org's next change once the
+        delete webhook or a sync's 404 has cleared the old link.
+        """
+        hermes_ids = [int(i) for i in str(pd_obj.hermes_id).split(',')]
+        tc2_ids = set(
+            self.db.exec(
+                select(Company.id).where(Company.id.in_(hermes_ids), Company.tc2_cligency_id.is_not(None))
+            ).all()
+        )
+        return next((i for i in hermes_ids if i in tc2_ids), hermes_ids[0])
+
+    def _delete_unsynced_deals(self, company: Company) -> None:
+        """
+        Mark deleted the open deals of a company being brought back that never reached Pipedrive, as they are from
+        before the company was deleted and its next sync would create them in Pipedrive
+        """
+        deals = self.db.exec(
+            select(Deal).where(
+                Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN, Deal.pd_deal_id.is_(None)
+            )
+        ).all()
+        for deal in deals:
+            deal.status = Deal.STATUS_DELETED
+            self.db.add(deal)
+        if deals:
+            logger.info(f'Marked deals {[d.id for d in deals]} of Company {company.id} deleted: never in Pipedrive')
+
     async def _update_obj(self, hermes_obj: Company, pd_obj: Organisation) -> Company:
+        if hermes_obj.pd_org_id != pd_obj.id:
+            logger.info(f'Linking Company {hermes_obj.id} to pd_org_id {pd_obj.id} (deleted: {hermes_obj.is_deleted})')
+            hermes_obj.pd_org_id = pd_obj.id
+        if hermes_obj.is_deleted:
+            self._delete_unsynced_deals(hermes_obj)
         hermes_obj.is_deleted = False
 
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
@@ -195,20 +333,24 @@ class PersonProcessor(PipedriveObjProcessor):
     def custom_field_names(self):
         return [f for f in list(CONTACT_PD_FIELD_MAP.keys()) if f != 'hermes_id']
 
-    async def _add_obj(self, pd_obj: Person) -> Contact:
-        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
-        return Contact(
-            pd_person_id=pd_obj.id,
-            company_id=company.id,
-            first_name=pd_obj.first_name,
-            last_name=pd_obj.last_name,
-            email=pd_obj.email,
-            phone=pd_obj.phone,
-        )
+    async def _add_obj(self, pd_obj: Person) -> Contact | None:
+        if not pd_obj.org_id:
+            # Comparing pd_org_id with None would match every company without a Pipedrive organisation
+            logger.info(f'Skipping Pipedrive person {pd_obj.id}: it has no organisation and a contact needs a company')
+            return None
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+        if not company:
+            # The org's own webhook can come after the person's, or the org was deleted
+            logger.warning(f'Skipping Pipedrive person {pd_obj.id}: no company is linked to pd_org_id {pd_obj.org_id}')
+            return None
+        return _contact_from_pd_person(pd_obj, company.id)
 
     async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
-        hermes_obj.is_deleted = False
-
+        # is_deleted is left as it is: brought back without its pd_person_id, the next sync would duplicate the person
+        if not hermes_obj.pd_person_id and not hermes_obj.is_deleted:
+            # Found by hermes_id with no person linked: its next sync would otherwise create a duplicate person
+            logger.info(f'Linking Contact {hermes_obj.id} to pd_person_id {pd_obj.id}')
+            hermes_obj.pd_person_id = pd_obj.id
         if pd_obj.first_name and pd_obj.first_name[:255] != hermes_obj.first_name:
             hermes_obj.first_name = pd_obj.first_name[:255]
         if pd_obj.last_name and pd_obj.last_name[:255] != hermes_obj.last_name:
@@ -230,7 +372,7 @@ class PersonProcessor(PipedriveObjProcessor):
         return hermes_obj
 
 
-class PDDealProcessor(PipedriveObjProcessor):
+class PDDealProcessor(_LinkedObjProcessor):
     hermes_model = Deal
     pd_model = PDDeal
     pd_id_field = 'pd_deal_id'
@@ -239,11 +381,21 @@ class PDDealProcessor(PipedriveObjProcessor):
     def custom_field_names(self):
         return [f for f in list(DEAL_PD_FIELD_MAP.keys()) if f != 'hermes_id']
 
-    def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
-        pass
+    def __init__(self, db: DBSession):
+        super().__init__(db)
+        # (deal id, Pipedrive person id) pairs whose person the view fetches in a background task
+        self.contacts_to_fetch: list[tuple[int, int]] = []
 
-    async def _add_obj(self, pd_obj: PDDeal) -> Deal:
-        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
+    async def _add_obj(self, pd_obj: PDDeal) -> Deal | None:
+        if not pd_obj.org_id:
+            # Comparing pd_org_id with None would match every company without a Pipedrive organisation
+            logger.info(f'Skipping Pipedrive deal {pd_obj.id}: it has no organisation and a deal needs a company')
+            return None
+        company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+        if not company:
+            # The org's own webhook can come after the deal's, or the org was deleted. The deal's next change adds it
+            logger.warning(f'Skipping Pipedrive deal {pd_obj.id}: no company is linked to pd_org_id {pd_obj.org_id}')
+            return None
         pipeline = self.db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == pd_obj.pipeline_id)).one()
         stage = self.db.exec(select(Stage).where(Stage.pd_stage_id == pd_obj.stage_id)).one()
 
@@ -257,11 +409,17 @@ class PDDealProcessor(PipedriveObjProcessor):
             'stage_id': stage.id,
         }
 
-        contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
-        if contact:
-            kwargs['contact_id'] = contact.id
+        if pd_obj.person_id:
+            contact = self.db.exec(select(Contact).where(Contact.pd_person_id == pd_obj.person_id)).one_or_none()
+            if contact:
+                kwargs['contact_id'] = contact.id
         kwargs.update({f: getattr(pd_obj, f) for f in self.custom_field_names})
         return Deal(**kwargs)
+
+    def _on_created(self, hermes_obj: Deal, pd_obj: PDDeal) -> None:
+        # A deal made outside Hermes can link a person whose own webhook was skipped because it had no organisation
+        if not hermes_obj.contact_id and pd_obj.person_id:
+            self.contacts_to_fetch.append((hermes_obj.id, pd_obj.person_id))
 
     async def _update_obj(self, hermes_obj: Deal, pd_obj: PDDeal) -> Deal:
         if pd_obj.title and pd_obj.title[:255] != hermes_obj.name:
@@ -285,8 +443,13 @@ class PDDealProcessor(PipedriveObjProcessor):
                 hermes_obj.stage_id = stage.id
 
         if pd_obj.org_id:
-            company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one()
-            if company.id != hermes_obj.company_id:
+            company = self.db.exec(select(Company).where(Company.pd_org_id == pd_obj.org_id)).one_or_none()
+            if not company:
+                logger.warning(
+                    f'Keeping company {hermes_obj.company_id} on Deal {hermes_obj.id}: no company is linked to '
+                    f'pd_org_id {pd_obj.org_id}'
+                )
+            elif company.id != hermes_obj.company_id:
                 hermes_obj.company_id = company.id
 
         if pd_obj.person_id:
@@ -340,3 +503,42 @@ class PDStageProcessor(PipedriveObjProcessor):
         if pd_obj.name and hermes_obj.name != pd_obj.name[:255]:
             hermes_obj.name = pd_obj.name[:255]
         return hermes_obj
+
+
+def find_or_create_pd_contact(db: DBSession, pd_person: Person, company: Company) -> tuple[Contact | None, str]:
+    """
+    Find or create the contact for a Pipedrive person linked to a deal of `company`, returning it with the outcome.
+
+    The callbooker books into the newest contact with the booker's email, so a new contact is only created when no
+    other contact has its email. Otherwise it would take over another company's bookings. Flushes, never commits.
+    """
+    contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person.id)).one_or_none()
+    if contact:
+        return contact, 'existing'
+    if pd_person.hermes_id:
+        # Hermes created this person, so its contact already exists
+        return None, 'hermes_id'
+    if pd_person.org_id and pd_person.org_id != company.pd_org_id:
+        # Syncing the contact would move the person out of their own organisation in Pipedrive
+        return None, 'other_org'
+    if not pd_person.email:
+        # The callbooker can't book a contact with no email, and without one the person can't be checked against
+        # the existing contacts below
+        return None, 'no_email'
+
+    # Deleted contacts count too, because the callbooker's email lookup doesn't skip them
+    same_email = db.exec(select(Contact).where(func.lower(Contact.email) == pd_person.email.lower())).all()
+    if len(same_email) == 1:
+        match = same_email[0]
+        if match.company_id == company.id and not match.is_deleted and not match.pd_person_id:
+            match.pd_person_id = pd_person.id
+            db.add(match)
+            db.flush()
+            return match, 'adopted'
+    if same_email:
+        return None, 'email_elsewhere'
+
+    contact = _contact_from_pd_person(pd_person, company.id)
+    db.add(contact)
+    db.flush()
+    return contact, 'created'

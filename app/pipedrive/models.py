@@ -1,9 +1,20 @@
+import logging
 from datetime import date
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+
+logger = logging.getLogger('hermes.pipedrive')
+
+
+def _log_merge_join(model: type[BaseModel], info: ValidationInfo) -> None:
+    """Log that a joined value is ignored, naming the field and the Pipedrive record"""
+    logger.info(
+        f'Ignoring {info.field_name} of Pipedrive {model.__name__} {info.data.get("id")}: '
+        'it is the values of merged records joined together'
+    )
 
 
 class _HermesModel(BaseModel):
@@ -29,7 +40,56 @@ class _HermesModel(BaseModel):
         return data
 
 
-class Organisation(_HermesModel):
+class _MergeableModel(_HermesModel):
+    """
+    Pipedrive joins the values of merged orgs or deals with ', ' (e.g. 'startup, payg'), and they stay joined after the
+    merge. A joined value is no single org's or deal's value, so it is treated as not sent and Hermes keeps its own.
+    """
+
+    @field_validator(
+        'tc2_status',
+        'website',
+        'price_plan',
+        'estimated_income',
+        'utm_source',
+        'utm_campaign',
+        'tc2_cligency_url',
+        'signup_email',
+        'signup_phone',
+        'gclid',
+        mode='before',
+        check_fields=False,
+    )
+    @classmethod
+    def ignore_merge_join(cls, v, info: ValidationInfo):
+        if isinstance(v, str) and ', ' in v:
+            _log_merge_join(cls, info)
+            return None
+        return v
+
+    @field_validator('paid_invoice_count', mode='before', check_fields=False)
+    @classmethod
+    def convert_to_int(cls, v, info: ValidationInfo):
+        if isinstance(v, str):
+            if ', ' in v:
+                _log_merge_join(cls, info)
+                return None
+            return int(v) if v.strip() else 0
+        return v
+
+    @field_validator('signup_questionnaire', mode='before', check_fields=False)
+    @classmethod
+    def ignore_merged_questionnaires(cls, v, info: ValidationInfo):
+        """
+        A questionnaire is a dict with ', ' of its own, so merged questionnaires show as one dict following another.
+        """
+        if isinstance(v, str) and '}, {' in v:
+            _log_merge_join(cls, info)
+            return None
+        return v
+
+
+class Organisation(_MergeableModel):
     """Pipedrive Organization schema - uses centralized field mapping"""
 
     id: Optional[int] = None
@@ -70,13 +130,6 @@ class Organisation(_HermesModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    @field_validator('paid_invoice_count', mode='before')
-    @classmethod
-    def convert_to_int(cls, v):
-        if isinstance(v, str):
-            return int(v) if v.strip() else 0
-        return v
-
 
 class Person(_HermesModel):
     """Pipedrive Person schema - uses centralized field mapping"""
@@ -99,8 +152,10 @@ class Person(_HermesModel):
         """
         Parse name field into first_name and last_name.
         Pipedrive sends full name in 'name' field, we split it for internal use.
+        Pipedrive leaves first_name empty and puts the whole name in last_name when the name starts
+        lowercase (e.g. 'john Smith'), so we split whenever first_name is empty.
         """
-        if self.name and not self.first_name and not self.last_name:
+        if self.name and not self.first_name:
             name_parts = self.name[:255].split(' ', 1)
             if len(name_parts) > 1:
                 self.first_name = name_parts[0][:255]
@@ -151,7 +206,7 @@ class Person(_HermesModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class PDDeal(_HermesModel):
+class PDDeal(_MergeableModel):
     """Pipedrive Deal schema - uses centralized field mapping"""
 
     id: Optional[int] = None
@@ -181,13 +236,6 @@ class PDDeal(_HermesModel):
     estimated_income: Optional[str] = Field(default=None, validation_alias=DEAL_PD_FIELD_MAP['estimated_income'])
 
     model_config = ConfigDict(populate_by_name=True)
-
-    @field_validator('paid_invoice_count', mode='before')
-    @classmethod
-    def convert_to_int(cls, v):
-        if isinstance(v, str):
-            return int(v) if v.strip() else 0
-        return v
 
 
 class Activity(_HermesModel):

@@ -2,19 +2,22 @@
 Tests for Pipedrive merged entities with comma-separated hermes_ids.
 """
 
+import logging
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+from app.pipedrive.tasks import sync_company_to_pipedrive, sync_person
 
 
 class TestPipedriveWebhookMergedEntities:
     """Test Pipedrive webhook handling for merged entities"""
 
     async def test_org_merged_with_comma_separated_hermes_ids(self, client, db, test_admin):
-        """Test that merged organizations with comma-separated hermes_ids are handled"""
+        """Test that a merged org updates its own company and leaves the other listed company for its own sync"""
         # Create two companies
         company1 = db.create(Company(name='Company 1', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
         company2 = db.create(Company(name='Company 2', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=200))
@@ -40,10 +43,10 @@ class TestPipedriveWebhookMergedEntities:
         assert company1.name == 'Merged Company'
         assert company1.pd_org_id == 100
 
-        # Company 2 should be marked as deleted
+        # Company 2 is left as it is: its next sync finds its org gone and marks it deleted
         db.refresh(company2)
-        assert company2.pd_org_id is None
-        assert company2.is_deleted is True
+        assert company2.pd_org_id == 200
+        assert company2.is_deleted is False
 
     async def test_person_merged_with_comma_separated_hermes_ids(self, client, db, test_company):
         """Test that merged persons with comma-separated hermes_ids are handled"""
@@ -89,10 +92,10 @@ class TestPipedriveWebhookMergedEntities:
         assert contact1.first_name == 'Jane'
         assert contact1.pd_person_id == 400
 
-        # Contact 2 should be marked as deleted
+        # Contact 2 is left as it is: the delete webhook for person 500 marks it deleted
         db.refresh(contact2)
-        assert contact2.pd_person_id is None
-        assert contact2.is_deleted is True
+        assert contact2.pd_person_id == 500
+        assert contact2.is_deleted is False
 
     async def test_deal_merged_with_comma_separated_hermes_ids(
         self, client, db, test_admin, test_company, test_pipeline, test_stage
@@ -166,8 +169,8 @@ class TestPipedriveWebhookEdgeCases:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-    async def test_org_webhook_hermes_id_not_found(self, client, db):
-        """Test organization webhook with hermes_id that doesn't exist"""
+    async def test_org_webhook_hermes_id_not_found(self, client, db, caplog):
+        """Test that an org with no company linked and a hermes_id no company has is skipped with a warning"""
         webhook_data = {
             'meta': {'entity': 'organization', 'action': 'updated'},
             'data': {
@@ -182,6 +185,33 @@ class TestPipedriveWebhookEdgeCases:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Company)).all() == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            'Not updating from Pipedrive Organisation 999: no Company is linked to it or has hermes_id 999'
+        ]
+
+    async def test_org_webhook_merged_hermes_ids_not_found(self, client, db, caplog):
+        """Test organization webhook with merged hermes_ids that Hermes has none of"""
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: '99998, 99999',
+                'name': 'Test Org',
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Company)).all() == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            'Not updating from Pipedrive Organisation 999: no Company is linked to it or has hermes_id 99998, 99999'
+        ]
 
     async def test_person_webhook_no_id_or_hermes_id(self, client, db):
         """Test person webhook with no hermes_id or id"""
@@ -200,8 +230,8 @@ class TestPipedriveWebhookEdgeCases:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-    async def test_person_webhook_hermes_id_not_found(self, client, db):
-        """Test person webhook with hermes_id that doesn't exist"""
+    async def test_person_webhook_hermes_id_not_found(self, client, db, caplog):
+        """Test that a person with no contact linked and a hermes_id no contact has is skipped with a warning"""
         webhook_data = {
             'meta': {'entity': 'person', 'action': 'updated'},
             'data': {
@@ -217,6 +247,11 @@ class TestPipedriveWebhookEdgeCases:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Contact)).all() == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            'Not updating from Pipedrive Person 999: no Contact is linked to it or has hermes_id 999'
+        ]
 
     async def test_deal_webhook_no_id_or_hermes_id(self, client, db):
         """Test deal webhook with no hermes_id or id"""
@@ -235,8 +270,8 @@ class TestPipedriveWebhookEdgeCases:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
-    async def test_deal_webhook_hermes_id_not_found(self, client, db):
-        """Test deal webhook with hermes_id that doesn't exist"""
+    async def test_deal_webhook_hermes_id_not_found(self, client, db, caplog):
+        """Test that a deal with no deal linked and a hermes_id no deal has is skipped with a warning"""
         webhook_data = {
             'meta': {'entity': 'deal', 'action': 'updated'},
             'data': {
@@ -252,6 +287,11 @@ class TestPipedriveWebhookEdgeCases:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Deal)).all() == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            'Not updating from Pipedrive PDDeal 999: no Deal is linked to it or has hermes_id 999'
+        ]
 
     async def test_org_webhook_with_date_fields(self, client, db, test_company):
         """Test organization webhook updates date fields"""
@@ -850,8 +890,8 @@ class TestPipedriveWebhookEdgeCases:
 class TestPipedrivePersonMergeDeletion:
     """Test person merge scenarios with deletion"""
 
-    async def test_person_merge_marks_loser_deleted(self, client, db, test_company):
-        """Test that merged loser contacts are marked as deleted"""
+    async def test_person_merge_leaves_loser_for_its_delete_webhook(self, client, db, test_company):
+        """Test that a merge leaves the loser contact as it is, for the merged-away person's delete webhook"""
         contact1 = db.create(
             Contact(
                 first_name='John',
@@ -893,11 +933,11 @@ class TestPipedrivePersonMergeDeletion:
         assert contact1.is_deleted is False
 
         db.refresh(contact2)
-        assert contact2.pd_person_id is None
-        assert contact2.is_deleted is True
+        assert contact2.pd_person_id == 500
+        assert contact2.is_deleted is False
 
-    async def test_person_merge_loser_only_processed_once(self, client, db, test_company):
-        """Test that merged losers are only marked deleted once, not on subsequent callbacks"""
+    async def test_repeated_person_merge_webhooks_keep_loser(self, client, db, test_company):
+        """Test that every merge webhook updates the winner and none of them changes the loser"""
         contact1 = db.create(
             Contact(
                 first_name='John',
@@ -932,8 +972,7 @@ class TestPipedrivePersonMergeDeletion:
         assert r.status_code == 200
 
         db.refresh(contact2)
-        assert contact2.is_deleted is True
-        assert contact2.pd_person_id is None
+        assert (contact2.last_name, contact2.pd_person_id, contact2.is_deleted) == ('Loser', 500, False)
 
         # Send the same merge webhook again (e.g. another update to the winner)
         webhook_data['data']['name'] = 'John Updated'
@@ -941,14 +980,13 @@ class TestPipedrivePersonMergeDeletion:
         assert r.status_code == 200
 
         db.refresh(contact1)
-        assert contact1.first_name == 'John'
+        assert (contact1.first_name, contact1.last_name) == ('John', 'Updated')
 
         db.refresh(contact2)
-        assert contact2.is_deleted is True
-        assert contact2.pd_person_id is None
+        assert (contact2.last_name, contact2.pd_person_id, contact2.is_deleted) == ('Loser', 500, False)
 
     async def test_person_merge_with_multiple_losers(self, client, db, test_company):
-        """Test that merging three contacts marks both losers as deleted"""
+        """Test that merging three contacts updates the winner and leaves both losers as they are"""
         contact1 = db.create(
             Contact(
                 first_name='John',
@@ -998,12 +1036,58 @@ class TestPipedrivePersonMergeDeletion:
         assert contact1.is_deleted is False
 
         db.refresh(contact2)
-        assert contact2.pd_person_id is None
-        assert contact2.is_deleted is True
+        assert contact2.pd_person_id == 500
+        assert contact2.is_deleted is False
 
         db.refresh(contact3)
-        assert contact3.pd_person_id is None
-        assert contact3.is_deleted is True
+        assert contact3.pd_person_id == 600
+        assert contact3.is_deleted is False
+
+    async def test_person_merge_with_missing_winner_keeps_existing_contact(self, client, db, test_company):
+        """Test that a merged hermes_id led by an id Hermes doesn't have updates the contact linked to the person"""
+        contact1 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Winner',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+        contact2 = db.create(
+            Contact(
+                first_name='John',
+                last_name='Loser',
+                email='john.loser@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {contact1.id}, {contact2.id}',
+                'name': 'Jane Winner',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact1)
+        assert contact1.first_name == 'Jane'
+        assert contact1.pd_person_id == 400
+        assert contact1.is_deleted is False
+
+        db.refresh(contact2)
+        assert contact2.pd_person_id == 500
+        assert contact2.is_deleted is False
 
     async def test_person_merge_updates_org_link(self, client, db, test_admin):
         """Test merge where winner gets new org_id, verify company_id is updated"""
@@ -1052,8 +1136,210 @@ class TestPipedrivePersonMergeDeletion:
         assert contact1.is_deleted is False
 
         db.refresh(contact2)
-        assert contact2.pd_person_id is None
-        assert contact2.is_deleted is True
+        assert contact2.pd_person_id == 500
+        assert contact2.is_deleted is False
+
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_person_merge_leaves_deleted_contact_deleted(
+        self,
+        mock_get_org,
+        mock_update_org,
+        mock_get_person,
+        mock_update_person,
+        mock_create_person,
+        client,
+        db,
+        test_admin,
+    ):
+        """
+        Test that a merged hermes_id listing a deleted contact before the linked one updates the linked one, and the
+        deleted one, which has no Pipedrive id, stays deleted so the company sync doesn't create a duplicate person
+        """
+        company = db.create(Company(name='Company', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=100))
+        deleted = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=company.id,
+            )
+        )
+        linked = db.create(
+            Contact(
+                first_name='John',
+                last_name='Linked',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {deleted.id}, {linked.id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(linked)
+        assert (linked.first_name, linked.last_name, linked.pd_person_id, linked.is_deleted) == (
+            'Jane',
+            'Merged',
+            400,
+            False,
+        )
+        db.refresh(deleted)
+        assert (deleted.first_name, deleted.last_name, deleted.pd_person_id, deleted.is_deleted) == (
+            'John',
+            'Deleted',
+            None,
+            True,
+        )
+
+        mock_get_org.return_value = {'data': {'id': 100, 'name': 'Company'}}
+        mock_get_person.return_value = {'data': {'id': 400}}
+
+        await sync_company_to_pipedrive(company.id)
+
+        mock_get_person.assert_called_once_with(400)
+        mock_create_person.assert_not_called()
+
+    async def test_person_merge_with_only_deleted_contacts_updates_nothing(self, client, db, test_company):
+        """Test that a merged hermes_id listing only deleted contacts leaves them deleted and unchanged"""
+        deleted = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'99999, {deleted.id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deleted)
+        assert (deleted.first_name, deleted.last_name, deleted.pd_person_id, deleted.is_deleted) == (
+            'John',
+            'Deleted',
+            None,
+            True,
+        )
+        assert db.exec(select(Contact)).all() == [deleted]
+
+    async def test_person_merge_updates_linked_contact_not_listed(self, client, db, test_company):
+        """Test that a merged person updates the contact linked to it even when its hermes_id lists only others"""
+        listed = [
+            db.create(
+                Contact(
+                    first_name='John',
+                    last_name=f'Listed {i}',
+                    email=f'john{i}@example.com',
+                    pd_person_id=None,
+                    is_deleted=True,
+                    company_id=test_company.id,
+                )
+            )
+            for i in range(2)
+        ]
+        linked = db.create(
+            Contact(
+                first_name='John',
+                last_name='Linked',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: f'{listed[0].id}, {listed[1].id}',
+                'name': 'Jane Merged',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(linked)
+        assert (linked.first_name, linked.last_name, linked.pd_person_id, linked.is_deleted) == (
+            'Jane',
+            'Merged',
+            400,
+            False,
+        )
+        for contact in listed:
+            db.refresh(contact)
+            assert (contact.first_name, contact.pd_person_id, contact.is_deleted) == ('John', None, True)
+
+    async def test_person_update_leaves_deleted_contact_deleted(self, client, db, test_company):
+        """Test that a person update for a deleted contact, which has no Pipedrive id, doesn't bring it back"""
+        contact = db.create(
+            Contact(
+                first_name='John',
+                last_name='Deleted',
+                email='john@example.com',
+                pd_person_id=None,
+                is_deleted=True,
+                company_id=test_company.id,
+            )
+        )
+
+        webhook_data = {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+                'name': 'Jane Restored',
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact)
+        assert (contact.pd_person_id, contact.is_deleted) == (None, True)
 
     async def test_person_deletion_marks_as_deleted(self, client, db, test_company):
         """Test that deletion webhook sets is_deleted=True on Contact"""
@@ -1183,3 +1469,993 @@ class TestPipedrivePersonMergeDeletion:
         db.refresh(loser)
         assert loser.is_deleted is True
         assert loser.pd_person_id is None
+
+
+def _org_custom_fields(**values) -> dict:
+    """Org custom fields in the nested form Pipedrive v2 webhooks send them"""
+    return {COMPANY_PD_FIELD_MAP[f]: {'type': 'varchar', 'value': v} for f, v in values.items()}
+
+
+JOINED_ORG_VALUES = {
+    'price_plan': 'startup, payg',
+    'tc2_status': 'pending_email_conf, trial, terminated',
+    'website': 'https://first.example.com, https://second.example.com',
+    'utm_source': 'direct, none',
+    'utm_campaign': 'global tutorcruncher brand, none',
+    'estimated_income': '£0 - £50,000, just starting out',
+    'signup_questionnaire': '{"how-did-you-hear-about-us": ["Other"]}, {"how-did-you-hear-about-us": ["Google"]}',
+    'paid_invoice_count': '3, 15',
+    'signup_email': 'first@example.com, second@example.com',
+    'signup_phone': '+447700900001, +447700900002',
+    'gclid': 'first-gclid, second-gclid',
+}
+
+
+def _company_values(company: Company) -> tuple:
+    """The company fields an org webhook can change"""
+    return (
+        company.name,
+        company.price_plan,
+        company.tc2_status,
+        company.website,
+        company.utm_source,
+        company.utm_campaign,
+        company.estimated_income,
+        company.signup_questionnaire,
+        company.paid_invoice_count,
+        company.signup_email,
+        company.signup_phone,
+        company.gclid,
+    )
+
+
+class TestPipedriveWebhookMergeJoinedValues:
+    """Pipedrive joins merged orgs' custom field values with ', ', and Hermes must not copy them onto the company"""
+
+    def _create_company(self, db, test_admin, name: str, pd_org_id: int) -> Company:
+        return db.create(
+            Company(
+                name=name,
+                sales_person_id=test_admin.id,
+                pd_org_id=pd_org_id,
+                price_plan='startup',
+                tc2_status='trial',
+                website='https://first.example.com',
+                utm_source='google',
+                utm_campaign='global tutorcruncher brand',
+                estimated_income='£0 - £50,000',
+                signup_questionnaire='{"how-did-you-hear-about-us": ["Other"]}',
+                paid_invoice_count=3,
+                signup_email='first@example.com',
+                signup_phone='+447700900001',
+                gclid='first-gclid',
+            )
+        )
+
+    async def test_merged_org_keeps_company_values(self, client, db, test_admin):
+        """Test that a merged org's joined values leave the winner company's values as they were"""
+        company1 = self._create_company(db, test_admin, 'Company 1', 100)
+        company2 = self._create_company(db, test_admin, 'Company 2', 200)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Merged Company',
+                'custom_fields': _org_custom_fields(hermes_id=f'{company1.id}, {company2.id}', **JOINED_ORG_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company1)
+        assert _company_values(company1) == (
+            'Merged Company',
+            'startup',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£0 - £50,000',
+            '{"how-did-you-hear-about-us": ["Other"]}',
+            3,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
+        )
+
+    async def test_joined_values_with_single_hermes_id_keep_company_values(self, client, db, test_admin):
+        """Test that joined values are ignored after Hermes has already set the org's hermes_id back to one id"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Renamed Company',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), **JOINED_ORG_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert _company_values(company) == (
+            'Renamed Company',
+            'startup',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£0 - £50,000',
+            '{"how-did-you-hear-about-us": ["Other"]}',
+            3,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
+        )
+
+    async def test_single_values_with_commas_are_copied(self, client, db, test_admin):
+        """Test that one org's own values that contain commas are still copied onto the company"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Company 1',
+                'custom_fields': _org_custom_fields(
+                    hermes_id=str(company.id),
+                    price_plan='enterprise',
+                    estimated_income='£50,000 - £150,000',
+                    signup_questionnaire='{"how-did-you-hear-about-us": ["Other"], "lessons": ["Entirely remote"]}',
+                    paid_invoice_count='15',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert _company_values(company) == (
+            'Company 1',
+            'enterprise',
+            'trial',
+            'https://first.example.com',
+            'google',
+            'global tutorcruncher brand',
+            '£50,000 - £150,000',
+            '{"how-did-you-hear-about-us": ["Other"], "lessons": ["Entirely remote"]}',
+            15,
+            'first@example.com',
+            '+447700900001',
+            'first-gclid',
+        )
+
+    async def test_joined_paid_invoice_count_does_not_drop_webhook(self, client, db, test_admin):
+        """Test that a joined paid_invoice_count no longer stops the rest of the org update"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Renamed Company',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), paid_invoice_count='50, 35, 41'),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert (company.name, company.paid_invoice_count) == ('Renamed Company', 3)
+
+    async def test_joined_paid_invoice_count_in_previous_does_not_drop_webhook(self, client, db, test_admin):
+        """Test that overwriting a joined paid_invoice_count in Pipedrive updates the company"""
+        company = self._create_company(db, test_admin, 'Company 1', 100)
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 100,
+                'name': 'Company 1',
+                'custom_fields': _org_custom_fields(hermes_id=str(company.id), paid_invoice_count='7'),
+            },
+            'previous': {'custom_fields': _org_custom_fields(paid_invoice_count='6, 13')},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert company.paid_invoice_count == 7
+
+    async def test_new_org_with_joined_values_gets_defaults(self, client, db, test_admin):
+        """Test that a new org's joined values are left out, so the new company gets the default values"""
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'create'},
+            'data': {
+                'id': 777,
+                'name': 'New Company',
+                'owner_id': test_admin.pd_owner_id,
+                'custom_fields': _org_custom_fields(
+                    price_plan='startup, payg',
+                    tc2_status='pending_email_conf, trial, terminated',
+                    paid_invoice_count='4, 63',
+                    website='https://first.example.com, https://second.example.com',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company).where(Company.pd_org_id == 777)).one()
+        assert (company.name, company.price_plan, company.tc2_status, company.paid_invoice_count, company.website) == (
+            'New Company',
+            'payg',
+            'pending_email_conf',
+            0,
+            None,
+        )
+
+
+def _deal_custom_fields(**values) -> dict:
+    """Deal custom fields in the nested form Pipedrive v2 webhooks send them"""
+    return {DEAL_PD_FIELD_MAP[f]: {'type': 'varchar', 'value': v} for f, v in values.items()}
+
+
+JOINED_DEAL_VALUES = {
+    'price_plan': 'startup, payg',
+    'tc2_status': 'pending_email_conf, trial',
+    'website': 'https://first.example.com, https://second.example.com',
+    'utm_source': 'direct, none',
+    'utm_campaign': 'global tutorcruncher brand, none',
+    'estimated_income': '£0 - £50,000, just starting out',
+    'signup_questionnaire': "{'how-did-you-hear-about-us': 'Other'}, {'how-did-you-hear-about-us': 'Google'}",
+    'tc2_cligency_url': 'https://secure.tutorcruncher.com/clients/1/, https://secure.tutorcruncher.com/clients/2/',
+    'paid_invoice_count': '3, 15',
+}
+
+
+def _deal_values(deal: Deal) -> tuple:
+    """The deal fields a deal webhook can change"""
+    return (
+        deal.name,
+        deal.status,
+        deal.price_plan,
+        deal.tc2_status,
+        deal.website,
+        deal.utm_source,
+        deal.utm_campaign,
+        deal.estimated_income,
+        deal.signup_questionnaire,
+        deal.tc2_cligency_url,
+        deal.paid_invoice_count,
+    )
+
+
+class TestPipedriveWebhookMergeJoinedDealValues:
+    """Pipedrive joins merged deals' custom field values with ', ', and Hermes must not copy them onto the deal"""
+
+    def _create_deal(self, db, test_admin, test_company, test_pipeline, test_stage, name: str, pd_deal_id: int) -> Deal:
+        """A deal with no joined values and no utm values"""
+        return db.create(
+            Deal(
+                name=name,
+                pd_deal_id=pd_deal_id,
+                admin_id=test_admin.id,
+                company_id=test_company.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                price_plan='payg',
+                tc2_status='trial',
+                website='https://first.example.com',
+                estimated_income='£0 - £50,000',
+                signup_questionnaire="{'how-did-you-hear-about-us': 'Other'}",
+                tc2_cligency_url='https://secure.tutorcruncher.com/clients/1/',
+                paid_invoice_count=3,
+            )
+        )
+
+    async def test_merged_deal_keeps_deal_values(self, client, db, test_admin, test_company, test_pipeline, test_stage):
+        """Test that a merged deal's joined values leave the deal's values as they were, and the rest still updates"""
+        deal1 = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+        deal2 = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 2', 900)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Merged Deal',
+                'status': 'won',
+                'custom_fields': _deal_custom_fields(hermes_id=f'{deal1.id}, {deal2.id}', **JOINED_DEAL_VALUES),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal1)
+        assert _deal_values(deal1) == (
+            'Merged Deal',
+            Deal.STATUS_WON,
+            'payg',
+            'trial',
+            'https://first.example.com',
+            None,
+            None,
+            '£0 - £50,000',
+            "{'how-did-you-hear-about-us': 'Other'}",
+            'https://secure.tutorcruncher.com/clients/1/',
+            3,
+        )
+
+    async def test_joined_paid_invoice_count_does_not_drop_deal_webhook(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that a joined paid_invoice_count, now or before the change, doesn't stop the rest of the deal update"""
+        deal = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Deal 1',
+                'status': 'won',
+                'custom_fields': _deal_custom_fields(hermes_id=str(deal.id), paid_invoice_count='50, 35'),
+            },
+            'previous': {'status': 'open', 'custom_fields': _deal_custom_fields(paid_invoice_count='6, 13')},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert (deal.status, deal.paid_invoice_count) == (Deal.STATUS_WON, 3)
+
+    async def test_single_deal_values_are_copied(self, client, db, test_admin, test_company, test_pipeline, test_stage):
+        """Test that one deal's own values are copied, including commas and a questionnaire stored as a Python dict"""
+        deal = self._create_deal(db, test_admin, test_company, test_pipeline, test_stage, 'Deal 1', 800)
+
+        webhook_data = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Deal 1',
+                'status': 'open',
+                'custom_fields': _deal_custom_fields(
+                    hermes_id=str(deal.id),
+                    price_plan='enterprise',
+                    utm_source='google',
+                    estimated_income='£50,000 - £150,000',
+                    signup_questionnaire="{'how-did-you-hear-about-us': 'Other', 'lessons': 'Entirely remote'}",
+                    tc2_cligency_url='https://secure.tutorcruncher.com/clients/2/',
+                    paid_invoice_count='15',
+                ),
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert _deal_values(deal) == (
+            'Deal 1',
+            Deal.STATUS_OPEN,
+            'enterprise',
+            'trial',
+            'https://first.example.com',
+            'google',
+            None,
+            '£50,000 - £150,000',
+            "{'how-did-you-hear-about-us': 'Other', 'lessons': 'Entirely remote'}",
+            'https://secure.tutorcruncher.com/clients/2/',
+            15,
+        )
+
+
+class TestPipedriveWebhookPipedriveLink:
+    """
+    A merged org's hermes_id can list ids that are no Hermes company's or another live company's, so org and deal
+    webhooks use the record Hermes links to the Pipedrive id, and never delete the other listed records
+    """
+
+    def _org_webhook(self, name: str, hermes_id: str) -> dict:
+        return {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {'id': 100, 'name': name, 'custom_fields': _org_custom_fields(hermes_id=hermes_id)},
+            'previous': None,
+        }
+
+    def _deal_webhook(self, title: str, hermes_id: str) -> dict:
+        return {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': title,
+                'status': 'open',
+                'custom_fields': _deal_custom_fields(hermes_id=hermes_id),
+            },
+            'previous': None,
+        }
+
+    async def test_merged_org_updates_linked_company(self, client, db, test_admin):
+        """Test that the company linked to the org is updated, not the companies its hermes_id lists"""
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        linked = db.create(Company(name='Prominent Education', pd_org_id=100, **kwargs))
+        other_org = db.create(Company(name='LoopLearners', pd_org_id=300, **kwargs))
+        unlinked = db.create(Company(name='Unlinked', **kwargs))
+
+        webhook_data = self._org_webhook('Prominent Education Ltd', f'99999, {other_org.id}, {unlinked.id}')
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (linked, other_org, unlinked):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (linked, other_org, unlinked)] == [
+            ('Prominent Education Ltd', 100, False),
+            ('LoopLearners', 300, False),
+            ('Unlinked', None, False),
+        ]
+
+    async def test_org_with_no_linked_company_skips_company_of_another_org(self, client, db, test_admin):
+        """Test that with no company linked to the org, a listed company linked to another org is left alone"""
+        other_org = db.create(Company(name='Edulinx', sales_person_id=test_admin.id, price_plan='payg', pd_org_id=300))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('WeAre Education Ltd', f'{other_org.id}, 99999'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(other_org)
+        assert (other_org.name, other_org.pd_org_id, other_org.is_deleted) == ('Edulinx', 300, False)
+        assert db.exec(select(Company)).all() == [other_org]
+
+    async def test_merged_org_brings_back_deleted_company(self, client, db, test_admin):
+        """
+        Test that a company the org lists first, deleted when its own org was merged away, is linked to the surviving
+        org and brought back
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        deleted = db.create(Company(name='Price Education Limited', is_deleted=True, **kwargs))
+        other_org = db.create(Company(name='Other', pd_org_id=300, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Price Education Ltd', f'{deleted.id}, {other_org.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (deleted, other_org):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (deleted, other_org)] == [
+            ('Price Education Ltd', 100, False),
+            ('Other', 300, False),
+        ]
+
+    @pytest.mark.parametrize('is_deleted', [True, False])
+    async def test_org_skips_narc_company(self, is_deleted, client, db, test_admin):
+        """Test that a NARC company is never linked to the org, as its next TC2 update would delete the org"""
+        company = db.create(
+            Company(
+                name='Narc Tuition', sales_person_id=test_admin.id, price_plan='payg', narc=True, is_deleted=is_deleted
+            )
+        )
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._org_webhook('Narc Tuition Ltd', str(company.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert (company.name, company.pd_org_id, company.is_deleted) == ('Narc Tuition', None, is_deleted)
+
+    async def test_org_links_unlinked_company_by_hermes_id(self, client, db, test_admin):
+        """Test that with no company linked to the org, its hermes_id company with no pd_org_id is linked to it"""
+        company = db.create(Company(name='Believe Tuition', sales_person_id=test_admin.id, price_plan='payg'))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Believe Tuition Ltd', str(company.id)),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(company)
+        assert (company.name, company.pd_org_id, company.is_deleted) == ('Believe Tuition Ltd', 100, False)
+
+    async def test_merged_org_links_listed_company_with_tc2_client(self, client, db, test_admin):
+        """
+        Test that with no company linked to the org, the listed company with a TC2 client is linked and brought back
+        rather than the first listed one, so the org gets the TC2 client's updates
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg', 'is_deleted': True}
+        pd_only = db.create(Company(name='Tuition Extra Group', **kwargs))
+        tc2_client = db.create(Company(name='Tuition Extra', tc2_cligency_id=5238897, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Tuition Extra Group Ltd', f'{pd_only.id}, {tc2_client.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (pd_only, tc2_client):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (pd_only, tc2_client)] == [
+            ('Tuition Extra Group', None, True),
+            ('Tuition Extra Group Ltd', 100, False),
+        ]
+
+    async def test_merged_org_waits_for_tc2_client_linked_to_old_org(self, client, db, test_admin):
+        """
+        Test that while the listed company with a TC2 client is still linked to its merged-away org, no company is linked
+        to the org, so the first listed company can't take the link from it
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        pd_only = db.create(Company(name='TutorGNV', **kwargs))
+        tc2_client = db.create(Company(name='TutorGNV, LLC', tc2_cligency_id=5350249, pd_org_id=300, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('TutorGNV Ltd', f'{pd_only.id}, {tc2_client.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (pd_only, tc2_client):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (pd_only, tc2_client)] == [
+            ('TutorGNV', None, False),
+            ('TutorGNV, LLC', 300, False),
+        ]
+
+    @pytest.mark.parametrize('is_deleted, unsynced_status', [(True, Deal.STATUS_DELETED), (False, Deal.STATUS_OPEN)])
+    async def test_brought_back_company_deletes_deals_never_in_pipedrive(
+        self, is_deleted, unsynced_status, client, db, test_admin, test_pipeline, test_stage
+    ):
+        """
+        Test that linking a deleted company marks deleted its open deals that never reached Pipedrive, so its next sync
+        doesn't create them, while a live company's deals and the company's other deals are left as they are
+        """
+        company = db.create(
+            Company(name='On Point Tutoring', sales_person_id=test_admin.id, price_plan='payg', is_deleted=is_deleted)
+        )
+        kwargs = {
+            'company_id': company.id,
+            'admin_id': test_admin.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        unsynced = db.create(Deal(name='Unsynced', **kwargs))
+        synced = db.create(Deal(name='Synced', pd_deal_id=800, **kwargs))
+        lost = db.create(Deal(name='Lost', status=Deal.STATUS_LOST, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._org_webhook('On Point Tutoring', str(company.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for obj in (company, unsynced, synced, lost):
+            db.refresh(obj)
+        assert (company.pd_org_id, company.is_deleted) == (100, False)
+        assert [(d.name, d.status) for d in (unsynced, synced, lost)] == [
+            ('Unsynced', unsynced_status),
+            ('Synced', Deal.STATUS_OPEN),
+            ('Lost', Deal.STATUS_LOST),
+        ]
+
+    async def test_deal_on_merged_org_is_added_once_org_links_company(
+        self, client, db, test_admin, test_pipeline, test_stage, caplog
+    ):
+        """
+        Test that a deal on a merged org is skipped while no company is linked to the org, and added on its next change
+        once the org's webhook has linked its company
+        """
+        company = db.create(
+            Company(name='Tuition Extra Group', sales_person_id=test_admin.id, price_plan='payg', is_deleted=True)
+        )
+        deal_webhook = {
+            'meta': {'entity': 'deal', 'action': 'change'},
+            'data': {
+                'id': 800,
+                'title': 'Tuition Extra Group deal',
+                'status': 'open',
+                'owner_id': test_admin.pd_owner_id,
+                'org_id': 100,
+                'pipeline_id': test_pipeline.pd_pipeline_id,
+                'stage_id': test_stage.pd_stage_id,
+            },
+            'previous': None,
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook)
+        assert r.status_code == 200
+        assert db.exec(select(Deal)).all() == []
+
+        client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Tuition Extra Group', f'{company.id}, 99999'),
+        )
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook)
+
+        assert r.status_code == 200
+        deal = db.exec(select(Deal)).one()
+        assert (deal.pd_deal_id, deal.company_id) == (800, company.id)
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+
+    async def test_deal_webhook_skips_deleted_deal(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """
+        Test that a deleted deal stays deleted: brought back without pd_deal_id, its next sync would create a
+        duplicate deal
+        """
+        deal = db.create(
+            Deal(
+                name='Deal 1',
+                status=Deal.STATUS_DELETED,
+                admin_id=test_admin.id,
+                company_id=test_company.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+            )
+        )
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 reopened', str(deal.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(deal)
+        assert (deal.name, deal.status, deal.pd_deal_id) == ('Deal 1', Deal.STATUS_DELETED, None)
+
+    async def test_deal_webhook_updates_linked_deal(
+        self, client, db, test_admin, test_company, test_pipeline, test_stage
+    ):
+        """Test that the deal linked to the Pipedrive deal is updated, not the deal its hermes_id names"""
+        kwargs = {
+            'admin_id': test_admin.id,
+            'company_id': test_company.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        linked = db.create(Deal(name='Deal 1', pd_deal_id=800, **kwargs))
+        other = db.create(Deal(name='Deal 2', pd_deal_id=900, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 renamed', str(other.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for deal in (linked, other):
+            db.refresh(deal)
+        assert [(d.name, d.pd_deal_id) for d in (linked, other)] == [('Deal 1 renamed', 800), ('Deal 2', 900)]
+
+
+class TestPipedrivePersonPipedriveLink:
+    """A person's hermes_id can name no contact or another one, so person webhooks use the contact linked to them"""
+
+    def _person_webhook(self, name: str, hermes_id: int | str) -> dict:
+        return {
+            'meta': {'entity': 'person', 'action': 'change'},
+            'data': {
+                'id': 400,
+                CONTACT_PD_FIELD_MAP['hermes_id']: hermes_id,
+                'name': name,
+                'email': ['john@example.com'],
+            },
+            'previous': None,
+        }
+
+    async def test_person_with_unknown_hermes_id_updates_linked_contact(self, client, db, test_company, caplog):
+        """Test that the contact linked to the person is updated when its hermes_id names no contact"""
+        contact = db.create(
+            Contact(
+                first_name='John',
+                last_name='Linked',
+                email='john@example.com',
+                pd_person_id=400,
+                company_id=test_company.id,
+            )
+        )
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', 99999))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact)
+        assert (contact.first_name, contact.last_name, contact.pd_person_id, contact.is_deleted) == (
+            'Jane',
+            'Linked',
+            400,
+            False,
+        )
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+
+    async def test_person_updates_linked_contact_not_its_hermes_id_contact(self, client, db, test_company):
+        """Test that the contact linked to the person is updated, not the other contact its hermes_id names"""
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        linked = db.create(Contact(first_name='John', last_name='Linked', pd_person_id=400, **kwargs))
+        other = db.create(Contact(first_name='John', last_name='Other', pd_person_id=500, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', str(other.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for contact in (linked, other):
+            db.refresh(contact)
+        assert [(c.first_name, c.last_name, c.pd_person_id, c.is_deleted) for c in (linked, other)] == [
+            ('Jane', 'Linked', 400, False),
+            ('John', 'Other', 500, False),
+        ]
+
+    async def test_merged_person_updates_linked_contact_and_leaves_other_listed(self, client, db, test_company):
+        """
+        Test that a merged person updates the contact linked to it, even when its hermes_id lists another live contact
+        first, and leaves the other listed contact, which is linked to another person, as it is
+        """
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        other = db.create(Contact(first_name='John', last_name='Other', pd_person_id=500, **kwargs))
+        linked = db.create(Contact(first_name='John', last_name='Linked', pd_person_id=400, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._person_webhook('Jane Merged', f'{other.id}, {linked.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for contact in (linked, other):
+            db.refresh(contact)
+        assert [(c.first_name, c.last_name, c.pd_person_id, c.is_deleted) for c in (linked, other)] == [
+            ('Jane', 'Merged', 400, False),
+            ('John', 'Other', 500, False),
+        ]
+
+    async def test_merged_person_marks_listed_contact_with_no_person_deleted(self, client, db, test_company):
+        """
+        Test that a merged person marks deleted the other live contact it lists that has no Pipedrive person, so its
+        next sync doesn't create a duplicate person, and leaves the one linked to another person
+        """
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        linked = db.create(Contact(first_name='John', last_name='Linked', pd_person_id=400, **kwargs))
+        no_person = db.create(Contact(first_name='John', last_name='No Person', **kwargs))
+        other = db.create(Contact(first_name='John', last_name='Other', pd_person_id=500, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._person_webhook('Jane Merged', f'{linked.id}, {no_person.id}, {other.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for contact in (linked, no_person, other):
+            db.refresh(contact)
+        assert [(c.last_name, c.pd_person_id, c.is_deleted) for c in (linked, no_person, other)] == [
+            ('Merged', 400, False),
+            ('No Person', None, True),
+            ('Other', 500, False),
+        ]
+
+    @pytest.mark.parametrize('delete_first', [False, True])
+    async def test_merge_and_delete_webhooks_mark_loser_deleted(self, delete_first, client, db, test_company):
+        """
+        Test that the delete webhook Pipedrive sends for the merged-away person marks its contact deleted, whichever
+        of the two webhooks comes first, and the winner is updated
+        """
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        winner = db.create(Contact(first_name='John', last_name='Winner', pd_person_id=400, **kwargs))
+        loser = db.create(Contact(first_name='John', last_name='Loser', pd_person_id=500, **kwargs))
+        merge_webhook = self._person_webhook('Jane Merged', f'{winner.id}, {loser.id}')
+        delete_webhook = {
+            'meta': {'entity': 'person', 'action': 'delete'},
+            'data': None,
+            'previous': {'id': 500, CONTACT_PD_FIELD_MAP['hermes_id']: str(loser.id), 'name': 'John Loser'},
+        }
+        webhooks = [delete_webhook, merge_webhook] if delete_first else [merge_webhook, delete_webhook]
+
+        for webhook in webhooks:
+            r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook)
+            assert r.status_code == 200
+
+        for contact in (winner, loser):
+            db.refresh(contact)
+        assert [(c.first_name, c.last_name, c.pd_person_id, c.is_deleted) for c in (winner, loser)] == [
+            ('Jane', 'Merged', 400, False),
+            ('John', 'Loser', None, True),
+        ]
+
+    async def test_unlinked_merged_person_leaves_contacts_of_other_persons(self, client, db, test_company, caplog):
+        """
+        Test that a person with no contact linked, whose merged hermes_id lists contacts linked to other persons, as
+        an old id does once a newer contact has it, neither updates nor deletes them
+        """
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        first = db.create(Contact(first_name='John', last_name='First', pd_person_id=600, **kwargs))
+        second = db.create(Contact(first_name='John', last_name='Second', pd_person_id=700, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._person_webhook('Jane Stale', f'{first.id}, {second.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for contact in (first, second):
+            db.refresh(contact)
+        assert [(c.first_name, c.last_name, c.pd_person_id, c.is_deleted) for c in (first, second)] == [
+            ('John', 'First', 600, False),
+            ('John', 'Second', 700, False),
+        ]
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            f'Not updating from Pipedrive Person 400 with hermes_id {first.id}, {second.id}: every Contact it lists '
+            f'is deleted or linked to another pd_person_id'
+        ]
+
+    async def test_unlinked_merged_person_updates_listed_contact_with_no_person(self, client, db, test_company):
+        """
+        Test that a person with no contact linked updates and links the first live contact its merged hermes_id lists
+        that has no Pipedrive person, marks the other such contact deleted and leaves the one linked to another person
+        """
+        kwargs = {'email': 'john@example.com', 'company_id': test_company.id}
+        other = db.create(Contact(first_name='John', last_name='Other', pd_person_id=600, **kwargs))
+        first = db.create(Contact(first_name='John', last_name='First', **kwargs))
+        second = db.create(Contact(first_name='John', last_name='Second', **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._person_webhook('Jane Merged', f'{other.id}, {first.id}, {second.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for contact in (other, first, second):
+            db.refresh(contact)
+        assert [(c.first_name, c.last_name, c.pd_person_id, c.is_deleted) for c in (other, first, second)] == [
+            ('John', 'Other', 600, False),
+            ('Jane', 'Merged', 400, False),
+            ('John', 'Second', None, True),
+        ]
+
+    @pytest.mark.parametrize('merged', [False, True])
+    @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_person', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_contact_found_by_hermes_id_is_linked_so_sync_creates_no_person(
+        self, mock_get_person, mock_update_person, mock_create_person, merged, client, db, test_company
+    ):
+        """
+        Test that a live contact with no Pipedrive person, found by the person's hermes_id, is linked to the person,
+        so its next sync updates that person instead of creating a duplicate
+        """
+        contact = db.create(
+            Contact(first_name='John', last_name='Unlinked', email='john@example.com', company_id=test_company.id)
+        )
+        hermes_id = f'99999, {contact.id}' if merged else str(contact.id)
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', hermes_id)
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.refresh(contact)
+        assert (contact.first_name, contact.last_name, contact.pd_person_id, contact.is_deleted) == (
+            'Jane',
+            'Linked',
+            400,
+            False,
+        )
+
+        mock_get_person.return_value = {'data': {'id': 400}}
+        await sync_person(contact.id)
+
+        mock_get_person.assert_called_once_with(400)
+        mock_create_person.assert_not_called()
+
+    async def test_unlinked_merged_person_with_unknown_ids_is_skipped(self, client, db, test_company, caplog):
+        """Test that a person with no contact linked whose merged hermes_id lists no contact logs a warning, no error"""
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Stale', '99998, 99999')
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert db.exec(select(Contact)).all() == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            'Not updating from Pipedrive Person 400 with hermes_id 99998, 99999: no Contact is linked to it or listed '
+            'in its hermes_id'
+        ]
+
+    async def test_unlinked_person_skips_contact_of_another_person(self, client, db, test_company, caplog):
+        """
+        Test that a person with no contact linked, whose hermes_id names a contact linked to another person, as a
+        duplicate person's or an old id does, leaves that contact as it is
+        """
+        contact = db.create(
+            Contact(
+                first_name='John',
+                last_name='Other',
+                email='john@example.com',
+                pd_person_id=500,
+                company_id=test_company.id,
+            )
+        )
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Duplicate', str(contact.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(contact)
+        assert (contact.first_name, contact.last_name, contact.pd_person_id, contact.is_deleted) == (
+            'John',
+            'Other',
+            500,
+            False,
+        )
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.ERROR] == []
+        assert [rec.getMessage() for rec in caplog.records if rec.levelno == logging.WARNING] == [
+            f'Not updating Contact {contact.id} from Pipedrive Person 400: it is linked to pd_person_id 500'
+        ]
