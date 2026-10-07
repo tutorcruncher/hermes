@@ -171,10 +171,23 @@ async def create_activity(activity_data: dict) -> dict:
     return await pipedrive_request('activities', method='POST', data=activity_data)
 
 
+def _pd_value(value):
+    """
+    The plain value of a Pipedrive field. Webhooks wrap a custom field value as {'type': 'varchar', 'value': 'x'},
+    and a single option as {'id': 506, 'type': 'enum'}.
+    """
+    if isinstance(value, dict) and 'type' in value:
+        return value.get('value', value.get('id'))
+    return value
+
+
 def get_changed_fields(old_data: Optional[dict], new_data: dict) -> dict:
     """
     Compare old and new data to find changed fields.
     Used for PATCH requests to only send changed fields.
+
+    custom_fields and address are compared by the subfields Hermes sends. Pipedrive returns every custom field and
+    every address subfield, so comparing them whole never matches and every sync would PATCH.
 
     Args:
         old_data: Original data from Pipedrive (None if creating new)
@@ -189,7 +202,11 @@ def get_changed_fields(old_data: Optional[dict], new_data: dict) -> dict:
     changed = {}
     for key, new_value in new_data.items():
         old_value = old_data.get(key)
-        if old_value != new_value:
+        if isinstance(new_value, dict) and isinstance(old_value, dict):
+            is_changed = any(_pd_value(old_value.get(k)) != v for k, v in new_value.items())
+        else:
+            is_changed = old_value != new_value
+        if is_changed:
             changed[key] = new_value
 
     return changed
