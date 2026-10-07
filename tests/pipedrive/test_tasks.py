@@ -3,6 +3,7 @@ Tests for Pipedrive sync tasks.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -1594,3 +1595,97 @@ class TestDataConversionHelpers:
 
         assert 'deal_id' in result
         assert result['deal_id'] == 12345
+
+
+def _error_logs(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+class TestSyncNotFoundLogLevel:
+    """A record gone from Pipedrive is marked deleted, so the sync logs no error for its 404"""
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_org_404_logs_no_error(self, mock_get_org, mock_get_session, db, test_company, caplog):
+        test_company.pd_org_id = 7777
+        db.add(test_company)
+        db.commit()
+        mock_get_session.return_value = SessionMock(db)
+        mock_get_org.side_effect = pipedrive_http_error(404, 'organizations/7777')
+
+        assert await sync_organization(test_company.id) is False
+
+        db.refresh(test_company)
+        assert test_company.is_deleted
+        assert _error_logs(caplog) == []
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_person_404_logs_no_error(self, mock_get_person, mock_get_session, db, test_contact, caplog):
+        test_contact.pd_person_id = 4444
+        db.add(test_contact)
+        db.commit()
+        mock_get_session.return_value = SessionMock(db)
+        mock_get_person.side_effect = pipedrive_http_error(404, 'persons/4444')
+
+        await sync_person(test_contact.id)
+
+        db.refresh(test_contact)
+        assert test_contact.is_deleted
+        assert _error_logs(caplog) == []
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.get_deal', new_callable=AsyncMock)
+    async def test_deal_404_logs_no_error(self, mock_get_deal, mock_get_session, db, test_deal, caplog):
+        test_deal.pd_deal_id = 5555
+        db.add(test_deal)
+        db.commit()
+        mock_get_session.return_value = SessionMock(db)
+        mock_get_deal.side_effect = pipedrive_http_error(404, 'deals/5555')
+
+        await sync_deal(test_deal.id)
+
+        db.refresh(test_deal)
+        assert test_deal.status == Deal.STATUS_DELETED
+        assert _error_logs(caplog) == []
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
+    async def test_partial_deal_404_logs_no_error(
+        self, mock_update_deal, mock_get_session, db, test_deal, test_company, caplog
+    ):
+        test_deal.pd_deal_id = 5555
+        test_company.paid_invoice_count = 10
+        db.add(test_deal)
+        db.add(test_company)
+        db.commit()
+        mock_get_session.return_value = SessionMock(db)
+        mock_update_deal.side_effect = pipedrive_http_error(404, 'deals/5555', method='PATCH')
+
+        await sync_deal(test_deal.id, only_syncable_deal_fields=True)
+
+        db.refresh(test_deal)
+        assert test_deal.status == Deal.STATUS_DELETED
+        assert _error_logs(caplog) == []
+
+    @pytest.mark.parametrize(
+        'status_code, body',
+        [(500, None), (404, '<html>Not Found</html>')],
+        ids=['server-error', 'not-from-pipedrive'],
+    )
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.get_person', new_callable=AsyncMock)
+    async def test_other_errors_are_logged_as_errors(
+        self, mock_get_person, mock_get_session, status_code, body, db, test_contact, caplog
+    ):
+        test_contact.pd_person_id = 4444
+        db.add(test_contact)
+        db.commit()
+        mock_get_session.return_value = SessionMock(db)
+        mock_get_person.side_effect = pipedrive_http_error(status_code, 'persons/4444', body=body)
+
+        await sync_person(test_contact.id)
+
+        db.refresh(test_contact)
+        assert not test_contact.is_deleted
+        assert [m for m in _error_logs(caplog) if m.startswith('Error updating person 4444:')]
