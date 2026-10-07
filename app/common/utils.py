@@ -4,15 +4,10 @@ import unicodedata
 from app.core.config import settings
 
 
-def sign_args_with_key(*args, key: str) -> str:
-    """Sign arguments using the given key"""
-    s = key + ':' + '-'.join(str(a) for a in args if a)
-    return hashlib.sha1(s.encode()).hexdigest()
-
-
 async def sign_args(*args):
     """Sign arguments using the signing key"""
-    return sign_args_with_key(*args, key=settings.signing_key)
+    s = settings.signing_key + ':' + '-'.join(str(a) for a in args if a)
+    return hashlib.sha1(s.encode()).hexdigest()
 
 
 def get_bearer(auth: str):

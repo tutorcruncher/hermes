@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -10,7 +12,6 @@ from app.callbooker.google import AdminGoogleCalendar
 from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall, CBSupportCall
 from app.callbooker.utils import iso_8601_to_datetime
-from app.common.utils import sign_args_with_key
 from app.core.config import settings
 from app.core.database import DBSession
 from app.exceptions import MeetingBookingError
@@ -231,7 +232,9 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     if company.utm_campaign:
         tracking_params['tc_campaign'] = company.utm_campaign
     if company.tc2_cligency_id:
-        signup_sig = sign_args_with_key(company.tc2_cligency_id, key=settings.tc2_api_key)
+        signup_sig = hmac.new(
+            settings.tc2_api_key.encode(), str(company.tc2_cligency_id).encode(), hashlib.sha256
+        ).hexdigest()
     else:
         signup_sig = ''
     template_vars = {

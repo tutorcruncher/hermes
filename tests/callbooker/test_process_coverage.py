@@ -2,6 +2,8 @@
 Tests for callbooker process edge cases to achieve 100% coverage.
 """
 
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -11,7 +13,6 @@ from sqlmodel import select
 from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
 from app.callbooker.process import _build_meeting_template_vars, book_meeting
-from app.common.utils import sign_args_with_key
 from app.core.config import settings
 from app.main_app.models import Config, Deal, Meeting, Pipeline, Stage
 from tests.factories import CompanyFactory
@@ -388,7 +389,7 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=google&tc_campaign=US+Search'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        sig = sign_args_with_key(10, key=settings.tc2_api_key)
+        sig = hmac.new(settings.tc2_api_key.encode(), b'10', hashlib.sha256).hexdigest()
         assert f'/start/1/?cli_id=10&s={sig}&tc_source=google&tc_campaign=US+Search' in description
 
     def test_signup_link_omits_campaign_when_only_source_is_set(self, db, test_admin, test_contact):
@@ -399,7 +400,7 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=google'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        sig = sign_args_with_key(10, key=settings.tc2_api_key)
+        sig = hmac.new(settings.tc2_api_key.encode(), b'10', hashlib.sha256).hexdigest()
         assert f'/start/1/?cli_id=10&s={sig}&tc_source=google">' in description
 
     def test_signup_link_escapes_hostile_utm_source(self, db, test_admin, test_contact):
@@ -410,7 +411,7 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=a%26b%3D%22x%22%3Cscript%3E'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        sig = sign_args_with_key(10, key=settings.tc2_api_key)
+        sig = hmac.new(settings.tc2_api_key.encode(), b'10', hashlib.sha256).hexdigest()
         assert f'/start/1/?cli_id=10&s={sig}&tc_source=a%26b%3D%22x%22%3Cscript%3E">' in description
 
     def test_signup_link_falls_back_to_call_booker(self, test_admin, test_company, test_contact):
