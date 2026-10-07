@@ -84,21 +84,12 @@ class PipedriveObjProcessor:
     def _find_obj(self, pd_obj) -> Company | Contact | Deal | None:
         """
         The Hermes object to update from the Pipedrive one: the one its hermes_id names, or with no hermes_id the one
-        linked by Pipedrive id. A merged object's hermes_id lists every merged id: the first one wins and the others are
-        marked deleted.
+        linked by Pipedrive id. A merged object's hermes_id lists every merged id, see _find_merged_obj.
         """
         if not getattr(pd_obj, 'hermes_id', None):
             return self._linked_obj(pd_obj)
         if isinstance(pd_obj.hermes_id, str) and ',' in str(pd_obj.hermes_id):
-            hermes_ids = list(map(int, map(lambda x: x.strip(), str(pd_obj.hermes_id).split(','))))
-            winner_id = hermes_ids[0]
-            loser_ids = hermes_ids[1:]
-
-            # Take the first ID from comma-separated list (primary entity after merge)
-            pd_obj.hermes_id = winner_id
-            logger.info(f'Detected merged entity, using first hermes_id: {pd_obj.hermes_id}')
-
-            self._mark_merged_losers_deleted(loser_ids)
+            return self._find_merged_obj(pd_obj)
 
         hermes_obj = self.db.get(self.hermes_model, pd_obj.hermes_id)
         if not hermes_obj:
@@ -106,15 +97,35 @@ class PipedriveObjProcessor:
             logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
         return hermes_obj
 
-    def _mark_merged_losers_deleted(self, loser_ids: list[int]) -> None:
+    def _find_merged_obj(self, pd_obj) -> Company | Contact | Deal | None:
+        """
+        The object linked to the merged Pipedrive one wins, else the first live one its hermes_id lists, and the other
+        live ones listed are marked deleted. Pipedrive still lists ids that no Hermes object has, and deleted ones,
+        which have no Pipedrive id: brought back, a deleted one's next sync would create a duplicate.
+        """
+        hermes_ids = list(dict.fromkeys(int(i.strip()) for i in str(pd_obj.hermes_id).split(',')))
+        listed = [obj for i in hermes_ids if (obj := self.db.get(self.hermes_model, i))]
+        live = [obj for obj in listed if not obj.is_deleted]
+        winner = self._linked_obj(pd_obj) or next(iter(live), None)
+
+        record = f'Pipedrive {self.pd_model.__name__} {pd_obj.id} with hermes_id {pd_obj.hermes_id}'
+        if winner:
+            logger.info(f'Detected merged entity, updating {self.hermes_model.__name__} {winner.id} from {record}')
+        elif listed:
+            logger.warning(f'Not updating from {record}: every {self.hermes_model.__name__} it lists is deleted')
+        else:
+            logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
+
+        self._mark_merged_losers_deleted([obj for obj in live if obj is not winner])
+        return winner
+
+    def _mark_merged_losers_deleted(self, losers: list[Company | Contact | Deal]) -> None:
         """Mark merged losers as deleted and clear their Pipedrive ID,
         since the entity no longer exists in Pipedrive after the merge."""
-        for loser_id in loser_ids:
-            loser_obj = self.db.get(self.hermes_model, loser_id)
-            if loser_obj and not loser_obj.is_deleted:
-                loser_obj.is_deleted = True
-                setattr(loser_obj, self.pd_id_field, None)
-                self.db.add(loser_obj)
+        for loser in losers:
+            loser.is_deleted = True
+            setattr(loser, self.pd_id_field, None)
+            self.db.add(loser)
         self.db.commit()
 
     async def _update_obj(
@@ -197,7 +208,8 @@ class OrganisationProcessor(_LinkedObjProcessor):
         return [
             f
             for f in list(COMPANY_PD_FIELD_MAP.keys())
-            # receive_marketing_emails and operate_as_ea are TC2-authoritative; Pipedrive must not write them back.
+            # receive_marketing_emails, operate_as_ea and tc2_status are TC2-authoritative;
+            # Pipedrive must not write them back.
             if f
             not in [
                 'hermes_id',
@@ -206,6 +218,7 @@ class OrganisationProcessor(_LinkedObjProcessor):
                 'tc2_cligency_url',
                 'receive_marketing_emails',
                 'operate_as_ea',
+                'tc2_status',
             ]
         ]
 
@@ -311,8 +324,7 @@ class PersonProcessor(PipedriveObjProcessor):
         return _contact_from_pd_person(pd_obj, company.id)
 
     async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
-        hermes_obj.is_deleted = False
-
+        # is_deleted is left as it is: brought back without its pd_person_id, the next sync would duplicate the person
         if pd_obj.first_name and pd_obj.first_name[:255] != hermes_obj.first_name:
             hermes_obj.first_name = pd_obj.first_name[:255]
         if pd_obj.last_name and pd_obj.last_name[:255] != hermes_obj.last_name:
