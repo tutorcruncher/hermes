@@ -83,18 +83,24 @@ class PipedriveObjProcessor:
 
     def _find_obj(self, pd_obj) -> Company | Contact | Deal | None:
         """
-        The Hermes object to update from the Pipedrive one: the one its hermes_id names, or with no hermes_id the one
-        linked by Pipedrive id. A merged object's hermes_id lists every merged id, see _find_merged_obj.
+        The Hermes object to update from the Pipedrive one: the one linked by Pipedrive id, else the one its hermes_id
+        names. A merged object's hermes_id lists every merged id, see _find_merged_obj. Duplicate Pipedrive persons
+        still carry hermes_ids that no contact has, and are skipped.
         """
-        if not getattr(pd_obj, 'hermes_id', None):
-            return self._linked_obj(pd_obj)
-        if isinstance(pd_obj.hermes_id, str) and ',' in str(pd_obj.hermes_id):
+        hermes_id = getattr(pd_obj, 'hermes_id', None)
+        if isinstance(hermes_id, str) and ',' in hermes_id:
             return self._find_merged_obj(pd_obj)
 
-        hermes_obj = self.db.get(self.hermes_model, pd_obj.hermes_id)
+        hermes_obj = self._linked_obj(pd_obj)
+        if hermes_obj or not hermes_id:
+            return hermes_obj
+
+        hermes_obj = self.db.get(self.hermes_model, hermes_id)
         if not hermes_obj:
-            # Somehow the object has been deleted in Hermes? Don't think this can happen
-            logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
+            logger.warning(
+                f'Not updating from Pipedrive {self.pd_model.__name__} {pd_obj.id}: no {self.hermes_model.__name__} '
+                f'is linked to it or has hermes_id {hermes_id}'
+            )
         return hermes_obj
 
     def _find_merged_obj(self, pd_obj) -> Company | Contact | Deal | None:
