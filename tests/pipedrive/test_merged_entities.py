@@ -1720,6 +1720,91 @@ class TestPipedriveWebhookPipedriveLink:
         db.refresh(company)
         assert (company.name, company.pd_org_id, company.is_deleted) == ('Believe Tuition Ltd', 100, False)
 
+    async def test_merged_org_links_listed_company_with_tc2_client(self, client, db, test_admin):
+        """
+        Test that with no company linked to the org, the listed company with a TC2 client is linked and brought back
+        rather than the first listed one, so the org gets the TC2 client's updates
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg', 'is_deleted': True}
+        pd_only = db.create(Company(name='Tuition Extra Group', **kwargs))
+        tc2_client = db.create(Company(name='Tuition Extra', tc2_cligency_id=5238897, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('Tuition Extra Group Ltd', f'{pd_only.id}, {tc2_client.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (pd_only, tc2_client):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (pd_only, tc2_client)] == [
+            ('Tuition Extra Group', None, True),
+            ('Tuition Extra Group Ltd', 100, False),
+        ]
+
+    async def test_merged_org_waits_for_tc2_client_linked_to_old_org(self, client, db, test_admin):
+        """
+        Test that while the listed company with a TC2 client is still linked to its merged-away org, no company is linked
+        to the org, so the first listed company can't take the link from it
+        """
+        kwargs = {'sales_person_id': test_admin.id, 'price_plan': 'payg'}
+        pd_only = db.create(Company(name='TutorGNV', **kwargs))
+        tc2_client = db.create(Company(name='TutorGNV, LLC', tc2_cligency_id=5350249, pd_org_id=300, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self._org_webhook('TutorGNV Ltd', f'{pd_only.id}, {tc2_client.id}'),
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for company in (pd_only, tc2_client):
+            db.refresh(company)
+        assert [(c.name, c.pd_org_id, c.is_deleted) for c in (pd_only, tc2_client)] == [
+            ('TutorGNV', None, False),
+            ('TutorGNV, LLC', 300, False),
+        ]
+
+    @pytest.mark.parametrize('is_deleted, unsynced_status', [(True, Deal.STATUS_DELETED), (False, Deal.STATUS_OPEN)])
+    async def test_brought_back_company_deletes_deals_never_in_pipedrive(
+        self, is_deleted, unsynced_status, client, db, test_admin, test_pipeline, test_stage
+    ):
+        """
+        Test that linking a deleted company marks deleted its open deals that never reached Pipedrive, so its next sync
+        doesn't create them, while a live company's deals and the company's other deals are left as they are
+        """
+        company = db.create(
+            Company(name='On Point Tutoring', sales_person_id=test_admin.id, price_plan='payg', is_deleted=is_deleted)
+        )
+        kwargs = {
+            'company_id': company.id,
+            'admin_id': test_admin.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        unsynced = db.create(Deal(name='Unsynced', **kwargs))
+        synced = db.create(Deal(name='Synced', pd_deal_id=800, **kwargs))
+        lost = db.create(Deal(name='Lost', status=Deal.STATUS_LOST, **kwargs))
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), json=self._org_webhook('On Point Tutoring', str(company.id))
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        for obj in (company, unsynced, synced, lost):
+            db.refresh(obj)
+        assert (company.pd_org_id, company.is_deleted) == (100, False)
+        assert [(d.name, d.status) for d in (unsynced, synced, lost)] == [
+            ('Unsynced', unsynced_status),
+            ('Synced', Deal.STATUS_OPEN),
+            ('Lost', Deal.STATUS_LOST),
+        ]
+
     async def test_deal_on_merged_org_is_added_once_org_links_company(
         self, client, db, test_admin, test_pipeline, test_stage, caplog
     ):
