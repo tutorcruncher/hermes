@@ -88,7 +88,7 @@ class TestPipedriveWebhookEndpoint:
         assert (test_company.name, test_company.operate_as_ea) == ('Updated Name', True)
 
     async def test_pipedrive_callback_ignores_tc2_status(self, client, db, test_company):
-        """tc2_status is TC2-authoritative: a merged org's comma-joined tc2_status must not block the org update."""
+        """tc2_status is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
         test_company.pd_org_id = 999
         test_company.tc2_status = 'trial'
         db.add(test_company)
@@ -101,10 +101,7 @@ class TestPipedriveWebhookEndpoint:
                 'name': 'Updated Name',
                 'custom_fields': {
                     COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
-                    COMPANY_PD_FIELD_MAP['tc2_status']: {
-                        'type': 'varchar',
-                        'value': 'pending_email_conf, trial, terminated',
-                    },
+                    COMPANY_PD_FIELD_MAP['tc2_status']: {'type': 'varchar', 'value': 'terminated'},
                 },
             },
             'previous': {},
