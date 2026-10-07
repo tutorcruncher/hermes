@@ -754,7 +754,7 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        sig = hmac.new(settings.tc2_api_key.encode(), b'10', hashlib.sha256).hexdigest()
+        sig = hmac.new(settings.tc2_api_key.encode(), b'signup-link:10', hashlib.sha256).hexdigest()
         assert f'/start/1/?cli_id=10&s={sig}&tc_source=bing.com"' in description
 
     @patch('fastapi.BackgroundTasks.add_task')
@@ -784,7 +784,7 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        sig = hmac.new(settings.tc2_api_key.encode(), b'10', hashlib.sha256).hexdigest()
+        sig = hmac.new(settings.tc2_api_key.encode(), b'signup-link:10', hashlib.sha256).hexdigest()
         assert f'/start/1/?cli_id=10&s={sig}&tc_source=call_booker"' in description
 
 

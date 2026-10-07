@@ -232,9 +232,8 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     if company.utm_campaign:
         tracking_params['tc_campaign'] = company.utm_campaign
     if company.tc2_cligency_id:
-        signup_sig = hmac.new(
-            settings.tc2_api_key.encode(), str(company.tc2_cligency_id).encode(), hashlib.sha256
-        ).hexdigest()
+        msg = f'signup-link:{company.tc2_cligency_id}'.encode()
+        signup_sig = hmac.new(settings.tc2_api_key.encode(), msg, hashlib.sha256).hexdigest()
     else:
         signup_sig = ''
     template_vars = {
