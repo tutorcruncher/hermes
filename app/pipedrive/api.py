@@ -56,6 +56,23 @@ def _is_rate_limited(response: httpx.Response) -> bool:
     return not is_pipedrive_error
 
 
+def is_not_found(response: httpx.Response) -> bool:
+    """
+    Whether Pipedrive says it no longer has the object: deleted over 30 days ago or merged into another one.
+    Pipedrive answers 410, or 404 with its ERR_NOT_FOUND error body. The body check leaves out a 404 that did not
+    come from the Pipedrive API, e.g. from a wrong base URL.
+    """
+    if response.status_code == 410:
+        return True
+    if response.status_code != 404:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get('code') == 'ERR_NOT_FOUND'
+
+
 async def pipedrive_request(
     endpoint: str,
     *,
@@ -108,7 +125,10 @@ async def pipedrive_request(
                     error_data = response.json()
                 except Exception:
                     error_data = response.text
-                logger.error(f'Pipedrive API error: {e}. Response: {error_data}')
+                # A gone object is a warning here: each caller logs an error itself if it can't handle it, while a
+                # sync marks the object deleted
+                log = logger.warning if is_not_found(response) else logger.error
+                log(f'Pipedrive API error: {e}. Response: {error_data}')
                 raise
         return response.json()
 

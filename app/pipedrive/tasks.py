@@ -114,8 +114,8 @@ async def sync_organization(company_id: int, recreate_on_404: bool = False) -> b
                 await api.update_organisation(pd_org_id, changed_fields)
                 logger.info(f'Updated organization {pd_org_id} for company {company_id}')
         except Exception as e:
-            logger.error(f'Error updating organization {pd_org_id}: {e}')
             if not _is_deleted_in_pipedrive(e):
+                logger.error(f'Error updating organization {pd_org_id}: {e}')
                 raise
             if not recreate_on_404:
                 _mark_deleted_after_404(Company, company_id, 'pd_org_id', pd_org_id)
@@ -164,12 +164,13 @@ async def sync_person(contact_id: int, recreate_on_404: bool = False):
                 await api.update_person(pd_person_id, changed_fields)
                 logger.info(f'Updated person {pd_person_id} for contact {contact_id}')
         except Exception as e:
-            logger.error(f'Error updating person {pd_person_id}: {e}')
             if _is_deleted_in_pipedrive(e):
                 if not recreate_on_404:
                     _mark_deleted_after_404(Contact, contact_id, 'pd_person_id', pd_person_id)
                     return
                 pd_person_id = None
+            else:
+                logger.error(f'Error updating person {pd_person_id}: {e}')
 
     if not pd_person_id:
         if 'emails' not in person_data:
@@ -217,10 +218,11 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
         await api.update_deal(deal.pd_deal_id, {'custom_fields': custom_fields})
         logger.info(f'Updated deal {deal.pd_deal_id}')
     except Exception as e:
-        logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
         # The PATCH only sends custom fields, so a not-found answer can only mean the deal itself is gone
         if _is_deleted_in_pipedrive(e, method='PATCH'):
             _mark_deleted_after_404(Deal, deal.id, 'pd_deal_id', deal.pd_deal_id)
+        else:
+            logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
 
 
 async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
@@ -273,9 +275,10 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
                 await api.update_deal(pd_deal_id, changed_fields)
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
-            logger.error(f'Error updating deal {pd_deal_id}: {e}')
             if _is_deleted_in_pipedrive(e):
                 _mark_deleted_after_404(Deal, deal_id, 'pd_deal_id', pd_deal_id)
+            else:
+                logger.error(f'Error updating deal {pd_deal_id}: {e}')
 
     else:
         # We don't have a deal and creating one
@@ -451,23 +454,13 @@ def _bring_back_for_booking(db: DBSession, company: Company, contact_id: int) ->
 
 def _is_deleted_in_pipedrive(e: Exception, method: str = 'GET') -> bool:
     """
-    Whether the error says Pipedrive no longer has the object: deleted over 30 days ago or merged into another one.
-    Pipedrive answers 410, or 404 with its ERR_NOT_FOUND error body. The body check keeps a 404 that did not come
-    from the Pipedrive API, e.g. from a wrong base URL, from marking every record deleted.
+    Whether the error says Pipedrive no longer has the object, see api.is_not_found.
     Syncs only trust the GET: a PATCH after a successful GET can fail for another reason, such as a missing linked
     object.
     """
     if not isinstance(e, httpx.HTTPStatusError) or e.request.method != method:
         return False
-    if e.response.status_code == 410:
-        return True
-    if e.response.status_code != 404:
-        return False
-    try:
-        body = e.response.json()
-    except ValueError:
-        return False
-    return isinstance(body, dict) and body.get('code') == 'ERR_NOT_FOUND'
+    return api.is_not_found(e.response)
 
 
 def _mark_deleted_after_404(
