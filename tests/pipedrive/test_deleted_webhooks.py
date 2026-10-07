@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlmodel import select
 
-from app.main_app.models import Company
+from app.main_app.models import Company, Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
 from tests.helpers import pipedrive_http_error
 
@@ -143,12 +143,11 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.assert_not_called()
         mock_update_org.assert_not_called()
 
-    async def test_deletion_then_update_webhook_leaves_company_deleted(self, client, db, test_company, test_admin):
+    async def test_deletion_then_update_webhook_brings_company_back(self, client, db, test_company, test_admin):
         """
-        Test that an update webhook after deletion leaves the company deleted: brought back without its pd_org_id,
-        its next sync would create a duplicate org
+        Test that an update webhook after deletion, as Pipedrive sends when the org is restored, links the company to
+        the org again and brings it back
         """
-        original_name = test_company.name
         test_company.tc2_cligency_id = 1003
         test_company.tc2_agency_id = 2003
         test_company.pd_org_id = 999
@@ -168,7 +167,7 @@ class TestPipedriveOrganizationDeletion:
         assert test_company.is_deleted is True
         assert test_company.pd_org_id is None
 
-        # Org gets recreated in Pipedrive (manual or via sync) - update webhook arrives
+        # The org is restored in Pipedrive
         update_webhook = {
             'meta': {'entity': 'organization', 'action': 'updated'},
             'data': {
@@ -184,7 +183,7 @@ class TestPipedriveOrganizationDeletion:
         assert r.status_code == 200
 
         db.refresh(test_company)
-        assert (test_company.name, test_company.pd_org_id, test_company.is_deleted) == (original_name, None, True)
+        assert (test_company.name, test_company.pd_org_id, test_company.is_deleted) == ('Updated Name', 999, False)
 
     @patch('app.pipedrive.tasks.api.create_person', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
@@ -331,6 +330,77 @@ class TestPipedriveOrganizationMergeDeletion:
 
         db.refresh(company2)
         assert (company2.name, company2.pd_org_id, company2.is_deleted) == ('Company 2', 200, False)
+
+    @patch('app.pipedrive.tasks.api.create_deal', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_merged_org_brings_back_tc2_client_for_its_sync(
+        self,
+        mock_create_org,
+        mock_get_org,
+        mock_update_org,
+        mock_create_deal,
+        client,
+        db,
+        test_admin,
+        test_company,
+        test_pipeline,
+        test_stage,
+        sample_tc_webhook_data,
+    ):
+        """
+        Test that a merged org links the listed company with a TC2 client, so that company's next TC2 update syncs the
+        org instead of being skipped, without creating its open deal that never reached Pipedrive
+        """
+        test_company.tc2_cligency_id = 1009
+        test_company.tc2_agency_id = 2009
+        test_company.is_deleted = True
+        db.add(test_company)
+        db.commit()
+        pd_only = db.create(
+            Company(name='Merged Org', sales_person_id=test_admin.id, price_plan='payg', is_deleted=True)
+        )
+        deal = db.create(
+            Deal(
+                name='Unsynced Deal',
+                company_id=test_company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+            )
+        )
+        mock_get_org.return_value = {'data': {'id': 999, 'name': 'Merged Org Ltd'}}
+
+        org_webhook = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: f'{pd_only.id}, {test_company.id}',
+                'name': 'Merged Org Ltd',
+                'owner_id': test_admin.pd_owner_id,
+            },
+            'previous': None,
+        }
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=org_webhook)
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        webhook_data = sample_tc_webhook_data(tc2_cligency_id=1009, tc2_agency_id=2009)
+        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        mock_get_org.assert_called_once_with(999)
+        mock_create_org.assert_not_called()
+        mock_create_deal.assert_not_called()
+
+        for obj in (test_company, pd_only, deal):
+            db.refresh(obj)
+        assert (test_company.pd_org_id, test_company.is_deleted) == (999, False)
+        assert (pd_only.pd_org_id, pd_only.is_deleted) == (None, True)
+        assert deal.status == Deal.STATUS_DELETED
 
 
 class TestNewCompanyCreationFlow:
