@@ -83,50 +83,69 @@ class PipedriveObjProcessor:
 
     def _find_obj(self, pd_obj) -> Company | Contact | Deal | None:
         """
-        The Hermes object to update from the Pipedrive one: the one its hermes_id names, or with no hermes_id the one
-        linked by Pipedrive id. A merged object's hermes_id lists every merged id, see _find_merged_obj.
+        The Hermes object to update from the Pipedrive one: the one linked by Pipedrive id, else the one its hermes_id
+        names if that is linked to no other Pipedrive object. A hermes_id can be an id from before the move to Hermes
+        v3, which no object has or which a newer, unrelated object now has, or a duplicate Pipedrive person's, so
+        an object linked elsewhere is never updated from it. A merged object's hermes_id lists every merged id, see
+        _find_merged_obj.
         """
-        if not getattr(pd_obj, 'hermes_id', None):
-            return self._linked_obj(pd_obj)
-        if isinstance(pd_obj.hermes_id, str) and ',' in str(pd_obj.hermes_id):
+        hermes_id = getattr(pd_obj, 'hermes_id', None)
+        if isinstance(hermes_id, str) and ',' in hermes_id:
             return self._find_merged_obj(pd_obj)
 
-        hermes_obj = self.db.get(self.hermes_model, pd_obj.hermes_id)
+        hermes_obj = self._linked_obj(pd_obj)
+        if hermes_obj or not hermes_id:
+            return hermes_obj
+
+        hermes_obj = self.db.get(self.hermes_model, hermes_id)
         if not hermes_obj:
-            # Somehow the object has been deleted in Hermes? Don't think this can happen
-            logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
+            logger.warning(
+                f'Not updating from Pipedrive {self.pd_model.__name__} {pd_obj.id}: no {self.hermes_model.__name__} '
+                f'is linked to it or has hermes_id {hermes_id}'
+            )
+            return None
+        if linked_id := getattr(hermes_obj, self.pd_id_field):
+            logger.warning(
+                f'Not updating {self.hermes_model.__name__} {hermes_obj.id} from Pipedrive {self.pd_model.__name__} '
+                f'{pd_obj.id}: it is linked to {self.pd_id_field} {linked_id}'
+            )
+            return None
         return hermes_obj
 
     def _find_merged_obj(self, pd_obj) -> Company | Contact | Deal | None:
         """
-        The object linked to the merged Pipedrive one wins, else the first live one its hermes_id lists, and the other
-        live ones listed are marked deleted. Pipedrive still lists ids that no Hermes object has, and deleted ones,
-        which have no Pipedrive id: brought back, a deleted one's next sync would create a duplicate.
+        The object linked to the merged Pipedrive one wins, else the first live one its hermes_id lists that is linked
+        to no other Pipedrive object. The other live listed ones with no Pipedrive id are marked deleted, as their next
+        sync would create a duplicate. Listed ones linked to another Pipedrive object are left as they are: Pipedrive
+        sends a delete webhook for each merged-away object, which marks the object linked to it deleted, and a listed
+        id can be an old id that a newer, unrelated object now has. A deleted one has no Pipedrive id and is not
+        brought back, as its next sync would create a duplicate.
         """
         hermes_ids = list(dict.fromkeys(int(i.strip()) for i in str(pd_obj.hermes_id).split(',')))
         listed = [obj for i in hermes_ids if (obj := self.db.get(self.hermes_model, i))]
-        live = [obj for obj in listed if not obj.is_deleted]
-        winner = self._linked_obj(pd_obj) or next(iter(live), None)
+        unlinked = [obj for obj in listed if not obj.is_deleted and not getattr(obj, self.pd_id_field)]
+        winner = self._linked_obj(pd_obj) or next(iter(unlinked), None)
 
         record = f'Pipedrive {self.pd_model.__name__} {pd_obj.id} with hermes_id {pd_obj.hermes_id}'
+        model_name = self.hermes_model.__name__
         if winner:
-            logger.info(f'Detected merged entity, updating {self.hermes_model.__name__} {winner.id} from {record}')
+            logger.info(f'Detected merged entity, updating {model_name} {winner.id} from {record}')
         elif listed:
-            logger.warning(f'Not updating from {record}: every {self.hermes_model.__name__} it lists is deleted')
+            logger.warning(
+                f'Not updating from {record}: every {model_name} it lists is deleted or linked to another '
+                f'{self.pd_id_field}'
+            )
         else:
-            logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
+            logger.warning(f'Not updating from {record}: no {model_name} is linked to it or listed in its hermes_id')
 
-        self._mark_merged_losers_deleted([obj for obj in live if obj is not winner])
-        return winner
-
-    def _mark_merged_losers_deleted(self, losers: list[Company | Contact | Deal]) -> None:
-        """Mark merged losers as deleted and clear their Pipedrive ID,
-        since the entity no longer exists in Pipedrive after the merge."""
+        losers = [obj for obj in unlinked if obj is not winner]
         for loser in losers:
             loser.is_deleted = True
-            setattr(loser, self.pd_id_field, None)
             self.db.add(loser)
-        self.db.commit()
+        if losers:
+            self.db.commit()
+            logger.info(f'Marked {model_name} {[obj.id for obj in losers]} deleted: listed by {record}')
+        return winner
 
     async def _update_obj(
         self, hermes_obj: Company | Contact | Deal, pd_obj: Organisation | Person | PDDeal
@@ -182,7 +201,10 @@ class _LinkedObjProcessor(PipedriveObjProcessor):
         hermes_id = self._listed_id(pd_obj)
         hermes_obj = self.db.get(self.hermes_model, hermes_id)
         if not hermes_obj:
-            logger.error(f'Object exists in Pipedrive with hermes_id {pd_obj.hermes_id} but not found in Hermes')
+            logger.warning(
+                f'Not updating from Pipedrive {self.pd_model.__name__} {pd_obj.id}: no {self.hermes_model.__name__} '
+                f'is linked to it or has hermes_id {pd_obj.hermes_id}'
+            )
             return None
 
         record = f'{self.hermes_model.__name__} {hermes_id} from Pipedrive {self.pd_model.__name__} {pd_obj.id}'
@@ -325,6 +347,10 @@ class PersonProcessor(PipedriveObjProcessor):
 
     async def _update_obj(self, hermes_obj: Contact, pd_obj: Person) -> Contact:
         # is_deleted is left as it is: brought back without its pd_person_id, the next sync would duplicate the person
+        if not hermes_obj.pd_person_id and not hermes_obj.is_deleted:
+            # Found by hermes_id with no person linked: its next sync would otherwise create a duplicate person
+            logger.info(f'Linking Contact {hermes_obj.id} to pd_person_id {pd_obj.id}')
+            hermes_obj.pd_person_id = pd_obj.id
         if pd_obj.first_name and pd_obj.first_name[:255] != hermes_obj.first_name:
             hermes_obj.first_name = pd_obj.first_name[:255]
         if pd_obj.last_name and pd_obj.last_name[:255] != hermes_obj.last_name:
