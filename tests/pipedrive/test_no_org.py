@@ -182,6 +182,70 @@ class TestNoOrganisation:
         assert error_logs(caplog) == []
 
 
+class TestOrgNotInHermes:
+    """
+    Persons and deals on an organisation no company is linked to are skipped without an error: the org's own webhook
+    can come after theirs, or the org was deleted
+    """
+
+    async def test_person_is_skipped(self, client, db, caplog):
+        """A new person whose organisation isn't in Hermes creates no contact and logs no error"""
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=person_webhook(org_id=ORG_ID))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert get_lead_contact(db) is None
+        assert error_logs(caplog) == []
+        assert f'Skipping Pipedrive person {PERSON_ID}: no company is linked to pd_org_id {ORG_ID}' in caplog.text
+
+    async def test_deal_is_added_on_change_after_org(self, client, db, test_admin, test_pipeline, test_stage, caplog):
+        """A deal sent before its org is skipped, and added by its next change once the org's webhook has come"""
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(person_id=None))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert get_deal(db) is None
+        assert f'Skipping Pipedrive deal {DEAL_ID}: no company is linked to pd_org_id {ORG_ID}' in caplog.text
+
+        org_webhook = {
+            'meta': {'entity': 'organization', 'action': 'create'},
+            'data': {'id': ORG_ID, 'name': 'Lead Co', 'owner_id': test_admin.pd_owner_id},
+            'previous': None,
+        }
+        client.post(client.app.url_path_for('pipedrive-callback'), json=org_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(person_id=None))
+
+        assert r.status_code == 200
+        company = db.exec(select(Company).where(Company.pd_org_id == ORG_ID)).one()
+        assert get_deal(db).company_id == company.id
+        assert error_logs(caplog) == []
+
+    async def test_deal_update_keeps_company(
+        self, client, db, lead_company, test_admin, test_pipeline, test_stage, caplog
+    ):
+        """A deal moved to an org that isn't in Hermes keeps its company and still takes the rest of the change"""
+        deal = db.create(
+            Deal(
+                name='Lead Deal',
+                company_id=lead_company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                pd_deal_id=DEAL_ID,
+            )
+        )
+        webhook = deal_webhook(org_id=ORG_ID + 1, person_id=None, hermes_id=deal.id)
+        webhook['data']['status'] = 'won'
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook)
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        deal = get_deal(db)
+        assert (deal.status, deal.company_id) == (Deal.STATUS_WON, lead_company.id)
+        assert error_logs(caplog) == []
+
+
 class TestDealPersonNotInHermes:
     """A deal made outside Hermes gets its Pipedrive person as its contact"""
 
