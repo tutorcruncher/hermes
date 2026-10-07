@@ -2,17 +2,16 @@
 Tests for callbooker booking flow.
 """
 
-import hashlib
-import hmac
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from pytz import utc
 from sqlmodel import select
 
-from app.core.config import settings
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
 from tests.helpers import fake_gcal_builder, pipedrive_http_error
+
+SIGNUP_SIG_CLI_10 = '8b65d6380493a2127b54f860c6eb19b2eea3d3df2feac3fbd0101ecff586f327'
 
 CB_MEETING_DATA = {
     'name': 'Brain Junes',
@@ -1233,6 +1232,7 @@ class TestSignupLinkAttribution:
         description = captured_events[0]['description']
         assert '/start/1/?cli_id=&s=&tc_source=google.com&tc_campaign=tc-home-US"' in description
 
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_support_call_invite_carries_the_stored_utm(
@@ -1261,9 +1261,9 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        sig = hmac.new(settings.tc2_api_key.encode(), b'signup-link:10', hashlib.sha256).hexdigest()
-        assert f'/start/1/?cli_id=10&s={sig}&tc_source=bing.com"' in description
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=bing.com"' in description
 
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_invite_falls_back_to_call_booker_without_utm(
@@ -1291,8 +1291,7 @@ class TestSignupLinkAttribution:
         assert r.status_code == 200, r.json()
 
         description = captured_events[0]['description']
-        sig = hmac.new(settings.tc2_api_key.encode(), b'signup-link:10', hashlib.sha256).hexdigest()
-        assert f'/start/1/?cli_id=10&s={sig}&tc_source=call_booker"' in description
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=call_booker"' in description
 
 
 class TestCallbookerValidation:
