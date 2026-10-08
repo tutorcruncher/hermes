@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
-from app.main_app.models import Admin, Company, Contact, Stage
+from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -706,6 +706,43 @@ async def fix_repeated_contact_names(db, live=False):
             print(f'Updated Pipedrive person {contact.pd_person_id}')
         except Exception as e:
             print(f'Failed to update Pipedrive person {contact.pd_person_id}: {e}')
+
+
+@command
+async def point_enterprise_deals_to_onboarding(db):
+    """
+    Send new enterprise deals to the Onboarding pipeline, and stop syncing the enterprise deals that never reached
+    Pipedrive (#372).
+
+    Pipedrive deleted the Enterprise pipeline (pd_pipeline_id=3) and its stages. Hermes ignores pipeline deletes, so
+    Config kept giving new enterprise deals that pipeline and Pipedrive rejected every create with a 400. Config now
+    gives them the Onboarding pipeline (pd_pipeline_id=1) and its entry stage.
+
+    The open deals left in the Enterprise pipeline without a pd_deal_id are marked deleted, as
+    _delete_unsynced_deals does, so the company sync stops trying to create them. TC2 webhooks find the deleted deal
+    and create no other; a sales call booking creates a new deal when the company has no open one, as for any company.
+    """
+    onboarding = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 1)).one()
+    enterprise = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 3)).one()
+    config = db.exec(select(Config)).one()
+
+    entry_stage = onboarding.dft_entry_stage
+    print(
+        f'Config enterprise_pipeline_id {config.enterprise_pipeline_id} -> {onboarding.id} ({onboarding.name}, '
+        f'entry stage pd_stage_id={entry_stage.pd_stage_id} {entry_stage.name})'
+    )
+    config.enterprise_pipeline_id = onboarding.id
+    db.add(config)
+
+    deals = db.exec(
+        select(Deal)
+        .where(Deal.pipeline_id == enterprise.id, Deal.status == Deal.STATUS_OPEN, Deal.pd_deal_id.is_(None))
+        .order_by(Deal.id)
+    ).all()
+    for deal in deals:
+        deal.status = Deal.STATUS_DELETED
+        db.add(deal)
+    print(f'Marked {len(deals)} enterprise deals deleted: {[d.id for d in deals]}')
 
 
 @click.command()
