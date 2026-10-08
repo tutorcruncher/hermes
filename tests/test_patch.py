@@ -2,8 +2,7 @@
 Tests for patch.py commands.
 """
 
-from datetime import datetime, timedelta, timezone
-from itertools import count
+from datetime import datetime, timezone
 from unittest.mock import call, patch
 
 import pytest
@@ -14,15 +13,7 @@ from app.main_app.common import get_or_create_deal
 from app.main_app.models import Company, Config, Contact, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from patch import fix_repeated_contact_names, patch as patch_command, point_enterprise_deals_to_onboarding
-from tests.factories import (
-    CompanyFactory,
-    ContactFactory,
-    DealFactory,
-    MeetingFactory,
-    PipelineFactory,
-    StageFactory,
-)
-from tests.helpers import pipedrive_http_error
+from tests.factories import CompanyFactory, DealFactory, PipelineFactory, StageFactory
 
 
 class TestFixRepeatedContactNames:
@@ -93,10 +84,7 @@ class TestFixRepeatedContactNames:
 
 
 class TestPointEnterpriseDealsToOnboarding:
-    """
-    New enterprise deals go to Onboarding. Of the ones that never reached Pipedrive, recent ones move to Onboarding
-    and are sent to Pipedrive, the rest stop syncing (#372)
-    """
+    """New enterprise deals go to Onboarding, and the ones that never reached Pipedrive stop syncing (#372)"""
 
     @pytest.fixture
     def pipelines(self, db):
@@ -127,40 +115,6 @@ class TestPointEnterpriseDealsToOnboarding:
             **kwargs,
         )
 
-    def _company(self, db, admin, days_old, **kwargs):
-        return CompanyFactory.create_with_db(
-            db,
-            price_plan='enterprise',
-            sales_person_id=admin.id,
-            created=datetime.now(timezone.utc) - timedelta(days=days_old),
-            **kwargs,
-        )
-
-    def _meeting(self, db, deal, days_ago):
-        contact = ContactFactory.create_with_db(db, company_id=deal.company_id)
-        return MeetingFactory.create_with_db(
-            db,
-            company_id=deal.company_id,
-            contact_id=contact.id,
-            admin_id=deal.admin_id,
-            deal_id=deal.id,
-            created=datetime.now(timezone.utc) - timedelta(days=days_ago),
-        )
-
-    def _pipedrive(self, open_deal_orgs=(), create_error=None):
-        pd_ids = count(1000)
-
-        def pipedrive(endpoint, method='GET', query_params=None, data=None):
-            if endpoint == 'deals' and method == 'GET':
-                return {'data': [{'id': 1}] if query_params['org_id'] in open_deal_orgs else []}
-            if endpoint == 'deals' and method == 'POST' and create_error:
-                raise create_error
-            if method == 'POST':
-                return {'data': {'id': next(pd_ids)}}
-            return {'data': {}}
-
-        return pipedrive
-
     def _tc2_webhook(self, admin):
         subject = {
             'model': 'Client',
@@ -182,65 +136,10 @@ class TestPointEnterpriseDealsToOnboarding:
         }
         return {'events': [{'action': 'EDITED_A_CLIENT', 'verb': 'edit', 'subject': subject}], '_request_time': 1}
 
-    @patch('app.pipedrive.api.pipedrive_request')
-    def test_point_enterprise_deals_to_onboarding(self, mock_pd, db, test_admin, pipelines):
+    def test_point_enterprise_deals_to_onboarding(self, db, test_admin, pipelines):
         onboarding, enterprise = pipelines
-        mock_pd.side_effect = self._pipedrive(open_deal_orgs={906})
-        recent_signup = self._deal(db, self._company(db, test_admin, 2, pd_org_id=901), enterprise)
-        recent_booking = self._deal(db, self._company(db, test_admin, 300, pd_org_id=902), enterprise)
-        self._meeting(db, recent_booking, 3)
-        old_booking = self._deal(db, self._company(db, test_admin, 300), enterprise)
-        self._meeting(db, old_booking, 20)
-        old_signup = self._deal(db, self._company(db, test_admin, 30), enterprise)
-        deleted_company = self._deal(db, self._company(db, test_admin, 2, is_deleted=True), enterprise)
-        narc = self._deal(db, self._company(db, test_admin, 2, narc=True), enterprise)
-        paying = self._deal(db, self._company(db, test_admin, 2, paid_invoice_count=1), enterprise)
-        twice = self._company(db, test_admin, 2, pd_org_id=905)
-        twice_older = self._deal(db, twice, enterprise)
-        twice_newer = self._deal(db, twice, enterprise)
-        has_deal = self._company(db, test_admin, 2)
-        has_deal_stuck = self._deal(db, has_deal, enterprise)
-        self._deal(db, has_deal, onboarding, pd_deal_id=500)
-        open_in_pd = self._deal(db, self._company(db, test_admin, 2, pd_org_id=906), enterprise)
-        self._deal(db, has_deal, enterprise, pd_deal_id=501)
-        lost = self._deal(db, has_deal, enterprise, status=Deal.STATUS_LOST)
-
-        result = CliRunner().invoke(patch_command, ['point_enterprise_deals_to_onboarding'])
-
-        assert result.exit_code == 0
-        for line in [
-            f'Config enterprise_pipeline_id {enterprise.id} -> {onboarding.id} (Onboarding (NEW), '
-            'entry stage pd_stage_id=1 New Signup)',
-            f'Moving 3 enterprise deals to Onboarding (NEW), stage New Signup: '
-            f'{[recent_signup.id, recent_booking.id, twice_newer.id]}',
-            f'Marking 2 enterprise deals deleted, no signup or call booking in the last 14 days: '
-            f'{[old_booking.id, old_signup.id]}',
-            f'Marking 2 enterprise deals deleted, company deleted or NARC: {[deleted_company.id, narc.id]}',
-            f'Marking 1 enterprise deals deleted, company is paying: {[paying.id]}',
-            f'Marking 2 enterprise deals deleted, company has another open deal: {[twice_older.id, has_deal_stuck.id]}',
-            f'Marking 1 enterprise deals deleted, org already has an open Pipedrive deal: {[open_in_pd.id]}',
-            'Not committing changes',
-        ]:
-            assert line in result.output
-        assert mock_pd.call_args_list == [
-            call('deals', query_params={'org_id': org_id, 'status': 'open', 'limit': 1})
-            for org_id in (906, 905, 902, 901)
-        ]
-        db.expire_all()
-        assert db.exec(select(Config)).one().enterprise_pipeline_id == enterprise.id
-        assert {(d.pipeline_id, d.status) for d in db.exec(select(Deal).where(Deal.id != lost.id)).all()} == {
-            (enterprise.id, Deal.STATUS_OPEN),
-            (onboarding.id, Deal.STATUS_OPEN),
-        }
-
-    @patch('app.core.config.settings.sync_create_deals', True)
-    @patch('app.pipedrive.api.pipedrive_request')
-    def test_live_moves_recent_deals_and_sends_them_to_pipedrive(self, mock_pd, db, test_admin, pipelines):
-        onboarding, enterprise = pipelines
-        mock_pd.side_effect = self._pipedrive()
-        recent = self._deal(db, self._company(db, test_admin, 2, pd_org_id=901), enterprise)
-        old = self._deal(db, self._company(db, test_admin, 30, pd_org_id=902), enterprise)
-        company = self._company(db, test_admin, 30)
+        company = CompanyFactory.create_with_db(db, price_plan='enterprise', sales_person_id=test_admin.id)
+        unsynced = self._deal(db, company, enterprise)
         synced = self._deal(db, company, enterprise, pd_deal_id=500)
         lost = self._deal(db, company, enterprise, status=Deal.STATUS_LOST)
         onboarding_unsynced = self._deal(db, company, onboarding)
@@ -248,62 +147,32 @@ class TestPointEnterpriseDealsToOnboarding:
         result = CliRunner().invoke(patch_command, ['point_enterprise_deals_to_onboarding', '--live'])
 
         assert result.exit_code == 0
-        deal_creates = [
-            c.kwargs['data'] for c in mock_pd.call_args_list if c.args[0] == 'deals' and c.kwargs.get('data')
-        ]
-        assert [(d['org_id'], d['pipeline_id'], d['stage_id']) for d in deal_creates] == [(901, 1, 1)]
+        assert (
+            f'Config enterprise_pipeline_id {enterprise.id} -> {onboarding.id} (Onboarding (NEW), '
+            'entry stage pd_stage_id=1 New Signup)'
+        ) in result.output
+        assert f'Marked 1 enterprise deals deleted: [{unsynced.id}]' in result.output
         db.expire_all()
         assert db.exec(select(Config)).one().enterprise_pipeline_id == onboarding.id
-        assert f'Created Pipedrive deal {recent.pd_deal_id} for deal {recent.id}' in result.output
-        assert [(d.pipeline_id, d.stage_id, d.status, d.pd_deal_id) for d in (recent, old, synced, lost)] == [
-            (onboarding.id, onboarding.dft_entry_stage_id, Deal.STATUS_OPEN, 1000),
-            (enterprise.id, enterprise.dft_entry_stage_id, Deal.STATUS_DELETED, None),
-            (enterprise.id, enterprise.dft_entry_stage_id, Deal.STATUS_OPEN, 500),
-            (enterprise.id, enterprise.dft_entry_stage_id, Deal.STATUS_LOST, None),
+        assert [d.status for d in (unsynced, synced, lost, onboarding_unsynced)] == [
+            Deal.STATUS_DELETED,
+            Deal.STATUS_OPEN,
+            Deal.STATUS_LOST,
+            Deal.STATUS_OPEN,
         ]
-        assert (onboarding_unsynced.status, onboarding_unsynced.pd_deal_id) == (Deal.STATUS_OPEN, None)
-
-    @patch('app.core.config.settings.sync_create_deals', True)
-    @patch('app.pipedrive.api.pipedrive_request')
-    def test_live_reports_a_deal_pipedrive_rejects(self, mock_pd, db, test_admin, pipelines):
-        onboarding, enterprise = pipelines
-        mock_pd.side_effect = self._pipedrive(create_error=pipedrive_http_error(400, 'deals', 'POST'))
-        recent = self._deal(db, self._company(db, test_admin, 2, pd_org_id=901), enterprise)
-
-        result = CliRunner().invoke(patch_command, ['point_enterprise_deals_to_onboarding', '--live'])
-
-        assert result.exit_code == 0
-        assert [c.args[0] for c in mock_pd.call_args_list if c.kwargs.get('method') == 'POST'] == ['deals']
-        assert f'Deal {recent.id} still has no Pipedrive deal, see the sync log above' in result.output
-        db.expire_all()
-        assert (recent.pipeline_id, recent.status, recent.pd_deal_id) == (onboarding.id, Deal.STATUS_OPEN, None)
-
-    @patch('app.pipedrive.api.pipedrive_request')
-    def test_pipedrive_error_in_open_deal_check_changes_nothing(self, mock_pd, db, test_admin, pipelines):
-        _, enterprise = pipelines
-        mock_pd.side_effect = pipedrive_http_error(500, 'deals')
-        recent = self._deal(db, self._company(db, test_admin, 2, pd_org_id=901), enterprise)
-        old = self._deal(db, self._company(db, test_admin, 30), enterprise)
-
-        result = CliRunner().invoke(patch_command, ['point_enterprise_deals_to_onboarding', '--live'])
-
-        assert result.exit_code == 1
-        assert "Client error '500'" in str(result.exception)
-        assert mock_pd.call_count == 1
-        db.expire_all()
-        assert db.exec(select(Config)).one().enterprise_pipeline_id == enterprise.id
-        assert [(d.pipeline_id, d.status) for d in (recent, old)] == [(enterprise.id, Deal.STATUS_OPEN)] * 2
 
     @patch('app.core.config.settings.sync_create_deals', True)
     @patch('app.pipedrive.api.pipedrive_request')
     async def test_deleted_enterprise_deal_is_not_synced(self, mock_pd, db, test_admin, pipelines):
         _, enterprise = pipelines
-        company = self._company(db, test_admin, 30, pd_org_id=900)
+        company = CompanyFactory.create_with_db(
+            db, price_plan='enterprise', sales_person_id=test_admin.id, pd_org_id=900
+        )
         self._deal(db, company, enterprise)
 
         def pipedrive(endpoint, method='GET', **kwargs):
             if endpoint == 'deals':
-                raise pipedrive_http_error(400, 'deals', 'POST')
+                raise Exception('Validation failed: pipeline_id: Pipeline does not exist.')
             return {'data': {'id': 900, 'name': company.name}}
 
         mock_pd.side_effect = pipedrive
@@ -341,7 +210,14 @@ class TestPointEnterpriseDealsToOnboarding:
         self, mock_pd, mock_get_or_create_deal, client, db, test_admin, pipelines
     ):
         _, enterprise = pipelines
-        company = self._company(db, test_admin, 30, tc2_cligency_id=123, tc2_agency_id=456, pd_org_id=900)
+        company = CompanyFactory.create_with_db(
+            db,
+            price_plan='enterprise',
+            sales_person_id=test_admin.id,
+            tc2_cligency_id=123,
+            tc2_agency_id=456,
+            pd_org_id=900,
+        )
         deal = self._deal(db, company, enterprise)
         mock_pd.return_value = {'data': {'id': 900, 'name': company.name}}
         await point_enterprise_deals_to_onboarding(db)

@@ -9,8 +9,7 @@ with existing deals in Pipedrive using the hermes_id custom field.
 import asyncio
 import inspect
 import logging
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import click
 from sqlalchemy import text
@@ -19,7 +18,6 @@ from sqlmodel import select
 from app.core.database import get_session
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline, Stage
 from app.pipedrive import api
-from app.pipedrive.tasks import sync_company_to_pipedrive
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('hermes.patch')
@@ -710,45 +708,22 @@ async def fix_repeated_contact_names(db, live=False):
             print(f'Failed to update Pipedrive person {contact.pd_person_id}: {e}')
 
 
-ONBOARDING_PD_PIPELINE_ID = 1
-ENTERPRISE_PD_PIPELINE_ID = 3
-RECENT_DEAL_DAYS = 14
-
-
-def _last_signup_or_booking(deal: Deal) -> datetime:
-    """The later of the company's signup and the last sales call booked on the deal, in UTC"""
-    dates = [deal.company.created, *(m.created for m in deal.meetings)]
-    return max(d if d.tzinfo else d.replace(tzinfo=timezone.utc) for d in dates)
-
-
-async def _org_has_open_pd_deal(pd_org_id: int) -> bool:
-    """Whether Pipedrive has an open deal on the org. A Pipedrive error is raised, so nothing is changed."""
-    result = await api.pipedrive_request('deals', query_params={'org_id': pd_org_id, 'status': 'open', 'limit': 1})
-    return bool(result.get('data'))
-
-
 @command
-async def point_enterprise_deals_to_onboarding(db, live=False):
+async def point_enterprise_deals_to_onboarding(db):
     """
-    Send new enterprise deals to the Onboarding pipeline, and deal with the enterprise deals that never reached
+    Send new enterprise deals to the Onboarding pipeline, and stop syncing the enterprise deals that never reached
     Pipedrive (#372).
 
     Pipedrive deleted the Enterprise pipeline (pd_pipeline_id=3) and its stages. Hermes ignores pipeline deletes, so
     Config kept giving new enterprise deals that pipeline and Pipedrive rejected every create with a 400. Config now
     gives them the Onboarding pipeline (pd_pipeline_id=1) and its entry stage.
 
-    The open deals left in the Enterprise pipeline without a pd_deal_id are stuck. A stuck deal is kept when its
-    company signed up, or booked a sales call on it, in the last 14 days: it is moved to the Onboarding pipeline's
-    entry stage. A deal made by a booking is dated by its meeting, as the company can have signed up long before.
-    Every other stuck deal is marked deleted, as _delete_unsynced_deals does, so the company sync stops trying to
-    create it. A kept deal is marked deleted too when its company is deleted, NARC or paying (the sync creates no
-    deal for those), has another open deal, or its org already has an open deal in Pipedrive, so no duplicate is made.
-
-    With --live the changes are committed and each kept deal is sent to Pipedrive straight away, under the company's
-    sync lock, as many of these companies get no regular TC2 update that would sync them.
+    The open deals left in the Enterprise pipeline without a pd_deal_id are marked deleted, as
+    _delete_unsynced_deals does, so the company sync stops trying to create them. TC2 webhooks find the deleted deal
+    and create no other; a sales call booking creates a new deal when the company has no open one, as for any company.
     """
-    onboarding = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == ONBOARDING_PD_PIPELINE_ID)).one()
-    enterprise = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == ENTERPRISE_PD_PIPELINE_ID)).one()
+    onboarding = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 1)).one()
+    enterprise = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 3)).one()
     config = db.exec(select(Config)).one()
 
     entry_stage = onboarding.dft_entry_stage
@@ -759,62 +734,15 @@ async def point_enterprise_deals_to_onboarding(db, live=False):
     config.enterprise_pipeline_id = onboarding.id
     db.add(config)
 
-    stuck = db.exec(
+    deals = db.exec(
         select(Deal)
         .where(Deal.pipeline_id == enterprise.id, Deal.status == Deal.STATUS_OPEN, Deal.pd_deal_id.is_(None))
-        .order_by(Deal.id.desc())
+        .order_by(Deal.id)
     ).all()
-    stuck_ids = {d.id for d in stuck}
-    cutoff = datetime.now(timezone.utc) - timedelta(days=RECENT_DEAL_DAYS)
-
-    to_move = []
-    to_delete = defaultdict(list)
-    for deal in stuck:
-        company = deal.company
-        if _last_signup_or_booking(deal) < cutoff:
-            reason = f'no signup or call booking in the last {RECENT_DEAL_DAYS} days'
-        elif company.is_deleted or company.narc:
-            reason = 'company deleted or NARC'
-        elif company.paid_invoice_count:
-            reason = 'company is paying'
-        elif any(d.company_id == company.id for d in to_move) or any(
-            d.status == Deal.STATUS_OPEN and d.id not in stuck_ids for d in company.deals
-        ):
-            reason = 'company has another open deal'
-        elif company.pd_org_id and await _org_has_open_pd_deal(company.pd_org_id):
-            reason = 'org already has an open Pipedrive deal'
-        else:
-            to_move.append(deal)
-            continue
-        to_delete[reason].append(deal)
-
-    moved = sorted((d.id, d.company_id) for d in to_move)
-    for deal in to_move:
-        deal.pipeline_id = onboarding.id
-        deal.stage_id = entry_stage.id
+    for deal in deals:
+        deal.status = Deal.STATUS_DELETED
         db.add(deal)
-    print(
-        f'Moving {len(moved)} enterprise deals to {onboarding.name}, stage {entry_stage.name}: '
-        f'{[deal_id for deal_id, _ in moved]}'
-    )
-    for reason, deals in to_delete.items():
-        for deal in deals:
-            deal.status = Deal.STATUS_DELETED
-            db.add(deal)
-        print(f'Marking {len(deals)} enterprise deals deleted, {reason}: {sorted(d.id for d in deals)}')
-
-    if not live:
-        return
-
-    db.commit()
-    for deal_id, company_id in moved:
-        await sync_company_to_pipedrive(company_id)
-        deal = db.get(Deal, deal_id)
-        db.refresh(deal)
-        if deal.pd_deal_id:
-            print(f'Created Pipedrive deal {deal.pd_deal_id} for deal {deal_id}')
-        else:
-            print(f'Deal {deal_id} still has no Pipedrive deal, see the sync log above')
+    print(f'Marked {len(deals)} enterprise deals deleted: {[d.id for d in deals]}')
 
 
 @click.command()
