@@ -9,7 +9,7 @@ from sqlmodel import select
 
 from app.main_app.models import Company, Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
-from tests.helpers import pipedrive_http_error
+from tests.helpers import pipedrive_http_error, tc2_webhook
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ class TestPipedriveOrganizationDeletion:
         db.commit()
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1001, tc2_agency_id=2001)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -135,7 +135,7 @@ class TestPipedriveOrganizationDeletion:
         }
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1002, tc2_agency_id=2002)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -203,7 +203,7 @@ class TestPipedriveOrganizationDeletion:
         mock_get_org.side_effect = pipedrive_http_error(404, 'organizations/999')
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1004, tc2_agency_id=2004)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -229,7 +229,7 @@ class TestPipedriveOrganizationDeletion:
         mock_create_org.return_value = {'data': {'id': 2000}}
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1005, tc2_agency_id=2005)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -348,7 +348,7 @@ class TestPipedriveOrganizationMergeDeletion:
         )
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1006, tc2_agency_id=2006)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -445,7 +445,7 @@ class TestPipedriveOrganizationMergeDeletion:
         assert r.json() == {'status': 'ok'}
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1009, tc2_agency_id=2009)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -511,7 +511,7 @@ class TestNewCompanyCreationFlow:
         mock_create_person.return_value = {'data': {'id': 4000}}
         mock_create_deal.return_value = {'data': {'id': 5000}}
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -562,7 +562,7 @@ class TestNewCompanyCreationFlow:
             }
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -608,7 +608,7 @@ class TestNewCompanyCreationFlow:
         mock_create_org.return_value = {'data': {'id': 6000}}
 
         webhook_data = sample_tc_webhook_data(tc2_cligency_id=1008, tc2_agency_id=2008)
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 

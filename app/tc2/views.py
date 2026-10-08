@@ -1,7 +1,10 @@
+import hashlib
+import hmac
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Header
+from fastapi import APIRouter, BackgroundTasks, Header, Request
+from starlette.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import get_session
@@ -26,20 +29,23 @@ _SHORT_CLIENT_FIELDS = {'model', 'url', 'id', 'first_name', 'last_name', 'email'
 
 @router.post('/callback/', name='tc2-callback')
 async def tc2_callback(
+    request: Request,
     webhook: TCWebhook,
     background_tasks: BackgroundTasks,
-    webhook_signature: Optional[str] = Header(None, alias='X-Webhook-Signature'),
+    webhook_signature: Optional[str] = Header(None),
 ):
     """
     Process TC2 webhooks: TC2 → Hermes → Pipedrive
 
     Handles Client and Invoice events from TutorCruncher.
     """
-    # Verify HMAC signature (skip in dev mode)
+    # TC2 sends its webhooks through Chronos, which signs the exact body it sends with the TC2 API key
     if not settings.dev_mode:
-        # TODO: Get request body for signature verification
-        # For now, we'll skip this but it should be implemented
-        pass
+        expected_sig = hmac.new(settings.tc2_api_key.encode(), await request.body(), hashlib.sha256).hexdigest()
+        # Encoded because compare_digest raises TypeError on a non-ASCII str
+        if not webhook_signature or not hmac.compare_digest(webhook_signature.encode(), expected_sig.encode()):
+            logger.warning('Rejected a TC2 webhook with an invalid signature')
+            return JSONResponse({'status': 'error', 'message': 'Unauthorized'}, status_code=403)
 
     for event in webhook.events:
         if event.subject.model == 'Client':

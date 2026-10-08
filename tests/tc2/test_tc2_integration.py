@@ -18,7 +18,7 @@ from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from app.tc2.models import TCClient
 from app.tc2.process import process_tc_client
-from tests.helpers import create_error_response, create_mock_gcal_resource, create_mock_response
+from tests.helpers import create_error_response, create_mock_gcal_resource, create_mock_response, tc2_webhook
 
 
 @pytest.fixture
@@ -118,7 +118,9 @@ class TestTC2Integration:
     def _post_client_webhook(self, client, db, client_data: dict) -> Company:
         r = client.post(
             client.app.url_path_for('tc2-callback'),
-            json={'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': client_data}], '_request_time': 1},
+            **tc2_webhook(
+                {'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': client_data}], '_request_time': 1}
+            ),
         )
         assert r.status_code == 200
         company = db.exec(select(Company).where(Company.tc2_cligency_id == client_data['id'])).one()
@@ -158,7 +160,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -189,7 +191,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -237,7 +239,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -293,7 +295,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -367,7 +369,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
@@ -415,7 +417,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -427,7 +429,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -445,7 +447,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -466,7 +468,7 @@ class TestTC2Integration:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -736,7 +738,7 @@ class TestTC2EdgeCases:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -829,7 +831,7 @@ class TestTC2EdgeCases:
         }
 
         # This should not raise any errors
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -874,7 +876,7 @@ class TestTC2EdgeCases:
         }
 
         # This should not raise any errors
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -912,7 +914,7 @@ class TestTC2EdgeCases:
         }
 
         # This should not raise any errors
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1000,7 +1002,9 @@ class TestTC2ClientWebhookShapes:
         sample_tc_client_data['model'] = 'Client'
         sample_tc_client_data['meta_agency']['country'] = None
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+        r = client.post(
+            client.app.url_path_for('tc2-callback'), **tc2_webhook(self.webhook_data(sample_tc_client_data))
+        )
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1014,12 +1018,16 @@ class TestTC2ClientWebhookShapes:
     ):
         """A null meta_agency.country still updates an existing company, and its stored country is kept"""
         sample_tc_client_data['model'] = 'Client'
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+        r = client.post(
+            client.app.url_path_for('tc2-callback'), **tc2_webhook(self.webhook_data(sample_tc_client_data))
+        )
         assert r.status_code == 200
 
         sample_tc_client_data['meta_agency']['country'] = None
         sample_tc_client_data['meta_agency']['paid_invoice_count'] = 10
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+        r = client.post(
+            client.app.url_path_for('tc2-callback'), **tc2_webhook(self.webhook_data(sample_tc_client_data))
+        )
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1045,7 +1053,7 @@ class TestTC2ClientWebhookShapes:
             'role_type': 'Client',
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(subject))
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(self.webhook_data(subject)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1064,7 +1072,7 @@ class TestTC2ClientWebhookShapes:
 
         r = client.post(
             client.app.url_path_for('tc2-callback'),
-            json=self.webhook_data(sample_tc_client_data, action='CLIENT_ENQUIRY'),
+            **tc2_webhook(self.webhook_data(sample_tc_client_data, action='CLIENT_ENQUIRY')),
         )
 
         assert r.status_code == 200
@@ -1091,7 +1099,8 @@ class TestTC2ClientWebhookShapes:
         }
 
         r = client.post(
-            client.app.url_path_for('tc2-callback'), json=self.webhook_data(subject, action='DELETED_A_CLIENT')
+            client.app.url_path_for('tc2-callback'),
+            **tc2_webhook(self.webhook_data(subject, action='DELETED_A_CLIENT')),
         )
 
         assert r.status_code == 200
@@ -1112,7 +1121,7 @@ class TestTC2ClientWebhookShapes:
 
         r = client.post(
             client.app.url_path_for('tc2-callback'),
-            json=self.webhook_data(sample_tc_client_data, action='CREATED_A_CLIENT'),
+            **tc2_webhook(self.webhook_data(sample_tc_client_data, action='CREATED_A_CLIENT')),
         )
 
         assert r.status_code == 200
@@ -1122,6 +1131,88 @@ class TestTC2ClientWebhookShapes:
         error_logs = self.error_logs(caplog)
         assert len(error_logs) == 1
         assert error_logs[0].startswith('Error processing TC2 client event: ')
+
+
+class TestTC2CallbackSignature:
+    """TC2 webhooks reach Hermes through Chronos, which signs each body with the TC2 API key"""
+
+    @staticmethod
+    def webhook_data(subject: dict) -> dict:
+        return {'events': [{'action': 'EDITED_A_CLIENT', 'verb': 'verb', 'subject': subject}], '_request_time': 1}
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_signed_webhook_is_processed(self, mock_sync, client, db, test_admin, sample_tc_client_data):
+        sample_tc_client_data['model'] = 'Client'
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'), **tc2_webhook(self.webhook_data(sample_tc_client_data))
+        )
+
+        assert r.status_code == 200
+        company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
+        mock_sync.assert_called_once_with(company.id)
+
+    @pytest.mark.parametrize(
+        'headers',
+        [{}, {'webhook-signature': ''}, {'webhook-signature': 'not-a-signature'}, {'webhook-signature': 'é'.encode()}],
+    )
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_webhook_without_a_valid_signature_is_rejected(
+        self, mock_sync, client, db, test_admin, sample_tc_client_data, headers
+    ):
+        sample_tc_client_data['model'] = 'Client'
+        body = json.dumps(self.webhook_data(sample_tc_client_data)).encode()
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            content=body,
+            headers={'Content-Type': 'application/json', **headers},
+        )
+
+        assert r.status_code == 403
+        assert db.exec(select(Company)).all() == []
+        mock_sync.assert_not_called()
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_webhook_signed_with_another_key_is_rejected(
+        self, mock_sync, client, db, test_admin, sample_tc_client_data
+    ):
+        sample_tc_client_data['model'] = 'Client'
+
+        r = client.post(
+            client.app.url_path_for('tc2-callback'),
+            **tc2_webhook(self.webhook_data(sample_tc_client_data), key='another-key'),
+        )
+
+        assert r.status_code == 403
+        assert db.exec(select(Company)).all() == []
+        mock_sync.assert_not_called()
+
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_signature_of_another_body_is_rejected(
+        self, mock_sync, client, db, test_admin, sample_tc_client_data
+    ):
+        """The signature is checked against the exact body received, so a changed body fails"""
+        sample_tc_client_data['model'] = 'Client'
+        signed = tc2_webhook(self.webhook_data(sample_tc_client_data))
+        sample_tc_client_data['meta_agency']['narc'] = True
+        changed_body = json.dumps(self.webhook_data(sample_tc_client_data)).encode()
+
+        r = client.post(client.app.url_path_for('tc2-callback'), content=changed_body, headers=signed['headers'])
+
+        assert r.status_code == 403
+        assert db.exec(select(Company)).all() == []
+        mock_sync.assert_not_called()
+
+    @patch('app.tc2.views.settings.dev_mode', True)
+    @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
+    async def test_dev_mode_skips_the_signature_check(self, mock_sync, client, db, test_admin, sample_tc_client_data):
+        sample_tc_client_data['model'] = 'Client'
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self.webhook_data(sample_tc_client_data))
+
+        assert r.status_code == 200
+        assert db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
 
 
 class TestTC2DealCreation:
@@ -1408,7 +1499,7 @@ class TestTC2DealCreation:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
@@ -1427,7 +1518,7 @@ class TestTC2DealCreation:
             '_request_time': 1234567891,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         # Should still have only one deal, and it should still be lost
@@ -1568,8 +1659,8 @@ class TestTC2DealCreation:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
             responses = await asyncio.gather(
-                ac.post('/tc2/callback/', json=webhook_data_1),
-                ac.post('/tc2/callback/', json=webhook_data_2),
+                ac.post('/tc2/callback/', **tc2_webhook(webhook_data_1)),
+                ac.post('/tc2/callback/', **tc2_webhook(webhook_data_2)),
             )
 
         assert all(r.status_code == 200 for r in responses)
@@ -1618,7 +1709,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         # Verify company was created with all fields
@@ -1684,7 +1775,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567900,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1720,7 +1811,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -1741,7 +1832,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1766,7 +1857,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         # Update all syncable fields
@@ -1785,7 +1876,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1819,7 +1910,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -1842,7 +1933,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1865,7 +1956,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         contact = db.exec(select(Contact).where(Contact.tc2_sr_id == 789)).one()
@@ -1883,7 +1974,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1901,7 +1992,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         contacts = db.exec(select(Contact)).all()
@@ -1917,7 +2008,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1944,7 +2035,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -1957,7 +2048,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -1989,7 +2080,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2003,7 +2094,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -2034,7 +2125,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2056,7 +2147,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -2096,7 +2187,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
             '_request_time': 1234567890,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         assert db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2112,7 +2203,7 @@ class TestTC2SyncableFields:
             'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
             '_request_time': 1234567891,
         }
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -2179,7 +2270,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2206,7 +2297,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2223,7 +2314,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567891,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.expire_all()
@@ -2254,7 +2345,7 @@ class TestTC2SyncableFields:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).one()
@@ -2394,7 +2485,7 @@ class TestGetOrCreateDealConsolidation:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
@@ -2432,7 +2523,7 @@ class TestGetOrCreateDealConsolidation:
             '_request_time': 1234567891,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         # Verify no new deal was created (TC2 found existing one)
@@ -2537,7 +2628,7 @@ class TestGetOrCreateDealConsolidation:
             '_request_time': 1234567890,
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         company = db.exec(select(Company).where(Company.tc2_cligency_id == 123)).first()
@@ -2587,7 +2678,7 @@ class TestGetOrCreateDealConsolidation:
         }
 
         # This should NOT crash with MultipleResultsFound error
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         # Verify no additional deals were created
@@ -2976,7 +3067,7 @@ class TestPartialDealSyncIntegration:
         }
 
         requests_made.clear()
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert r.status_code == 200
 
         db.refresh(company)
