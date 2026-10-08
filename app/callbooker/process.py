@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -226,11 +228,17 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     tracking_params = {'tc_source': company.utm_source or 'call_booker'}
     if company.utm_campaign:
         tracking_params['tc_campaign'] = company.utm_campaign
+    if company.tc2_cligency_id:
+        msg = f'signup-link:{company.tc2_cligency_id}'.encode()
+        signup_sig = hmac.new(settings.tc2_api_key.encode(), msg, hashlib.sha256).hexdigest()
+    else:
+        signup_sig = ''
     template_vars = {
         'contact_first_name': contact.first_name or 'there',
         'company_name': company.name,
         'admin_name': admin.first_name,
         'tc2_cligency_id': company.tc2_cligency_id or '',
+        'signup_sig': signup_sig,
         'tc2_cligency_url': company.tc2_cligency_url or '',
         'signup_tracking_params': urlencode(tracking_params),
     }

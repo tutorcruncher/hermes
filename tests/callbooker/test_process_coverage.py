@@ -15,6 +15,8 @@ from app.main_app.models import Company, Config, Contact, Deal, Meeting, Pipelin
 from tests.factories import CompanyFactory
 from tests.helpers import fake_gcal_builder
 
+SIGNUP_SIG_CLI_10 = '8b65d6380493a2127b54f860c6eb19b2eea3d3df2feac3fbd0101ecff586f327'
+
 
 class TestCallbookerProcessEdgeCases:
     """Test callbooker process edge cases for full coverage"""
@@ -410,6 +412,7 @@ class TestAvailabilityEndpoint:
 class TestMeetingTemplateVars:
     """Test the signup link in the meeting description carries the company's utm"""
 
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
     def test_signup_link_uses_company_utm(self, db, test_admin, test_contact):
         """Test the signup link carries the company's utm_source and utm_campaign"""
         company = CompanyFactory.create_with_db(
@@ -418,8 +421,9 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=google&tc_campaign=US+Search'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        assert '/start/1/?cli_id=10&tc_source=google&tc_campaign=US+Search' in description
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=google&tc_campaign=US+Search' in description
 
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
     def test_signup_link_omits_campaign_when_only_source_is_set(self, db, test_admin, test_contact):
         """Test the signup link carries tc_source alone when the company has no utm_campaign"""
         company = CompanyFactory.create_with_db(
@@ -428,8 +432,9 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=google'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        assert '/start/1/?cli_id=10&tc_source=google">' in description
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=google">' in description
 
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
     def test_signup_link_escapes_hostile_utm_source(self, db, test_admin, test_contact):
         """Test a utm_source from the public booking endpoint cannot break out of the href"""
         company = CompanyFactory.create_with_db(
@@ -438,11 +443,11 @@ class TestMeetingTemplateVars:
         template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
         assert template_vars['signup_tracking_params'] == 'tc_source=a%26b%3D%22x%22%3Cscript%3E'
         description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
-        assert '/start/1/?cli_id=10&tc_source=a%26b%3D%22x%22%3Cscript%3E">' in description
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=a%26b%3D%22x%22%3Cscript%3E">' in description
 
     def test_signup_link_falls_back_to_call_booker(self, test_admin, test_company, test_contact):
         """Test the signup link falls back to call_booker when no utm was ever captured"""
         template_vars = _build_meeting_template_vars(test_company, test_contact, test_admin, Meeting.TYPE_SALES)
         assert template_vars['signup_tracking_params'] == 'tc_source=call_booker'
         description = MEETING_CONTENT_TEMPLATES['sales'].format(**template_vars)
-        assert '/start/1/?cli_id=&tc_source=call_booker"' in description
+        assert '/start/1/?cli_id=&s=&tc_source=call_booker"' in description
