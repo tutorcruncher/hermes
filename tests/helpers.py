@@ -2,10 +2,25 @@
 Test helpers and utilities for Hermes v4 tests.
 """
 
+import hashlib
+import hmac
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import httpx
+
+from app.core.config import settings
+
+
+def tc2_webhook(data: dict, key: str | None = None) -> dict:
+    """
+    The request kwargs for posting `data` to the TC2 callback the way Chronos sends it: the JSON body and its
+    HMAC-SHA256 signature, keyed with the TC2 API key unless another key is given.
+    """
+    body = json.dumps(data).encode()
+    sig = hmac.new((key or settings.tc2_api_key).encode(), body, hashlib.sha256).hexdigest()
+    return {'content': body, 'headers': {'Content-Type': 'application/json', 'webhook-signature': sig}}
 
 
 class MockResponse:

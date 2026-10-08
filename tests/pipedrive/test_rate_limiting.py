@@ -18,7 +18,7 @@ from sqlmodel import select
 
 from app.main_app.models import Company
 from app.pipedrive import api
-from tests.helpers import MockResponse
+from tests.helpers import MockResponse, tc2_webhook
 
 
 @pytest.fixture(scope='session')
@@ -151,7 +151,7 @@ class TestEndToEndRateLimiting:
         """Test single TC2 webhook triggers Pipedrive sync with rate limiting"""
         monkeypatch.setattr('app.core.config.settings.pd_base_url', mock_pipedrive_server)
 
-        response = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(sample_tc_webhook_data))
 
         assert response.status_code == 200
         assert response.json() == {'status': 'ok'}
@@ -205,7 +205,7 @@ class TestEndToEndRateLimiting:
             )
 
         for webhook in webhooks:
-            response = client.post(client.app.url_path_for('tc2-callback'), json=webhook)
+            response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook))
             assert response.status_code == 200
 
         companies = db.exec(select(Company)).all()
@@ -257,7 +257,7 @@ class TestEndToEndRateLimiting:
             '_request_time': 1234567890,
         }
 
-        response = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert response.status_code == 200
 
         companies = db.exec(select(Company).where(Company.tc2_cligency_id >= 500)).all()
@@ -345,7 +345,7 @@ class TestEndToEndRateLimiting:
 
         # Fire all webhooks rapidly - some will fail with 429
         for webhook in webhooks:
-            client.post(client.app.url_path_for('tc2-callback'), json=webhook)
+            client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook))
 
         # Verify 429 errors occurred in logs
         assert '429' in caplog.text

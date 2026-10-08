@@ -14,6 +14,7 @@ from app.main_app.models import Company, Config, Contact, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from patch import fix_repeated_contact_names, patch as patch_command, point_enterprise_deals_to_onboarding
 from tests.factories import CompanyFactory, DealFactory, PipelineFactory, StageFactory
+from tests.helpers import tc2_webhook
 
 
 class TestFixRepeatedContactNames:
@@ -197,7 +198,7 @@ class TestPointEnterpriseDealsToOnboarding:
         await point_enterprise_deals_to_onboarding(db)
         db.commit()
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self._tc2_webhook(test_admin))
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(self._tc2_webhook(test_admin)))
 
         assert r.status_code == 200
         deal_creates = [c for c in mock_pd.call_args_list if c.args[0] == 'deals']
@@ -223,7 +224,7 @@ class TestPointEnterpriseDealsToOnboarding:
         await point_enterprise_deals_to_onboarding(db)
         db.commit()
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=self._tc2_webhook(test_admin))
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(self._tc2_webhook(test_admin)))
 
         assert r.status_code == 200
         mock_get_or_create_deal.assert_awaited_once()

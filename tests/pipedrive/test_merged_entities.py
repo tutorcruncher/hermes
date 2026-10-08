@@ -11,6 +11,7 @@ from sqlmodel import select
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive, sync_person
+from tests.helpers import tc2_webhook
 
 
 class TestPipedriveWebhookMergedEntities:
@@ -1457,7 +1458,7 @@ class TestPipedrivePersonMergeDeletion:
             ]
         }
 
-        r = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
