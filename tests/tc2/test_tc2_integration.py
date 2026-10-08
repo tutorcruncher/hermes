@@ -1154,7 +1154,7 @@ class TestTC2CallbackSignature:
 
     @pytest.mark.parametrize(
         'headers',
-        [{}, {'webhook-signature': ''}, {'webhook-signature': 'not-a-signature'}, {'webhook-signature': 'é'}],
+        [{}, {'webhook-signature': ''}, {'webhook-signature': 'not-a-signature'}, {'webhook-signature': 'é'.encode()}],
     )
     @patch('app.tc2.views.sync_company_to_pipedrive', new_callable=AsyncMock)
     async def test_webhook_without_a_valid_signature_is_rejected(
