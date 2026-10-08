@@ -2,12 +2,14 @@
 Tests for patch.py commands.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import call, patch
 
 import pytest
 from click.testing import CliRunner
 from sqlmodel import select
 
+from app.main_app.common import get_or_create_deal
 from app.main_app.models import Company, Config, Contact, Deal
 from app.pipedrive.tasks import sync_company_to_pipedrive
 from patch import fix_repeated_contact_names, patch as patch_command, point_enterprise_deals_to_onboarding
@@ -113,6 +115,27 @@ class TestPointEnterpriseDealsToOnboarding:
             **kwargs,
         )
 
+    def _tc2_webhook(self, admin):
+        subject = {
+            'model': 'Client',
+            'id': 123,
+            'meta_agency': {
+                'id': 456,
+                'name': 'Enterprise Agency',
+                'country': 'United Kingdom (GB)',
+                'status': 'trial',
+                'paid_invoice_count': 0,
+                'created': datetime.now(timezone.utc).isoformat(),
+                'price_plan': 'monthly-enterprise',
+            },
+            'user': {'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'},
+            'status': 'active',
+            'sales_person': {'id': admin.tc2_admin_id},
+            'paid_recipients': [{'id': 789, 'first_name': 'John', 'last_name': 'Doe', 'email': 'john@example.com'}],
+            'extra_attrs': [],
+        }
+        return {'events': [{'action': 'EDITED_A_CLIENT', 'verb': 'edit', 'subject': subject}], '_request_time': 1}
+
     def test_point_enterprise_deals_to_onboarding(self, db, test_admin, pipelines):
         onboarding, enterprise = pipelines
         company = CompanyFactory.create_with_db(db, price_plan='enterprise', sales_person_id=test_admin.id)
@@ -163,6 +186,50 @@ class TestPointEnterpriseDealsToOnboarding:
         mock_pd.reset_mock()
         await sync_company_to_pipedrive(company.id)
 
+        endpoints = [c.args[0] for c in mock_pd.call_args_list]
+        assert 'organizations/900' in endpoints
+        assert not [e for e in endpoints if e.startswith('deals')]
+
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_new_enterprise_deal_is_created_in_onboarding(self, mock_pd, client, db, test_admin, pipelines):
+        mock_pd.return_value = {'data': {'id': 999}}
+        await point_enterprise_deals_to_onboarding(db)
+        db.commit()
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self._tc2_webhook(test_admin))
+
+        assert r.status_code == 200
+        deal_creates = [c for c in mock_pd.call_args_list if c.args[0] == 'deals']
+        assert [(c.kwargs['data']['pipeline_id'], c.kwargs['data']['stage_id']) for c in deal_creates] == [(1, 1)]
+
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.tc2.process.get_or_create_deal', wraps=get_or_create_deal)
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_tc2_webhook_creates_no_deal_for_deleted_enterprise_deal(
+        self, mock_pd, mock_get_or_create_deal, client, db, test_admin, pipelines
+    ):
+        _, enterprise = pipelines
+        company = CompanyFactory.create_with_db(
+            db,
+            price_plan='enterprise',
+            sales_person_id=test_admin.id,
+            tc2_cligency_id=123,
+            tc2_agency_id=456,
+            pd_org_id=900,
+        )
+        deal = self._deal(db, company, enterprise)
+        mock_pd.return_value = {'data': {'id': 900, 'name': company.name}}
+        await point_enterprise_deals_to_onboarding(db)
+        db.commit()
+
+        r = client.post(client.app.url_path_for('tc2-callback'), json=self._tc2_webhook(test_admin))
+
+        assert r.status_code == 200
+        mock_get_or_create_deal.assert_awaited_once()
+        db.expire_all()
+        deals = db.exec(select(Deal).where(Deal.company_id == company.id)).all()
+        assert [(d.id, d.status) for d in deals] == [(deal.id, Deal.STATUS_DELETED)]
         endpoints = [c.args[0] for c in mock_pd.call_args_list]
         assert 'organizations/900' in endpoints
         assert not [e for e in endpoints if e.startswith('deals')]
