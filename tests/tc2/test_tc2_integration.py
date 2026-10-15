@@ -2427,7 +2427,9 @@ class TestTC2SyncableFields:
     async def test_signup_questionnaire_copied_to_open_deals_only_when_it_changes(
         self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
     ):
-        """An unchanged questionnaire leaves the deals alone, and a changed one is copied onto the open deals only"""
+        """
+        An unchanged or empty questionnaire leaves the deals alone, and a changed one is copied onto the open deals only
+        """
         mock_api.return_value = {'data': {'id': 999}}
         company = db.create(
             Company(
@@ -2473,6 +2475,19 @@ class TestTC2SyncableFields:
             '{"how-did-you-hear-about-us": "Word of mouth"}',
             None,
         )
+
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = None
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567892,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert company.signup_questionnaire is None
+        assert open_deal.signup_questionnaire == '{"how-did-you-hear-about-us": "Word of mouth"}'
 
 
 class TestGetOrCreateDealConsolidation:
