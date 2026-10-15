@@ -2380,6 +2380,100 @@ class TestTC2SyncableFields:
         assert parsed['how-did-you-hear-about-us'] == 'Search engine'
         assert parsed['students-count'] == 25
 
+    @patch('app.core.config.settings.sync_create_deals', True)
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_late_signup_questionnaire_sent_to_open_deal(
+        self, mock_api, client, db, test_admin, test_config, sample_tc_client_data
+    ):
+        """A questionnaire TC2 sends after the deal was created is set on the deal and sent to its Pipedrive deal"""
+        mock_api.return_value = {'data': {'id': 999}}
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = 'trial'
+        sample_tc_client_data['meta_agency']['created'] = datetime.now(timezone.utc).isoformat()
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = 0
+        webhook_data = {
+            'events': [{'action': 'CREATE', 'verb': 'create', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+        assert r.status_code == 200
+        deal = db.exec(select(Deal)).one()
+        assert (deal.pd_deal_id, deal.signup_questionnaire) == (999, None)
+
+        mock_api.reset_mock()
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'how-did-you-hear-about-us': 'Search engine'}
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert deal.signup_questionnaire == '{"how-did-you-hear-about-us": "Search engine"}'
+        deal_patches = [
+            c.kwargs['data']
+            for c in mock_api.call_args_list
+            if c.args[0] == 'deals/999' and c.kwargs['method'] == 'PATCH'
+        ]
+        assert [d['custom_fields'][DEAL_PD_FIELD_MAP['signup_questionnaire']] for d in deal_patches] == [
+            '{"how-did-you-hear-about-us": "Search engine"}'
+        ]
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_signup_questionnaire_copied_to_open_deals_only_when_it_changes(
+        self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
+    ):
+        """An unchanged questionnaire leaves the deals alone, and a changed one is copied onto the open deals only"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = db.create(
+            Company(
+                name='Test Agency',
+                tc2_cligency_id=123,
+                tc2_agency_id=456,
+                sales_person_id=test_admin.id,
+                signup_questionnaire='{"how-did-you-hear-about-us": "Google"}',
+            )
+        )
+        deal_kwargs = {
+            'company_id': company.id,
+            'admin_id': test_admin.id,
+            'pipeline_id': test_pipeline.id,
+            'stage_id': test_stage.id,
+        }
+        open_deal = db.create(Deal(**deal_kwargs))
+        lost_deal = db.create(Deal(status=Deal.STATUS_LOST, **deal_kwargs))
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'how-did-you-hear-about-us': 'Google'}
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert (open_deal.signup_questionnaire, lost_deal.signup_questionnaire) == (None, None)
+
+        sample_tc_client_data['meta_agency']['signup_questionnaire'] = {'how-did-you-hear-about-us': 'Word of mouth'}
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567891,
+        }
+
+        r = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert (open_deal.signup_questionnaire, lost_deal.signup_questionnaire) == (
+            '{"how-did-you-hear-about-us": "Word of mouth"}',
+            None,
+        )
+
 
 class TestGetOrCreateDealConsolidation:
     """Test consolidated get_or_create_deal function with filters"""
