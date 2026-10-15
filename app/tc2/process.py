@@ -59,6 +59,19 @@ def _close_open_deals_if_narc_or_terminated(company: Company, db: DBSession):
             )
 
 
+def _copy_questionnaire_to_open_deals(company: Company, db: DBSession):
+    """
+    Copy the company's signup questionnaire onto its open deals. TC2 saves the questionnaire in a second write after
+    the agency exists, so the first webhook has already created the deal without it. Closed deals are left as they are.
+    """
+    open_deals = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).all()
+    for deal in open_deals:
+        deal.signup_questionnaire = company.signup_questionnaire
+        db.add(deal)
+    if open_deals:
+        logger.info(f'Copied the signup questionnaire of company {company.id} to deals {[d.id for d in open_deals]}')
+
+
 async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) -> Company:
     """
     Get or create a company from TC2 data.
@@ -129,8 +142,11 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
+        old_questionnaire = company.signup_questionnaire
         _update_syncable_fields(company, tc_client)
         _close_open_deals_if_narc_or_terminated(company, db)
+        if company.signup_questionnaire and company.signup_questionnaire != old_questionnaire:
+            _copy_questionnaire_to_open_deals(company, db)
 
         # handle extra attrs
         if 'utm_source' in extra_attrs_dict:
