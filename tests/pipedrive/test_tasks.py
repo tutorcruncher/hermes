@@ -538,6 +538,64 @@ class TestSyncOrganization:
         mock_get.assert_called_once_with(999)
         mock_update.assert_called_once()
 
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_sends_country_to_the_country_field(
+        self, mock_create, mock_get_session, db, test_company
+    ):
+        """A new org gets the company's country in its address and in the custom Country field."""
+        test_company.country = 'CA'
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 888}}
+
+        await sync_organization(test_company.id)
+
+        sent = mock_create.call_args.args[0]
+        assert sent['address'] == {'value': 'CA', 'country': 'CA'}
+        assert sent['custom_fields'][COMPANY_PD_FIELD_MAP['country']] == 'CA'
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_sends_country_to_an_existing_org(
+        self, mock_get, mock_update, mock_get_session, db, test_company
+    ):
+        """An existing org without the custom Country field gets it on its next sync, so no backfill is needed."""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, 'name': test_company.name}}
+        mock_update.return_value = {'data': {'id': 999}}
+
+        await sync_organization(test_company.id)
+
+        assert mock_update.call_args.args[0] == 999
+        assert mock_update.call_args.args[1]['custom_fields'][COMPANY_PD_FIELD_MAP['country']] == 'GB'
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.create_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_leaves_country_out_when_company_has_none(
+        self, mock_create, mock_get_session, db, test_company
+    ):
+        """A company with no country sends neither an address nor the custom Country field."""
+        test_company.country = None
+        db.add(test_company)
+        db.commit()
+
+        mock_get_session.return_value = SessionMock(db)
+        mock_create.return_value = {'data': {'id': 888}}
+
+        await sync_organization(test_company.id)
+
+        sent = mock_create.call_args.args[0]
+        assert 'address' not in sent
+        assert COMPANY_PD_FIELD_MAP['country'] not in sent['custom_fields']
+
 
 class TestSyncPerson:
     """Test sync_person function"""
