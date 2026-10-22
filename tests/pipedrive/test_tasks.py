@@ -616,13 +616,37 @@ class TestSyncOrganization:
     async def test_sync_organization_skips_patch_when_country_already_set(
         self, mock_get, mock_update, mock_get_session, db, test_company
     ):
-        """An org that already has every field, Country included, gets no PATCH."""
+        """An org whose Country sales set to another value gets no PATCH when nothing else changed."""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
 
+        pd_org = _company_to_org_data(test_company)
+        pd_org['custom_fields'][COMPANY_PD_FIELD_MAP['country']] = 'CA'
         mock_get_session.return_value = SessionMock(db)
-        mock_get.return_value = {'data': {'id': 999, **_company_to_org_data(test_company)}}
+        mock_get.return_value = {'data': {'id': 999, **pd_org}}
+
+        await sync_organization(test_company.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_update.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_skips_patch_when_only_pipedrive_has_country(
+        self, mock_get, mock_update, mock_get_session, db, test_company
+    ):
+        """A company with no country leaves a Country that sales set alone, with no PATCH."""
+        test_company.pd_org_id = 999
+        test_company.country = None
+        db.add(test_company)
+        db.commit()
+
+        pd_org = _company_to_org_data(test_company)
+        pd_org['custom_fields'][COMPANY_PD_FIELD_MAP['country']] = 'CA'
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, **pd_org}}
 
         await sync_organization(test_company.id)
 
@@ -666,9 +690,21 @@ class TestSyncOrganization:
 
         await sync_organization(test_company.id)
 
-        sent = mock_create.call_args.args[0]
-        assert 'address' not in sent
-        assert COMPANY_PD_FIELD_MAP['country'] not in sent['custom_fields']
+        assert mock_create.call_args.args[0] == {
+            'name': test_company.name,
+            'owner_id': test_company.sales_person.pd_owner_id,
+            'custom_fields': {
+                COMPANY_PD_FIELD_MAP['hermes_id']: str(test_company.id),
+                COMPANY_PD_FIELD_MAP['paid_invoice_count']: '0',
+                COMPANY_PD_FIELD_MAP['tc2_status']: 'pending_email_conf',
+                COMPANY_PD_FIELD_MAP['price_plan']: 'payg',
+                COMPANY_PD_FIELD_MAP['created']: test_company.created.date().isoformat(),
+                COMPANY_PD_FIELD_MAP['receive_marketing_emails']: field_mappings.COMPANY_PD_ENUM_OPTION_MAP[
+                    'receive_marketing_emails'
+                ]['no'],
+                COMPANY_PD_FIELD_MAP['operate_as_ea']: field_mappings.COMPANY_PD_ENUM_OPTION_MAP['operate_as_ea']['no'],
+            },
+        }
 
 
 class TestSyncPerson:
