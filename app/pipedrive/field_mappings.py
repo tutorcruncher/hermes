@@ -41,6 +41,7 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',
     'receive_marketing_emails': 'f96180f45c324d57c3dd42b02a9ec511311e9638',
     'operate_as_ea': 'd7b0103a652d3ea61ca1084cc2330ae524f7d52f',
+    'country': 'c6ccb56c5a4b82149a7c9de4687dc0914581b0c0',
 }
 
 # Pipedrive single-option (enum) IDs for bool fields — option IDs are per Pipedrive account.

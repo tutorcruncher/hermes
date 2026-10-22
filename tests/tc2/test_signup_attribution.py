@@ -98,8 +98,9 @@ class TestFieldMapIntegrity:
     def test_every_synced_field_exists_on_the_organisation_model(self):
         """
         Only the names custom_field_names yields are read off the parsed organisation. The ones it
-        excludes (hermes_id, the admin ids, tc2_cligency_url, receive_marketing_emails, operate_as_ea) are
-        deliberately absent from the model so Pipedrive cannot write them back.
+        excludes (hermes_id, the admin ids, tc2_cligency_url, receive_marketing_emails, operate_as_ea, tc2_status,
+        country) are not copied by the generic loop; receive_marketing_emails, operate_as_ea and country are
+        deliberately absent from the model, so Pipedrive cannot write them back.
         """
         processor = OrganisationProcessor.__new__(OrganisationProcessor)
         missing = [f for f in processor.custom_field_names if f not in Organisation.model_fields]

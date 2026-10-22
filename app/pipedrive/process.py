@@ -230,8 +230,8 @@ class OrganisationProcessor(_LinkedObjProcessor):
         return [
             f
             for f in list(COMPANY_PD_FIELD_MAP.keys())
-            # receive_marketing_emails, operate_as_ea and tc2_status are TC2-authoritative;
-            # Pipedrive must not write them back.
+            # receive_marketing_emails, operate_as_ea and tc2_status are TC2-authoritative; Pipedrive must not write them
+            # back. country follows the org address (_update_obj); the custom Country field is sales' and never read.
             if f
             not in [
                 'hermes_id',
@@ -241,6 +241,7 @@ class OrganisationProcessor(_LinkedObjProcessor):
                 'receive_marketing_emails',
                 'operate_as_ea',
                 'tc2_status',
+                'country',
             ]
         ]
 

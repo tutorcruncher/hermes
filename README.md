@@ -210,6 +210,7 @@ If `make setup-fields` shows missing fields, create them in Pipedrive:
 | gclid_expiry_dt | Date | GCLID expiry date |
 | email_confirmed_dt | Date | Email confirmation date |
 | card_saved_dt | Date | Card saved date |
+| Country | Text | ISO2 country code, filled by Hermes only when empty, read by tc-analytics |
 
 **Person Fields:**
 
