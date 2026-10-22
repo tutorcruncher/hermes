@@ -40,7 +40,7 @@ ORGANIZATION_FIELDS = [
     {'name': 'card_saved_dt', 'field_type': 'date'},
     {'name': 'receive_marketing_emails', 'field_type': 'enum', 'options': [{'label': 'Yes'}, {'label': 'No'}]},
     {'name': 'operate_as_ea', 'field_type': 'enum', 'options': [{'label': 'Yes'}, {'label': 'No'}]},
-    {'name': 'Country', 'field_type': 'varchar'},
+    {'name': 'Country', 'field_type': 'varchar'},  # Capitalised to match the existing Pipedrive field
 ]
 
 PERSON_FIELDS = [

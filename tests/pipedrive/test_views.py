@@ -116,7 +116,7 @@ class TestPipedriveWebhookEndpoint:
         assert test_company.tc2_status == 'trial'
 
     async def test_pipedrive_callback_does_not_overwrite_country(self, client, db, test_company):
-        """country is set by TC2 and the call booker: an inbound Pipedrive org webhook must not change it."""
+        """The custom Country field is never read back: an org webhook carrying it must not change country."""
         test_company.pd_org_id = 999
         test_company.country = 'GB'
         db.add(test_company)

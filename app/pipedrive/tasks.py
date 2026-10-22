@@ -108,6 +108,7 @@ async def sync_organization(company_id: int, recreate_on_404: bool = False) -> b
         try:
             pd_org = await api.get_organisation(pd_org_id)
             current_data = pd_org.get('data', {})
+            _keep_pd_country(org_data, current_data)
             changed_fields = api.get_changed_fields(current_data, org_data)
 
             if changed_fields:
@@ -492,6 +493,13 @@ def _bool_to_pd_enum_option(field_name: str, value: bool) -> int | None:
     if option_id is None:
         return None
     return int(option_id)
+
+
+def _keep_pd_country(org_data: dict, current_data: dict) -> None:
+    """Sales own the org's custom Country field once it is set in Pipedrive, so Hermes only fills it when empty"""
+    pd_field = COMPANY_PD_FIELD_MAP['country']
+    if pd_country := (current_data.get('custom_fields') or {}).get(pd_field):
+        org_data['custom_fields'][pd_field] = pd_country
 
 
 def _company_to_org_data(company: Company) -> dict:
