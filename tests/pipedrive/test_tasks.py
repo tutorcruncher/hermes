@@ -1290,6 +1290,7 @@ class TestSyncDealPartialSync:
     ):
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 42
+        test_company.tc2_status = 'active'
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1305,7 +1306,9 @@ class TestSyncDealPartialSync:
         assert call_args[0][0] == 5555
         payload = call_args[0][1]
         assert 'custom_fields' in payload
-        assert payload['custom_fields'] == {DEAL_PD_FIELD_MAP['paid_invoice_count']: '42'}
+        assert payload == {
+            'custom_fields': {DEAL_PD_FIELD_MAP['paid_invoice_count']: '42', DEAL_PD_FIELD_MAP['tc2_status']: 'active'}
+        }
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
@@ -1347,11 +1350,12 @@ class TestSyncDealPartialSync:
 
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
-    async def test_partial_sync_no_paid_invoice_count_no_api_call(
+    async def test_partial_sync_no_syncable_values_no_api_call(
         self, mock_update_deal, mock_get_session, db, test_deal, test_company
     ):
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = None
+        test_company.tc2_status = None
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1406,6 +1410,7 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_deal_from_company_directly(self, mock_update_deal, db, test_deal, test_company):
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = 25
+        test_company.tc2_status = 'trial'
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1415,7 +1420,13 @@ class TestSyncDealPartialSync:
         await partial_sync_deal_from_company(test_company, test_deal)
 
         mock_update_deal.assert_called_once_with(
-            7777, {'custom_fields': {DEAL_PD_FIELD_MAP['paid_invoice_count']: '25'}}
+            7777,
+            {
+                'custom_fields': {
+                    DEAL_PD_FIELD_MAP['paid_invoice_count']: '25',
+                    DEAL_PD_FIELD_MAP['tc2_status']: 'trial',
+                }
+            },
         )
 
     @patch('app.pipedrive.tasks.api.update_deal', new_callable=AsyncMock)
@@ -1437,6 +1448,7 @@ class TestSyncDealPartialSync:
     ):
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = None
+        test_company.tc2_status = None
         db.add(test_deal)
         db.add(test_company)
         db.commit()

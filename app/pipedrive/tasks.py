@@ -21,7 +21,7 @@ from app.pipedrive.process import find_or_create_pd_contact, mark_deleted_from_p
 
 logger = logging.getLogger('hermes.pipedrive')
 
-SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
+SYNCABLE_DEAL_FIELDS = ['paid_invoice_count', 'tc2_status']  # these fields get synced from deal company
 
 # Per-company locks to serialise concurrent syncs for the same company.
 # A sync holds its lock while its Pipedrive calls queue behind every other sync's calls in the
@@ -70,8 +70,12 @@ async def sync_company_to_pipedrive(company_id: int, booked_contact_id: int | No
                         )
                         only_syncable_deal_fields = False
                     else:
-                        # Only sync fields for paying companies' existing open deals
-                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                        # Only sync fields for paying companies' existing open deals. A terminated company's deals
+                        # were closed as lost by the TC2 webhook, so those are sent too, or Pipedrive keeps them open.
+                        deal_statuses = [Deal.STATUS_OPEN]
+                        if company.tc2_status == Company.STATUS_TERMINATED:
+                            deal_statuses.append(Deal.STATUS_LOST)
+                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status.in_(deal_statuses))
                         only_syncable_deal_fields = True
 
                     deal_ids = [d.id for d in db.exec(deal_query).all()]
@@ -199,6 +203,7 @@ async def sync_person(contact_id: int, recreate_on_404: bool = False):
 async def partial_sync_deal_from_company(company: Company, deal: Deal):
     """
     Sets custom fields on a deal based on company data and only sends them to the PD via PATCH.
+    A lost deal also sends its status, as only a terminated company's lost deals are synced this way.
     """
     if not (company and deal.pd_deal_id):
         return
@@ -212,14 +217,17 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
         if pd_field_id:
             custom_fields[pd_field_id] = str(value) if isinstance(value, int) else value
 
-    if not custom_fields:
+    data = {'custom_fields': custom_fields} if custom_fields else {}
+    if deal.status == Deal.STATUS_LOST:
+        data['status'] = Deal.STATUS_LOST
+    if not data:
         return
 
     try:
-        await api.update_deal(deal.pd_deal_id, {'custom_fields': custom_fields})
+        await api.update_deal(deal.pd_deal_id, data)
         logger.info(f'Updated deal {deal.pd_deal_id}')
     except Exception as e:
-        # The PATCH only sends custom fields, so a not-found answer can only mean the deal itself is gone
+        # The PATCH only sends custom fields and a status, so a not-found answer can only mean the deal itself is gone
         if _is_deleted_in_pipedrive(e, method='PATCH'):
             _mark_deleted_after_404(Deal, deal.id, 'pd_deal_id', deal.pd_deal_id)
         else:
@@ -597,8 +605,9 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         elif field_name == 'tc2_cligency_url':
             # Get from company
             value = company.tc2_cligency_url if company else None
-        elif field_name == 'paid_invoice_count':
-            value = company.paid_invoice_count if company else None
+        elif field_name in SYNCABLE_DEAL_FIELDS:
+            # Always the company's value, as the deal's copy is only set when the deal is created
+            value = getattr(company, field_name) if company else None
         else:
             value = getattr(deal, field_name, None)
 
