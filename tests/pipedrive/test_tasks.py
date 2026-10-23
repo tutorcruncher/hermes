@@ -1290,8 +1290,7 @@ class TestSyncDealPartialSync:
     ):
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 42
-        test_company.tc2_status = 'active'
-        test_company.tc2_cligency_id = 123
+        test_deal.tc2_status = 'active'
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1356,7 +1355,7 @@ class TestSyncDealPartialSync:
     ):
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = None
-        test_company.tc2_status = None
+        test_deal.tc2_status = None
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1411,8 +1410,7 @@ class TestSyncDealPartialSync:
     async def test_partial_sync_deal_from_company_directly(self, mock_update_deal, db, test_deal, test_company):
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = 25
-        test_company.tc2_status = 'trial'
-        test_company.tc2_cligency_id = 123
+        test_deal.tc2_status = 'trial'
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1450,7 +1448,7 @@ class TestSyncDealPartialSync:
     ):
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = None
-        test_company.tc2_status = None
+        test_deal.tc2_status = None
         db.add(test_deal)
         db.add(test_company)
         db.commit()
