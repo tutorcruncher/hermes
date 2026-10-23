@@ -3270,3 +3270,159 @@ class TestPartialDealSyncIntegration:
         deal_patch_requests = self.get_deal_patch_requests(requests_made)
         assert len(deal_patch_requests) == 1, 'Should have attempted one deal PATCH'
         self.assert_partial_sync_payload(deal_patch_requests[0]['json'], '15')
+
+
+class TestTC2StatusSyncedToDeals:
+    """The company's TC2 status reaches its open deals in Hermes and Pipedrive when it changes (#449)"""
+
+    def _company(self, db, test_admin, **kwargs):
+        return db.create(
+            Company(
+                name='Test Agency',
+                tc2_cligency_id=123,
+                tc2_agency_id=456,
+                sales_person_id=test_admin.id,
+                pd_org_id=900,
+                **kwargs,
+            )
+        )
+
+    def _deal(self, db, company, test_admin, test_pipeline, test_stage, **kwargs):
+        return db.create(
+            Deal(
+                name='Test Agency',
+                company_id=company.id,
+                admin_id=test_admin.id,
+                pipeline_id=test_pipeline.id,
+                stage_id=test_stage.id,
+                **kwargs,
+            )
+        )
+
+    def _post(self, client, sample_tc_client_data, status, paid_invoice_count):
+        sample_tc_client_data['model'] = 'Client'
+        sample_tc_client_data['meta_agency']['status'] = status
+        sample_tc_client_data['meta_agency']['paid_invoice_count'] = paid_invoice_count
+        webhook_data = {
+            'events': [{'action': 'UPDATE', 'verb': 'update', 'subject': sample_tc_client_data}],
+            '_request_time': 1234567890,
+        }
+        return client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
+
+    def _deal_patches(self, mock_api, pd_deal_id):
+        return [
+            c.kwargs['data']
+            for c in mock_api.call_args_list
+            if c.args[0] == f'deals/{pd_deal_id}' and c.kwargs['method'] == 'PATCH'
+        ]
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_non_paying_company_status_copied_to_open_deals(
+        self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
+    ):
+        """A non-paying company's new status is set on its open deals only, and its closed deals keep their own"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = self._company(db, test_admin, tc2_status='trial', paid_invoice_count=0)
+        open_deal = self._deal(
+            db, company, test_admin, test_pipeline, test_stage, pd_deal_id=999, tc2_status='pending_email_conf'
+        )
+        lost_deal = self._deal(
+            db,
+            company,
+            test_admin,
+            test_pipeline,
+            test_stage,
+            pd_deal_id=998,
+            status=Deal.STATUS_LOST,
+            tc2_status='pending_email_conf',
+        )
+
+        r = self._post(client, sample_tc_client_data, 'active', 0)
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert (open_deal.tc2_status, lost_deal.tc2_status) == ('active', 'pending_email_conf')
+        assert [d['custom_fields'][DEAL_PD_FIELD_MAP['tc2_status']] for d in self._deal_patches(mock_api, 999)] == [
+            'active'
+        ]
+        assert [d['custom_fields'][DEAL_PD_FIELD_MAP['tc2_status']] for d in self._deal_patches(mock_api, 998)] == [
+            'pending_email_conf'
+        ]
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_paying_company_status_sent_to_open_deals(
+        self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
+    ):
+        """A paying company's new status is sent with paid_invoice_count to its open Pipedrive deals"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = self._company(db, test_admin, tc2_status='trial', paid_invoice_count=5)
+        deal = self._deal(db, company, test_admin, test_pipeline, test_stage, pd_deal_id=999, tc2_status='trial')
+
+        r = self._post(client, sample_tc_client_data, 'active', 5)
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert deal.tc2_status == 'active'
+        assert self._deal_patches(mock_api, 999) == [
+            {'custom_fields': {DEAL_PD_FIELD_MAP['paid_invoice_count']: '5', DEAL_PD_FIELD_MAP['tc2_status']: 'active'}}
+        ]
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_terminated_paying_company_deals_closed_in_hermes_only(
+        self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
+    ):
+        """A terminated paying company's open deal is lost in Hermes only, and its Pipedrive deals are not touched"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = self._company(db, test_admin, tc2_status='active', paid_invoice_count=5)
+        open_deal = self._deal(db, company, test_admin, test_pipeline, test_stage, pd_deal_id=999, tc2_status='active')
+        won_deal = self._deal(
+            db,
+            company,
+            test_admin,
+            test_pipeline,
+            test_stage,
+            pd_deal_id=998,
+            status=Deal.STATUS_WON,
+            tc2_status='active',
+        )
+
+        r = self._post(client, sample_tc_client_data, 'terminated', 5)
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert (open_deal.status, open_deal.tc2_status) == (Deal.STATUS_LOST, 'terminated')
+        assert (won_deal.status, won_deal.tc2_status) == (Deal.STATUS_WON, 'active')
+        assert not [c for c in mock_api.call_args_list if c.args[0] in ('deals/999', 'deals/998')]
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_unchanged_status_leaves_deals_alone(
+        self, mock_api, client, db, test_admin, test_pipeline, test_stage, sample_tc_client_data
+    ):
+        """An update that keeps the same status does not touch the deal's own copy"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = self._company(db, test_admin, tc2_status='active', paid_invoice_count=5)
+        deal = self._deal(db, company, test_admin, test_pipeline, test_stage, tc2_status='trial')
+
+        r = self._post(client, sample_tc_client_data, 'active', 5)
+
+        assert r.status_code == 200
+        db.expire_all()
+        assert deal.tc2_status == 'trial'
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_company_without_tc2_client_keeps_deal_status(
+        self, mock_api, db, test_admin, test_pipeline, test_stage
+    ):
+        """A paying company with no TC2 client only has the model default, so its deal sends its own tc2_status"""
+        mock_api.return_value = {'data': {'id': 999}}
+        company = db.create(
+            Company(name='Test Agency', sales_person_id=test_admin.id, pd_org_id=900, paid_invoice_count=5)
+        )
+        self._deal(db, company, test_admin, test_pipeline, test_stage, pd_deal_id=999, tc2_status='active')
+
+        await sync_company_to_pipedrive(company.id)
+
+        assert company.tc2_status == Company.STATUS_PENDING_EMAIL_CONF
+        assert self._deal_patches(mock_api, 999) == [
+            {'custom_fields': {DEAL_PD_FIELD_MAP['paid_invoice_count']: '5', DEAL_PD_FIELD_MAP['tc2_status']: 'active'}}
+        ]

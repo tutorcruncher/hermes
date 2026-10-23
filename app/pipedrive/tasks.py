@@ -21,7 +21,7 @@ from app.pipedrive.process import find_or_create_pd_contact, mark_deleted_from_p
 
 logger = logging.getLogger('hermes.pipedrive')
 
-SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
+SYNCABLE_DEAL_FIELDS = ['paid_invoice_count', 'tc2_status']  # synced from deal company; tc2_status from the deal
 
 # Per-company locks to serialise concurrent syncs for the same company.
 # A sync holds its lock while its Pipedrive calls queue behind every other sync's calls in the
@@ -199,13 +199,14 @@ async def sync_person(contact_id: int, recreate_on_404: bool = False):
 async def partial_sync_deal_from_company(company: Company, deal: Deal):
     """
     Sets custom fields on a deal based on company data and only sends them to the PD via PATCH.
+    tc2_status is the deal's own copy, which the TC2 webhook updates only when the company's status changes.
     """
     if not (company and deal.pd_deal_id):
         return
 
     custom_fields = {}
     for field in SYNCABLE_DEAL_FIELDS:
-        value = getattr(company, field, None)
+        value = deal.tc2_status if field == 'tc2_status' else getattr(company, field, None)
         if value is None:
             continue
         pd_field_id = DEAL_PD_FIELD_MAP.get(field)
