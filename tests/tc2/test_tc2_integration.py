@@ -3413,14 +3413,16 @@ class TestTC2StatusSyncedToDeals:
     async def test_company_without_tc2_client_keeps_deal_status(
         self, mock_api, db, test_admin, test_pipeline, test_stage
     ):
-        """A company with no TC2 client only has the model default, so its deal keeps its own tc2_status"""
+        """A paying company with no TC2 client only has the model default, so its deal sends its own tc2_status"""
         mock_api.return_value = {'data': {'id': 999}}
-        company = db.create(Company(name='Test Agency', sales_person_id=test_admin.id, pd_org_id=900))
+        company = db.create(
+            Company(name='Test Agency', sales_person_id=test_admin.id, pd_org_id=900, paid_invoice_count=5)
+        )
         self._deal(db, company, test_admin, test_pipeline, test_stage, pd_deal_id=999, tc2_status='active')
 
         await sync_company_to_pipedrive(company.id)
 
         assert company.tc2_status == Company.STATUS_PENDING_EMAIL_CONF
-        assert [d['custom_fields'][DEAL_PD_FIELD_MAP['tc2_status']] for d in self._deal_patches(mock_api, 999)] == [
-            'active'
+        assert self._deal_patches(mock_api, 999) == [
+            {'custom_fields': {DEAL_PD_FIELD_MAP['paid_invoice_count']: '5', DEAL_PD_FIELD_MAP['tc2_status']: 'active'}}
         ]
