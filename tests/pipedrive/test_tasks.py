@@ -1291,6 +1291,7 @@ class TestSyncDealPartialSync:
         test_deal.pd_deal_id = 5555
         test_company.paid_invoice_count = 42
         test_company.tc2_status = 'active'
+        test_company.tc2_cligency_id = 123
         db.add(test_deal)
         db.add(test_company)
         db.commit()
@@ -1411,6 +1412,7 @@ class TestSyncDealPartialSync:
         test_deal.pd_deal_id = 7777
         test_company.paid_invoice_count = 25
         test_company.tc2_status = 'trial'
+        test_company.tc2_cligency_id = 123
         db.add(test_deal)
         db.add(test_company)
         db.commit()

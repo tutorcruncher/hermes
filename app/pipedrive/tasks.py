@@ -203,14 +203,15 @@ async def sync_person(contact_id: int, recreate_on_404: bool = False):
 async def partial_sync_deal_from_company(company: Company, deal: Deal):
     """
     Sets custom fields on a deal based on company data and only sends them to the PD via PATCH.
-    A lost deal also sends its status, as only a terminated company's lost deals are synced this way.
+    A lost deal also sends its status when Pipedrive still has it open, as only a terminated company's lost deals are
+    synced this way.
     """
     if not (company and deal.pd_deal_id):
         return
 
     custom_fields = {}
     for field in SYNCABLE_DEAL_FIELDS:
-        value = getattr(company, field, None)
+        value = _tc2_status_for_deal(company) if field == 'tc2_status' else getattr(company, field, None)
         if value is None:
             continue
         pd_field_id = DEAL_PD_FIELD_MAP.get(field)
@@ -219,7 +220,17 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
 
     data = {'custom_fields': custom_fields} if custom_fields else {}
     if deal.status == Deal.STATUS_LOST:
-        data['status'] = Deal.STATUS_LOST
+        # Hermes' copy of the status can be stale, so only close a deal Pipedrive still has open: a won deal stays won
+        try:
+            pd_status = (await api.get_deal(deal.pd_deal_id)).get('data', {}).get('status')
+        except Exception as e:
+            if _is_deleted_in_pipedrive(e):
+                _mark_deleted_after_404(Deal, deal.id, 'pd_deal_id', deal.pd_deal_id)
+            else:
+                logger.error(f'Error getting deal {deal.pd_deal_id}: {e}')
+            return
+        if pd_status == Deal.STATUS_OPEN:
+            data['status'] = Deal.STATUS_LOST
     if not data:
         return
 
@@ -580,6 +591,17 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
     return data
 
 
+def _tc2_status_for_deal(company: Company | None) -> str | None:
+    """
+    The company's TC2 status for its deals, as the deal's copy is only set when the deal is created. None for a company
+    with no TC2 client: one made from a Pipedrive org only holds the model default, which would overwrite the deal's
+    real value in Pipedrive.
+    """
+    if company and company.tc2_cligency_id:
+        return company.tc2_status
+    return None
+
+
 def _deal_to_pd_data(deal: Deal, db) -> dict:
     """Convert Deal model to Pipedrive deal data"""
     company = db.get(Company, deal.company_id) if deal.company_id else None
@@ -605,9 +627,10 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
         elif field_name == 'tc2_cligency_url':
             # Get from company
             value = company.tc2_cligency_url if company else None
-        elif field_name in SYNCABLE_DEAL_FIELDS:
-            # Always the company's value, as the deal's copy is only set when the deal is created
-            value = getattr(company, field_name) if company else None
+        elif field_name == 'paid_invoice_count':
+            value = company.paid_invoice_count if company else None
+        elif field_name == 'tc2_status':
+            value = _tc2_status_for_deal(company) or deal.tc2_status
         else:
             value = getattr(deal, field_name, None)
 
