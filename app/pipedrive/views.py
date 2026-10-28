@@ -1,7 +1,12 @@
+import base64
 import logging
+from hmac import compare_digest
+from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Header
+from starlette.responses import JSONResponse
 
+from app.core.config import settings
 from app.core.database import DBSession, get_db
 from app.pipedrive.models import Organisation, PDDeal, PDPipeline, PDStage, Person, PipedriveEvent
 from app.pipedrive.process import (
@@ -18,10 +23,21 @@ logger = logging.getLogger('hermes.pipedrive')
 router = APIRouter(prefix='/pipedrive', tags=['pipedrive'])
 
 
+def _valid_basic_auth(authorization: str | None) -> bool:
+    """Whether the Authorization header has the webhook's Basic auth credentials. Fails when no password is set."""
+    if not authorization or not settings.pd_webhook_password:
+        return False
+    creds = f'{settings.pd_webhook_username}:{settings.pd_webhook_password}'
+    expected = f'Basic {base64.b64encode(creds.encode()).decode()}'
+    # Encoded because compare_digest raises TypeError on a non-ASCII str
+    return compare_digest(authorization.encode(), expected.encode())
+
+
 @router.post('/callback/', name='pipedrive-callback')
 async def pipedrive_callback(
     event: dict,
     background_tasks: BackgroundTasks,
+    authorization: Optional[str] = Header(None),
     # 'function' closes the session before the background tasks run, so none is held while they wait on Pipedrive
     db: DBSession = Depends(get_db, scope='function'),
 ):
@@ -33,6 +49,11 @@ async def pipedrive_callback(
 
     Supported entities: organization, person, deal, pipeline, stage
     """
+    # Pipedrive sends the HTTP Basic auth username and password set on the webhook
+    if not settings.dev_mode and not _valid_basic_auth(authorization):
+        logger.warning('Rejected a Pipedrive webhook with invalid credentials')
+        return JSONResponse({'status': 'error', 'message': 'Unauthorized'}, status_code=403)
+
     entity = event.get('meta', {}).get('entity')
     action = event.get('meta', {}).get('action')
 

@@ -9,7 +9,7 @@ from pytz import utc
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
-from tests.helpers import fake_gcal_builder, pipedrive_http_error
+from tests.helpers import fake_gcal_builder, pd_webhook, pipedrive_http_error
 
 SIGNUP_SIG_CLI_10 = '8b65d6380493a2127b54f860c6eb19b2eea3d3df2feac3fbd0101ecff586f327'
 
@@ -1959,7 +1959,7 @@ class TestSalesCallForPipedriveLead:
         lead_company = db.create(
             Company(name='Lead Co', sales_person_id=sales_person.id, price_plan='payg', pd_org_id=456)
         )
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.deal_webhook(owner_id=77))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(self.deal_webhook(owner_id=77)))
         assert r.status_code == 200
         db.expire_all()
         lead_contact = db.exec(select(Contact).where(Contact.pd_person_id == 300)).one()
@@ -1997,7 +1997,7 @@ class TestSalesCallForPipedriveLead:
         customer = db.create(
             Contact(first_name='Lead', last_name='Person', email='lead@example.com', company_id=customer_company.id)
         )
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.deal_webhook(owner_id=77))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(self.deal_webhook(owner_id=77)))
         assert r.status_code == 200
 
         meeting_data = {**CB_MEETING_DATA, 'email': 'lead@example.com'}

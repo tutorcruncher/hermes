@@ -23,6 +23,11 @@ def tc2_webhook(data: dict, key: str | None = None) -> dict:
     return {'content': body, 'headers': {'Content-Type': 'application/json', 'webhook-signature': sig}}
 
 
+def pd_webhook(data: dict) -> dict:
+    """The request kwargs for posting `data` to the Pipedrive callback with the webhook's HTTP Basic auth."""
+    return {'json': data, 'auth': (settings.pd_webhook_username, settings.pd_webhook_password)}
+
+
 class MockResponse:
     """Mock HTTP response object for testing"""
 

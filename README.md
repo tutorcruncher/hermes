@@ -145,7 +145,7 @@ Note their TC2 admin IDs - you'll need them when creating Hermes Admin records.
    - Event action: `*` (all)
    - Event object: `*` (all)
    - Endpoint URL: `http://localhost:8000/pipedrive/callback/` (or your ngrok URL)
-   - HTTP Auth: None
+   - HTTP Auth: a username and password, set as `PD_WEBHOOK_USERNAME` and `PD_WEBHOOK_PASSWORD` in your `.env`
 
 #### Create Pipedrive Users:
 Create users for each role:
