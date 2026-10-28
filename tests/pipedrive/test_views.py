@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.config import settings
-from app.main_app.models import Contact, Pipeline, Stage
+from app.main_app.models import Company, Contact, Pipeline, Stage
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_person
 from tests.helpers import pd_webhook
@@ -17,7 +17,8 @@ class TestPipedriveWebhookAuth:
     """Test the HTTP Basic auth check on the Pipedrive webhook"""
 
     @staticmethod
-    def org_webhook(company):
+    def org_webhook(company: Company) -> dict:
+        """An organization update that renames the company"""
         return {
             'meta': {'entity': 'organization', 'action': 'updated'},
             'data': {'id': 999, COMPANY_PD_FIELD_MAP['hermes_id']: company.id, 'name': 'Updated Name'},
@@ -35,22 +36,26 @@ class TestPipedriveWebhookAuth:
         ],
     )
     async def test_webhook_without_valid_credentials_is_rejected(self, client, db, test_company, kwargs):
+        """A webhook without the webhook's Basic auth is rejected and changes nothing"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
+        name = test_company.name
 
         r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.org_webhook(test_company), **kwargs)
 
         assert r.status_code == 403
         assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
         db.refresh(test_company)
-        assert test_company.name != 'Updated Name'
+        assert test_company.name == name
 
     @patch('app.pipedrive.views.settings.pd_webhook_password', None)
     async def test_webhook_is_rejected_while_no_password_is_set(self, client, db, test_company):
+        """Every webhook is rejected while no password is set"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
+        name = test_company.name
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
@@ -59,11 +64,13 @@ class TestPipedriveWebhookAuth:
         )
 
         assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
         db.refresh(test_company)
-        assert test_company.name != 'Updated Name'
+        assert test_company.name == name
 
     @patch('app.pipedrive.views.settings.dev_mode', True)
     async def test_dev_mode_skips_the_auth_check(self, client, db, test_company):
+        """dev_mode processes a webhook without the Basic auth"""
         test_company.pd_org_id = 999
         db.add(test_company)
         db.commit()
@@ -71,6 +78,7 @@ class TestPipedriveWebhookAuth:
         r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.org_webhook(test_company))
 
         assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
         db.refresh(test_company)
         assert test_company.name == 'Updated Name'
 

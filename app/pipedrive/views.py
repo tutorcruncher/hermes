@@ -1,7 +1,6 @@
 import base64
 import logging
 from hmac import compare_digest
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header
 from starlette.responses import JSONResponse
@@ -37,7 +36,7 @@ def _valid_basic_auth(authorization: str | None) -> bool:
 async def pipedrive_callback(
     event: dict,
     background_tasks: BackgroundTasks,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     # 'function' closes the session before the background tasks run, so none is held while they wait on Pipedrive
     db: DBSession = Depends(get_db, scope='function'),
 ):

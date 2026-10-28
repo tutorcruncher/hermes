@@ -108,6 +108,7 @@ Create a `.env` file in the project root:
 
 ```bash
 PD_API_KEY=your_pipedrive_api_key
+PD_WEBHOOK_PASSWORD=your_pipedrive_webhook_password
 TC2_API_KEY=your_tc2_api_key
 G_PRIVATE_KEY_ID=your-key-id
 G_PRIVATE_KEY=your-private-key
@@ -377,6 +378,7 @@ Run `make setup-fields` to check which fields are missing in Pipedrive. Create a
 4. Test webhook with curl:
    ```bash
    curl -X POST http://localhost:8000/pipedrive/callback/ \
+     -u hermes:$PD_WEBHOOK_PASSWORD \
      -H "Content-Type: application/json" \
      -d '{"event":"added","current":{}}'
    ```
