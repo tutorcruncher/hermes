@@ -11,7 +11,7 @@ from sqlmodel import select
 from app.main_app.models import Admin, Company, Contact, Deal, Pipeline
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_company_to_pipedrive, sync_person
-from tests.helpers import tc2_webhook
+from tests.helpers import pd_webhook, tc2_webhook
 
 
 class TestPipedriveWebhookMergedEntities:
@@ -34,7 +34,7 @@ class TestPipedriveWebhookMergedEntities:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -83,7 +83,7 @@ class TestPipedriveWebhookMergedEntities:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -136,7 +136,7 @@ class TestPipedriveWebhookMergedEntities:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -165,7 +165,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -182,7 +182,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -204,7 +204,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -226,7 +226,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -244,7 +244,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -266,7 +266,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -284,7 +284,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -316,7 +316,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -366,7 +366,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -406,7 +406,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -430,7 +430,7 @@ class TestPipedriveWebhookEdgeCases:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -456,7 +456,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -483,7 +483,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -516,7 +516,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -543,7 +543,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -569,7 +569,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -597,7 +597,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -630,7 +630,7 @@ class TestPipedriveWebhookEdgeCases:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -680,7 +680,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -702,7 +702,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -728,7 +728,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -754,7 +754,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -773,7 +773,7 @@ class TestPipedriveWebhookEdgeCases:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -796,7 +796,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -837,7 +837,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -878,7 +878,7 @@ class TestPipedriveWebhookEdgeCases:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -923,7 +923,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -969,7 +969,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
         assert r.status_code == 200
 
         db.refresh(contact2)
@@ -977,7 +977,7 @@ class TestPipedrivePersonMergeDeletion:
 
         # Send the same merge webhook again (e.g. another update to the winner)
         webhook_data['data']['name'] = 'John Updated'
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
         assert r.status_code == 200
 
         db.refresh(contact1)
@@ -1027,7 +1027,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1076,7 +1076,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1127,7 +1127,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1192,7 +1192,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1244,7 +1244,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1294,7 +1294,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1334,7 +1334,7 @@ class TestPipedrivePersonMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1364,7 +1364,7 @@ class TestPipedrivePersonMergeDeletion:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1548,7 +1548,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1583,7 +1583,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1624,7 +1624,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1659,7 +1659,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1681,7 +1681,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': {'custom_fields': _org_custom_fields(paid_invoice_count='6, 13')},
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1707,7 +1707,7 @@ class TestPipedriveWebhookMergeJoinedValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1796,7 +1796,7 @@ class TestPipedriveWebhookMergeJoinedDealValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1833,7 +1833,7 @@ class TestPipedriveWebhookMergeJoinedDealValues:
             'previous': {'status': 'open', 'custom_fields': _deal_custom_fields(paid_invoice_count='6, 13')},
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1864,7 +1864,7 @@ class TestPipedriveWebhookMergeJoinedDealValues:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1918,7 +1918,7 @@ class TestPipedriveWebhookPipedriveLink:
         unlinked = db.create(Company(name='Unlinked', **kwargs))
 
         webhook_data = self._org_webhook('Prominent Education Ltd', f'99999, {other_org.id}, {unlinked.id}')
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -1937,7 +1937,7 @@ class TestPipedriveWebhookPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('WeAre Education Ltd', f'{other_org.id}, 99999'),
+            **pd_webhook(self._org_webhook('WeAre Education Ltd', f'{other_org.id}, 99999')),
         )
 
         assert r.status_code == 200
@@ -1958,7 +1958,7 @@ class TestPipedriveWebhookPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('Price Education Ltd', f'{deleted.id}, {other_org.id}'),
+            **pd_webhook(self._org_webhook('Price Education Ltd', f'{deleted.id}, {other_org.id}')),
         )
 
         assert r.status_code == 200
@@ -1981,7 +1981,8 @@ class TestPipedriveWebhookPipedriveLink:
         )
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._org_webhook('Narc Tuition Ltd', str(company.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._org_webhook('Narc Tuition Ltd', str(company.id))),
         )
 
         assert r.status_code == 200
@@ -1996,7 +1997,7 @@ class TestPipedriveWebhookPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('Believe Tuition Ltd', str(company.id)),
+            **pd_webhook(self._org_webhook('Believe Tuition Ltd', str(company.id))),
         )
 
         assert r.status_code == 200
@@ -2016,7 +2017,7 @@ class TestPipedriveWebhookPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('Tuition Extra Group Ltd', f'{pd_only.id}, {tc2_client.id}'),
+            **pd_webhook(self._org_webhook('Tuition Extra Group Ltd', f'{pd_only.id}, {tc2_client.id}')),
         )
 
         assert r.status_code == 200
@@ -2040,7 +2041,7 @@ class TestPipedriveWebhookPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('TutorGNV Ltd', f'{pd_only.id}, {tc2_client.id}'),
+            **pd_webhook(self._org_webhook('TutorGNV Ltd', f'{pd_only.id}, {tc2_client.id}')),
         )
 
         assert r.status_code == 200
@@ -2075,7 +2076,8 @@ class TestPipedriveWebhookPipedriveLink:
         lost = db.create(Deal(name='Lost', status=Deal.STATUS_LOST, **kwargs))
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._org_webhook('On Point Tutoring', str(company.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._org_webhook('On Point Tutoring', str(company.id))),
         )
 
         assert r.status_code == 200
@@ -2114,15 +2116,15 @@ class TestPipedriveWebhookPipedriveLink:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook))
         assert r.status_code == 200
         assert db.exec(select(Deal)).all() == []
 
         client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._org_webhook('Tuition Extra Group', f'{company.id}, 99999'),
+            **pd_webhook(self._org_webhook('Tuition Extra Group', f'{company.id}, 99999')),
         )
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook))
 
         assert r.status_code == 200
         deal = db.exec(select(Deal)).one()
@@ -2148,7 +2150,8 @@ class TestPipedriveWebhookPipedriveLink:
         )
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 reopened', str(deal.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._deal_webhook('Deal 1 reopened', str(deal.id))),
         )
 
         assert r.status_code == 200
@@ -2171,7 +2174,8 @@ class TestPipedriveWebhookPipedriveLink:
         other = db.create(Deal(name='Deal 2', pd_deal_id=900, **kwargs))
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._deal_webhook('Deal 1 renamed', str(other.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._deal_webhook('Deal 1 renamed', str(other.id))),
         )
 
         assert r.status_code == 200
@@ -2209,7 +2213,9 @@ class TestPipedrivePersonPipedriveLink:
             )
         )
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', 99999))
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'), **pd_webhook(self._person_webhook('Jane Linked', 99999))
+        )
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -2230,7 +2236,8 @@ class TestPipedrivePersonPipedriveLink:
         other = db.create(Contact(first_name='John', last_name='Other', pd_person_id=500, **kwargs))
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', str(other.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._person_webhook('Jane Linked', str(other.id))),
         )
 
         assert r.status_code == 200
@@ -2254,7 +2261,7 @@ class TestPipedrivePersonPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._person_webhook('Jane Merged', f'{other.id}, {linked.id}'),
+            **pd_webhook(self._person_webhook('Jane Merged', f'{other.id}, {linked.id}')),
         )
 
         assert r.status_code == 200
@@ -2279,7 +2286,7 @@ class TestPipedrivePersonPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._person_webhook('Jane Merged', f'{linked.id}, {no_person.id}, {other.id}'),
+            **pd_webhook(self._person_webhook('Jane Merged', f'{linked.id}, {no_person.id}, {other.id}')),
         )
 
         assert r.status_code == 200
@@ -2311,7 +2318,7 @@ class TestPipedrivePersonPipedriveLink:
         webhooks = [delete_webhook, merge_webhook] if delete_first else [merge_webhook, delete_webhook]
 
         for webhook in webhooks:
-            r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook)
+            r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook))
             assert r.status_code == 200
 
         for contact in (winner, loser):
@@ -2332,7 +2339,7 @@ class TestPipedrivePersonPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._person_webhook('Jane Stale', f'{first.id}, {second.id}'),
+            **pd_webhook(self._person_webhook('Jane Stale', f'{first.id}, {second.id}')),
         )
 
         assert r.status_code == 200
@@ -2362,7 +2369,7 @@ class TestPipedrivePersonPipedriveLink:
 
         r = client.post(
             client.app.url_path_for('pipedrive-callback'),
-            json=self._person_webhook('Jane Merged', f'{other.id}, {first.id}, {second.id}'),
+            **pd_webhook(self._person_webhook('Jane Merged', f'{other.id}, {first.id}, {second.id}')),
         )
 
         assert r.status_code == 200
@@ -2393,7 +2400,7 @@ class TestPipedrivePersonPipedriveLink:
         hermes_id = f'99999, {contact.id}' if merged else str(contact.id)
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Linked', hermes_id)
+            client.app.url_path_for('pipedrive-callback'), **pd_webhook(self._person_webhook('Jane Linked', hermes_id))
         )
 
         assert r.status_code == 200
@@ -2415,7 +2422,8 @@ class TestPipedrivePersonPipedriveLink:
     async def test_unlinked_merged_person_with_unknown_ids_is_skipped(self, client, db, test_company, caplog):
         """Test that a person with no contact linked whose merged hermes_id lists no contact logs a warning, no error"""
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Stale', '99998, 99999')
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._person_webhook('Jane Stale', '99998, 99999')),
         )
 
         assert r.status_code == 200
@@ -2443,7 +2451,8 @@ class TestPipedrivePersonPipedriveLink:
         )
 
         r = client.post(
-            client.app.url_path_for('pipedrive-callback'), json=self._person_webhook('Jane Duplicate', str(contact.id))
+            client.app.url_path_for('pipedrive-callback'),
+            **pd_webhook(self._person_webhook('Jane Duplicate', str(contact.id))),
         )
 
         assert r.status_code == 200

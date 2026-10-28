@@ -13,6 +13,7 @@ from app.core.database import DBSession, get_session
 from app.main_app.models import Company, Contact, Deal
 from app.pipedrive.field_mappings import CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 from app.pipedrive.tasks import _company_sync_locks, create_contact_for_pd_deal
+from tests.helpers import pd_webhook
 
 PERSON_ID = 300
 DEAL_ID = 900
@@ -150,7 +151,7 @@ class TestNoOrganisation:
     @pytest.mark.parametrize('action', ['create', 'change'])
     async def test_person_without_org_is_skipped(self, client, db, action, caplog):
         """A person with no organisation creates no contact and logs no error"""
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=person_webhook(action=action))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(person_webhook(action=action)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -160,7 +161,7 @@ class TestNoOrganisation:
     @patch('app.pipedrive.api.get_person', new_callable=AsyncMock)
     async def test_deal_without_org_is_skipped(self, mock_get_person, client, db, lead_company, caplog):
         """A deal with no organisation creates no deal and logs no error"""
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(org_id=None))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(org_id=None)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -171,7 +172,7 @@ class TestNoOrganisation:
     @patch('app.pipedrive.api.get_person', new_callable=AsyncMock)
     async def test_deal_without_person_is_created(self, mock_get_person, client, db, lead_company, caplog):
         """A deal with an organisation but no person is created with no contact"""
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(person_id=None))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(person_id=None)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -190,7 +191,7 @@ class TestOrgNotInHermes:
 
     async def test_person_is_skipped(self, client, db, caplog):
         """A new person whose organisation isn't in Hermes creates no contact and logs no error"""
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=person_webhook(org_id=ORG_ID))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(person_webhook(org_id=ORG_ID)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -200,7 +201,7 @@ class TestOrgNotInHermes:
 
     async def test_deal_is_added_on_change_after_org(self, client, db, test_admin, test_pipeline, test_stage, caplog):
         """A deal sent before its org is skipped, and added by its next change once the org's webhook has come"""
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(person_id=None))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(person_id=None)))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -212,8 +213,8 @@ class TestOrgNotInHermes:
             'data': {'id': ORG_ID, 'name': 'Lead Co', 'owner_id': test_admin.pd_owner_id},
             'previous': None,
         }
-        client.post(client.app.url_path_for('pipedrive-callback'), json=org_webhook)
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(person_id=None))
+        client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(org_webhook))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(person_id=None)))
 
         assert r.status_code == 200
         company = db.exec(select(Company).where(Company.pd_org_id == ORG_ID)).one()
@@ -237,7 +238,7 @@ class TestOrgNotInHermes:
         webhook = deal_webhook(org_id=ORG_ID + 1, person_id=None, hermes_id=deal.id)
         webhook['data']['status'] = 'won'
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -255,7 +256,7 @@ class TestDealPersonNotInHermes:
         """The person is fetched from Pipedrive and created as a contact of the deal's company"""
         mock_get_person.return_value = pd_person_response(org_id=person_org_id)
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -276,7 +277,7 @@ class TestDealPersonNotInHermes:
             Contact(last_name='Known', email='known@example.com', pd_person_id=PERSON_ID, company_id=lead_company.id)
         )
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_deal(db).contact_id == contact.id
@@ -287,7 +288,7 @@ class TestDealPersonNotInHermes:
         """If Pipedrive can't be reached the deal is still created, and one error is logged"""
         mock_get_person.side_effect = RuntimeError('Pipedrive is down')
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -307,7 +308,7 @@ class TestDealPersonNotInHermes:
             response=httpx.Response(status_code),
         )
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_deal(db).contact_id is None
@@ -320,7 +321,7 @@ class TestDealPersonNotInHermes:
         """A person whose own organisation isn't the deal's is not added, so syncing can't move them out of it"""
         mock_get_person.return_value = pd_person_response(org_id=ORG_ID + 1)
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -338,7 +339,7 @@ class TestDealPersonNotInHermes:
         """A person with no email, or one Hermes created itself, is not added as a contact"""
         mock_get_person.return_value = response
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -359,7 +360,7 @@ class TestDealPersonNotInHermes:
         db.add(lead_company)
         db.commit()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -381,7 +382,7 @@ class TestDealPersonNotInHermes:
 
         mock_get_person.side_effect = delete_deal
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -392,8 +393,8 @@ class TestDealPersonNotInHermes:
         """A second deal for the same person links the same contact without fetching it again"""
         mock_get_person.return_value = pd_person_response()
 
-        client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(deal_id=901))
+        client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(deal_id=901)))
 
         assert r.status_code == 200
         contact = get_lead_contact(db)
@@ -408,11 +409,11 @@ class TestDealPersonNotInHermes:
     ):
         """Once the person is a contact, its webhooks with no organisation update it instead of failing"""
         mock_get_person.return_value = pd_person_response()
-        client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         webhook = person_webhook(action='change')
         webhook['data']['phones'] = [{'value': '+44 7700 900999', 'primary': True}]
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook))
 
         assert r.status_code == 200
         contact = get_lead_contact(db)
@@ -436,7 +437,7 @@ class TestDealPersonNotInHermes:
             )
         )
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook(hermes_id=deal.id))
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook(hermes_id=deal.id)))
 
         assert r.status_code == 200
         mock_get_person.assert_not_called()
@@ -456,7 +457,7 @@ class TestDealPersonEmailClash:
         db.create(Contact(last_name='Existing', email='Lead@Example.com', company_id=other_company.id))
         mock_get_person.return_value = pd_person_response()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -468,7 +469,7 @@ class TestDealPersonEmailClash:
         db.create(Contact(last_name='Gone', email='lead@example.com', is_deleted=True, company_id=lead_company.id))
         mock_get_person.return_value = pd_person_response()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -480,7 +481,7 @@ class TestDealPersonEmailClash:
         contact = db.create(Contact(last_name='Signed Up', email='lead@example.com', company_id=lead_company.id))
         mock_get_person.return_value = pd_person_response()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert db.exec(select(Contact).where(Contact.email == 'lead@example.com')).one().id == contact.id
@@ -495,7 +496,7 @@ class TestDealPersonEmailClash:
         db.create(Contact(last_name='Other', email='lead@example.com', pd_person_id=301, company_id=lead_company.id))
         mock_get_person.return_value = pd_person_response()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_lead_contact(db) is None
@@ -517,7 +518,7 @@ class TestDealPersonRace:
 
         mock_get_person.side_effect = add_contact_first
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         assert get_deal(db).contact_id == get_lead_contact(db).id
@@ -530,7 +531,7 @@ class TestDealPersonRace:
         mock_get_person.return_value = pd_person_response()
         clash_on_insert()
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         contact = get_lead_contact(db)
@@ -547,7 +548,7 @@ class TestDealPersonRace:
         mock_get_person.return_value = pd_person_response()
         clash_on_insert(link_deal=True)
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deal_webhook())
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deal_webhook()))
 
         assert r.status_code == 200
         contact = get_lead_contact(db)

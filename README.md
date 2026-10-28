@@ -108,6 +108,7 @@ Create a `.env` file in the project root:
 
 ```bash
 PD_API_KEY=your_pipedrive_api_key
+PD_WEBHOOK_PASSWORD=your_pipedrive_webhook_password
 TC2_API_KEY=your_tc2_api_key
 G_PRIVATE_KEY_ID=your-key-id
 G_PRIVATE_KEY=your-private-key
@@ -145,7 +146,7 @@ Note their TC2 admin IDs - you'll need them when creating Hermes Admin records.
    - Event action: `*` (all)
    - Event object: `*` (all)
    - Endpoint URL: `http://localhost:8000/pipedrive/callback/` (or your ngrok URL)
-   - HTTP Auth: None
+   - HTTP Auth: a username and password, set as `PD_WEBHOOK_USERNAME` and `PD_WEBHOOK_PASSWORD` in your `.env`
 
 #### Create Pipedrive Users:
 Create users for each role:
@@ -377,6 +378,7 @@ Run `make setup-fields` to check which fields are missing in Pipedrive. Create a
 4. Test webhook with curl:
    ```bash
    curl -X POST http://localhost:8000/pipedrive/callback/ \
+     -u hermes:$PD_WEBHOOK_PASSWORD \
      -H "Content-Type: application/json" \
      -d '{"event":"added","current":{}}'
    ```

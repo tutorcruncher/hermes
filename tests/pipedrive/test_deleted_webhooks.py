@@ -9,7 +9,7 @@ from sqlmodel import select
 
 from app.main_app.models import Company, Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
-from tests.helpers import pipedrive_http_error, tc2_webhook
+from tests.helpers import pd_webhook, pipedrive_http_error, tc2_webhook
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ class TestPipedriveOrganizationDeletion:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -160,7 +160,7 @@ class TestPipedriveOrganizationDeletion:
             'previous': {'id': 999, COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id, 'name': test_company.name},
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=deletion_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(deletion_webhook))
         assert r.status_code == 200
 
         db.refresh(test_company)
@@ -179,7 +179,7 @@ class TestPipedriveOrganizationDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=update_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(update_webhook))
         assert r.status_code == 200
 
         db.refresh(test_company)
@@ -258,7 +258,7 @@ class TestPipedriveOrganizationMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -287,7 +287,7 @@ class TestPipedriveOrganizationMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -316,7 +316,7 @@ class TestPipedriveOrganizationMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -373,14 +373,14 @@ class TestPipedriveOrganizationMergeDeletion:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
         assert r.status_code == 200
 
         db.refresh(company1)
         assert company1.name == 'Merged Company'
 
         webhook_data['data']['name'] = 'Updated Merged Company'
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
         assert r.status_code == 200
 
         db.refresh(company1)
@@ -440,7 +440,7 @@ class TestPipedriveOrganizationMergeDeletion:
             },
             'previous': None,
         }
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=org_webhook)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(org_webhook))
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
