@@ -2,7 +2,7 @@ import logging
 from datetime import date
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import AliasPath, BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 
@@ -94,7 +94,8 @@ class Organisation(_MergeableModel):
 
     id: Optional[int] = None
     name: Optional[str] = None
-    address_country: Optional[str] = Field(default=None, validation_alias='address_country')
+    # Pipedrive v2 sends the address as an object: {'value': ..., 'country': ..., 'locality': ..., ...}
+    address_country: Optional[str] = Field(default=None, validation_alias=AliasPath('address', 'country'))
     owner_id: Optional[int] = None
 
     # Custom fields - reference the centralized mapping

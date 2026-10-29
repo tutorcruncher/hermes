@@ -217,6 +217,63 @@ class TestPipedriveWebhookEndpoint:
         assert test_company.name == 'Updated Name'
         assert test_company.country == 'GB'
 
+    async def test_pipedrive_callback_updates_country_from_address(self, client, db, test_company):
+        """A country sales set on the org address is saved, so the next org sync does not write the old one back."""
+        test_company.pd_org_id = 999
+        test_company.country = 'GB'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'address': {'value': '1 George St, Sydney', 'country': 'AU', 'locality': 'Sydney', 'postal_code': None},
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                },
+            },
+            'previous': {
+                'address': {'value': 'GB', 'country': 'GB', 'locality': None, 'postal_code': None},
+            },
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.country == 'AU'
+
+    @pytest.mark.parametrize('address', [None, {'value': 'GB', 'country': None, 'locality': None, 'postal_code': None}])
+    async def test_pipedrive_callback_keeps_country_without_address(self, client, db, test_company, address):
+        """An org with no address, or an address with no country, leaves the company's country as it is."""
+        test_company.pd_org_id = 999
+        test_company.country = 'GB'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'address': address,
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.country == 'GB'
+
     async def test_pipedrive_callback_organization_with_previous(self, client, db, test_company):
         """Test webhook for organization with previous data"""
         test_company.pd_org_id = 999
@@ -659,7 +716,7 @@ class TestPipedriveWebhookEndpoint:
                 'id': 777,
                 'name': 'New Company with BDR',
                 'owner_id': test_admin.pd_owner_id,
-                'address_country': 'GB',
+                'address': {'value': 'GB', 'country': 'GB', 'locality': None, 'postal_code': None},
                 COMPANY_PD_FIELD_MAP['paid_invoice_count']: 5,
                 COMPANY_PD_FIELD_MAP['support_person_id']: support_admin.pd_owner_id,
                 COMPANY_PD_FIELD_MAP['bdr_person_id']: bdr_admin.pd_owner_id,
@@ -681,6 +738,7 @@ class TestPipedriveWebhookEndpoint:
         assert company.bdr_person_id == bdr_admin.id
         assert company.paid_invoice_count == 5
         assert company.website == 'https://example.com'
+        assert company.country == 'GB'
 
     async def test_pipedrive_callback_person_creation(self, client, db, test_company):
         """Test creating person via webhook"""
