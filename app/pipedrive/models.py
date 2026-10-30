@@ -134,8 +134,8 @@ class Organisation(_MergeableModel):
     @field_validator('address_country', mode='before')
     @classmethod
     def clean_address_country(cls, v):
-        """A country that is not text is treated as not sent, and a long one is cut to fit Company.country"""
-        return v[:255] if isinstance(v, str) else None
+        """Hermes stores countries as ISO2 codes, so anything else sales type is treated as not sent"""
+        return v.upper() if isinstance(v, str) and len(v) == 2 and v.isascii() and v.isalpha() else None
 
 
 class Person(_HermesModel):
