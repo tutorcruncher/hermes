@@ -700,6 +700,33 @@ class TestSyncOrganization:
     @patch('app.pipedrive.tasks.get_session')
     @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
     @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
+    async def test_sync_organization_skips_patch_when_only_address_differs(
+        self, mock_get, mock_update, mock_get_session, db, test_company
+    ):
+        """An unchanged org whose full Pipedrive address differs from the company's country is not PATCHed."""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        pd_org = _company_to_org_data(test_company)
+        pd_org['address'] = {
+            'value': '1 High St, London',
+            'country': 'GB',
+            'locality': 'London',
+            'route': 'High St',
+            'postal_code': 'N1 1AA',
+        }
+        mock_get_session.return_value = SessionMock(db)
+        mock_get.return_value = {'data': {'id': 999, **pd_org}}
+
+        await sync_organization(test_company.id)
+
+        mock_get.assert_called_once_with(999)
+        mock_update.assert_not_called()
+
+    @patch('app.pipedrive.tasks.get_session')
+    @patch('app.pipedrive.tasks.api.update_organisation', new_callable=AsyncMock)
+    @patch('app.pipedrive.tasks.api.get_organisation', new_callable=AsyncMock)
     async def test_sync_organization_fills_empty_address(
         self, mock_get, mock_update, mock_get_session, db, test_company
     ):
