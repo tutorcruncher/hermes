@@ -6,6 +6,7 @@ and verify that rate limiting works correctly with actual Pipedrive API calls.
 """
 
 import asyncio
+import socket
 import threading
 import time
 from datetime import datetime, timezone
@@ -62,10 +63,16 @@ def mock_pipedrive_server():
     runner = web.AppRunner(app)
     loop = asyncio.new_event_loop()
 
+    # Port 0: the OS picks a free port, so two test runs at once (or another program on a
+    # fixed port) never meet on the same server.
+    sock = socket.socket()
+    sock.bind(('127.0.0.1', 0))
+    port = sock.getsockname()[1]
+
     def run_server():
         asyncio.set_event_loop(loop)
         loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, '127.0.0.1', 8765)
+        site = web.SockSite(runner, sock)
         loop.run_until_complete(site.start())
         loop.run_forever()
 
@@ -73,7 +80,7 @@ def mock_pipedrive_server():
     thread.start()
     time.sleep(1)  # Wait for server to start
 
-    yield 'http://127.0.0.1:8765'
+    yield f'http://127.0.0.1:{port}'
 
     # Cleanup
     loop.call_soon_threadsafe(loop.stop)
