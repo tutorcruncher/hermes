@@ -218,7 +218,7 @@ class TestPipedriveWebhookEndpoint:
         assert test_company.country == 'GB'
 
     async def test_pipedrive_callback_updates_country_from_address(self, client, db, test_company):
-        """A country sales set on the org address is saved, so the next org sync does not write the old one back."""
+        """A country sales set on the org address is saved to the company."""
         test_company.pd_org_id = 999
         test_company.country = 'GB'
         db.add(test_company)

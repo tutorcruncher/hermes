@@ -109,6 +109,7 @@ async def sync_organization(company_id: int, recreate_on_404: bool = False) -> b
             pd_org = await api.get_organisation(pd_org_id)
             current_data = pd_org.get('data', {})
             _keep_pd_country(org_data, current_data)
+            _keep_pd_address(org_data, current_data)
             changed_fields = api.get_changed_fields(current_data, org_data)
 
             if changed_fields:
@@ -501,6 +502,12 @@ def _keep_pd_country(org_data: dict, current_data: dict) -> None:
     pd_field = COMPANY_PD_FIELD_MAP['country']
     if pd_country := (current_data.get('custom_fields') or {}).get(pd_field):
         org_data['custom_fields'][pd_field] = pd_country
+
+
+def _keep_pd_address(org_data: dict, current_data: dict) -> None:
+    """Sales own the org's address once it is set in Pipedrive, so Hermes only fills it when empty"""
+    if (current_data.get('address') or {}).get('value'):
+        org_data.pop('address', None)
 
 
 def _company_to_org_data(company: Company) -> dict:
