@@ -1,8 +1,7 @@
 # Hermes review system (`.claude/`)
 
-A port of TutorCruncher2's review, UAT and sync-impact commands, tailored to Hermes (FastAPI + SQLModel,
-public repo `tutorcruncher/hermes`, default branch `main`). The review rules come from `AGENTS.md` at the repo
-root.
+The review, UAT and sync-impact commands for Hermes (FastAPI + SQLModel, public repo `tutorcruncher/hermes`,
+default branch `main`). The review rules come from `AGENTS.md` at the repo root.
 
 ## What is committed
 

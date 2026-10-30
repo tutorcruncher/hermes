@@ -1,6 +1,6 @@
 Test a Hermes PR, or any test the user describes, by hand on a real local stack (web server, Postgres, Redis, fake Pipedrive, TC2 and Google Calendar, test keys, nothing real reachable). Derive cases from the diff, take any extra cases the user gives, drive each one as the real caller would, check Postgres, the web log and what the fake services received, and capture terminal screenshots. With a PR, publish the evidence into the PR description. With no PR, stay local.
 
-Ported from TutorCruncher2's `/pr-uat`. Hermes has no UI, so cases run through HTTP requests and the evidence is terminal screenshots.
+Hermes has no UI, so cases run through HTTP requests and the evidence is terminal screenshots.
 
 ## Usage
 
