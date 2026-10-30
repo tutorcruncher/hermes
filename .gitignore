@@ -22,3 +22,11 @@ __pycache__
 
 /.logfire/
 *.egg-info
+
+# Claude: ignore everything under .claude except the committed agents, commands, tools and README.
+# Review reports, security reports, UAT runs and local settings must never be committed.
+/.claude/*
+!/.claude/README.md
+!/.claude/agents/
+!/.claude/commands/
+!/.claude/tools/
