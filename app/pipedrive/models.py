@@ -2,7 +2,7 @@ import logging
 from datetime import date
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import AliasPath, BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
 
@@ -94,7 +94,8 @@ class Organisation(_MergeableModel):
 
     id: Optional[int] = None
     name: Optional[str] = None
-    address_country: Optional[str] = Field(default=None, validation_alias='address_country')
+    # Pipedrive v2 sends the address as an object: {'value': ..., 'country': ..., 'locality': ..., ...}
+    address_country: Optional[str] = Field(default=None, validation_alias=AliasPath('address', 'country'))
     owner_id: Optional[int] = None
 
     # Custom fields - reference the centralized mapping
@@ -129,6 +130,12 @@ class Organisation(_MergeableModel):
     card_saved_dt: Optional[date] = Field(default=None, validation_alias=COMPANY_PD_FIELD_MAP['card_saved_dt'])
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator('address_country', mode='before')
+    @classmethod
+    def clean_address_country(cls, v):
+        """Hermes stores ISO2 country codes, so any other value sales typed is treated as not sent"""
+        return v.upper() if isinstance(v, str) and len(v) == 2 and v.isascii() and v.isalpha() else None
 
 
 class Person(_HermesModel):
