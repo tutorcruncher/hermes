@@ -246,9 +246,42 @@ class TestPipedriveWebhookEndpoint:
         db.refresh(test_company)
         assert test_company.country == 'AU'
 
-    @pytest.mark.parametrize('address', [None, {'value': 'GB', 'country': None, 'locality': None, 'postal_code': None}])
+    async def test_pipedrive_callback_cuts_long_country(self, client, db, test_company):
+        """A country longer than Company.country allows is cut to fit, and the rest of the org update is saved."""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'address': {'value': 'x', 'country': 'A' * 300, 'locality': None, 'postal_code': None},
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert (test_company.name, test_company.country) == ('Updated Name', 'A' * 255)
+
+    @pytest.mark.parametrize(
+        'address',
+        [
+            None,
+            {'value': 'GB', 'country': None, 'locality': None, 'postal_code': None},
+            {'value': 'GB', 'country': 826, 'locality': None, 'postal_code': None},
+        ],
+    )
     async def test_pipedrive_callback_keeps_country_without_address(self, client, db, test_company, address):
-        """An org with no address, or an address with no country, leaves the company's country as it is."""
+        """An org with no address, or an address with no text country, leaves the company's country as it is."""
         test_company.pd_org_id = 999
         test_company.country = 'GB'
         db.add(test_company)
@@ -272,7 +305,7 @@ class TestPipedriveWebhookEndpoint:
         assert r.json() == {'status': 'ok'}
 
         db.refresh(test_company)
-        assert test_company.country == 'GB'
+        assert (test_company.name, test_company.country) == ('Updated Name', 'GB')
 
     async def test_pipedrive_callback_organization_with_previous(self, client, db, test_company):
         """Test webhook for organization with previous data"""

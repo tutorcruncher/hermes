@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import hmac
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -218,6 +219,11 @@ def _delete_meeting_on_calendar_failure(meeting_id: int, db: DBSession) -> None:
         logger.info(f'Deleted meeting {meeting_id} due to Google Calendar failure')
 
 
+def _html_text(value) -> str:
+    """A value shown as typed in the HTML meeting description"""
+    return html.escape(str(value))
+
+
 def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admin, meeting_type: str) -> dict:
     """Build template variables for meeting description"""
     # The signup link carries the company's recorded acquisition source so that signing up from
@@ -234,9 +240,9 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     else:
         signup_sig = ''
     template_vars = {
-        'contact_first_name': contact.first_name or 'there',
-        'company_name': company.name,
-        'admin_name': admin.first_name,
+        'contact_first_name': _html_text(contact.first_name or 'there'),
+        'company_name': _html_text(company.name),
+        'admin_name': _html_text(admin.first_name),
         'tc2_cligency_id': company.tc2_cligency_id or '',
         'signup_sig': signup_sig,
         'tc2_cligency_url': company.tc2_cligency_url or '',
@@ -246,10 +252,10 @@ def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admi
     if meeting_type == Meeting.TYPE_SALES:
         template_vars.update(
             {
-                'contact_email': contact.email,
-                'contact_phone': contact.phone,
-                'company_estimated_monthly_revenue': company.estimated_income,
-                'company_country': company.country,
+                'contact_email': _html_text(contact.email),
+                'contact_phone': _html_text(contact.phone),
+                'company_estimated_monthly_revenue': _html_text(company.estimated_income),
+                'company_country': _html_text(company.country),
                 'crm_url': company.pd_org_url or '',
             }
         )

@@ -131,6 +131,12 @@ class Organisation(_MergeableModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @field_validator('address_country', mode='before')
+    @classmethod
+    def clean_address_country(cls, v):
+        """A country that is not text is treated as not sent, and a long one is cut to fit Company.country"""
+        return v[:255] if isinstance(v, str) else None
+
 
 class Person(_HermesModel):
     """Pipedrive Person schema - uses centralized field mapping"""

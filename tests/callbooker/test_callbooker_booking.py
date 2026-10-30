@@ -1204,6 +1204,32 @@ class TestSupportCallBooking:
         assert db.exec(select(Contact).where(Contact.id != existing_contact.id)).one().email is None
 
 
+class TestMeetingDescription:
+    """Test the text shown in the calendar invite"""
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_invite_shows_text_as_typed(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test text with HTML characters shows as typed in the invite, not as markup"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events)
+        sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_name'] = '<b>Tom & Co</b>'
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': sales_person.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        description = captured_events[0]['description']
+        assert '- Company Name: &lt;b&gt;Tom &amp; Co&lt;/b&gt;\n' in description
+        assert '<b>Tom' not in description
+
+
 class TestSignupLinkAttribution:
     """Test the signup link in the calendar invite carries the company's acquisition source"""
 
