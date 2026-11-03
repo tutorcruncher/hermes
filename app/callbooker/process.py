@@ -53,7 +53,6 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     Get or create contact and company based on CBSalesCall data.
 
     The company is found by:
-    - Submitted company_id (if provided)
     - The contact with the submitted email (if they exist) and get company from that
     - Company name
 
@@ -65,12 +64,8 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     contact = None
     company = None
 
-    # Try to get company by ID
-    if event.company_id:
-        company = db.get(Company, event.company_id)
-
     # Try to find the contact by email, then get their company
-    if not company and event.email:
+    if event.email:
         contact = db.exec(
             select(Contact).where(func.lower(Contact.email) == event.email).order_by(Contact.id.desc())
         ).first()
