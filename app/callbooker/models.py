@@ -37,7 +37,6 @@ class CBSalesCall(BaseModel):
     bdr_person_id: Optional[int] = None
     utm_campaign: Optional[str] = None
     utm_source: Optional[str] = None
-    company_id: Optional[int] = None
     name: str
     website: Optional[str] = None
     email: str = Field(min_length=1)
