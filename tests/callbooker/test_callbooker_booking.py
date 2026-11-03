@@ -107,8 +107,11 @@ class TestSalesCallBooking:
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
 
+        assert [c.name for c in db.exec(select(Company).order_by(Company.id)).all()] == [
+            'Existing Company',
+            'Junes Ltd',
+        ]
         new_company = db.exec(select(Company).where(Company.name == 'Junes Ltd')).one()
-        assert new_company.id != company.id
         assert db.exec(select(Contact).where(Contact.company_id == company.id)).all() == []
         assert db.exec(select(Meeting)).one().company_id == new_company.id
 
@@ -900,6 +903,30 @@ class TestSalesCallBooking:
         assert [c.email for c in db.exec(select(Contact).where(Contact.company_id == phone_company.id)).all()] == [
             'old@example.com'
         ]
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_reuses_contact_with_mixed_case_email(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_admin, test_config
+    ):
+        """Test a sales booking typed with a mixed-case email reuses the contact stored with a different case"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
+        company = db.create(Company(name='Existing Company', sales_person_id=test_admin.id, price_plan='payg'))
+        existing_contact = db.create(
+            Contact(first_name='Brain', last_name='Junes', email='BRAIN@junes.com', company_id=company.id)
+        )
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['email'] = 'Brain@Junes.COM'
+
+        r = client.post(client.app.url_path_for('book-sales-call'), json={'admin_id': test_admin.id, **meeting_data})
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        assert db.exec(select(Company)).all() == [company]
+        assert db.exec(select(Contact)).all() == [existing_contact]
+        assert db.exec(select(Meeting)).one().contact_id == existing_contact.id
 
     async def test_sales_call_two_meetings_in_window_returns_400(
         self, client, db, test_pipeline, test_stage, test_config
