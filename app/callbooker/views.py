@@ -171,7 +171,8 @@ async def _support_link_error(admin_id: int, company_id: int, e: int, s: str) ->
     kwargs = {'admin_id': admin_id, 'company_id': company_id, 'e': e}
     sig = await sign_args(*kwargs.values())
 
-    if not compare_digest(sig, s):
+    # Encoded because compare_digest raises TypeError on a non-ASCII str
+    if not compare_digest(sig.encode(), s.encode()):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
     elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)

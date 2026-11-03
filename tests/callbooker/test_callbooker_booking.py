@@ -1156,6 +1156,7 @@ class TestSupportCallBooking:
 
         for link_params in [
             {**await support_link_params(admin.id, company.id), 's': 'wrong'},
+            {**await support_link_params(admin.id, company.id), 's': 'é' * 40},
             await support_link_params(admin.id, other_company.id),
         ]:
             r = client.post(
