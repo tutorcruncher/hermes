@@ -80,6 +80,9 @@ async def support_call(event: CBSupportCall, background_tasks: BackgroundTasks, 
     Endpoint for booking a Support call from the website.
     Callbooker → Hermes → Pipedrive sync.
     """
+    if error := await _support_link_error(event.admin_id, event.company_id, event.e, event.s):
+        return error
+
     company = db.get(Company, event.company_id)
     if not company:
         return JSONResponse({'status': 'error', 'message': 'Company not found'}, status_code=404)
@@ -157,12 +160,19 @@ async def validate_support_link(admin_id: int, company_id: int, e: int, s: str, 
     if not admin or not company:
         return JSONResponse({'status': 'error', 'message': 'Admin or Company not found'}, status_code=404)
 
-    kwargs = {'admin_id': admin.id, 'company_id': company.id, 'e': e}
+    if error := await _support_link_error(admin.id, company.id, e, s):
+        return error
+
+    return {'status': 'ok', 'company_name': company.name}
+
+
+async def _support_link_error(admin_id: int, company_id: int, e: int, s: str) -> JSONResponse | None:
+    """The error response for a support link whose signature does not match or that has expired, else None"""
+    kwargs = {'admin_id': admin_id, 'company_id': company_id, 'e': e}
     sig = await sign_args(*kwargs.values())
 
     if not compare_digest(sig, s):
         return JSONResponse({'status': 'error', 'message': 'Invalid signature'}, status_code=403)
     elif datetime.now().timestamp() > e:
         return JSONResponse({'status': 'error', 'message': 'Link has expired'}, status_code=403)
-
-    return {'status': 'ok', 'company_name': company.name}
+    return None

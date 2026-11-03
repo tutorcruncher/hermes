@@ -106,6 +106,8 @@ class CBSupportCall(BaseModel):
 
     company_id: int
     admin_id: int
+    e: int
+    s: str
     meeting_dt: datetime
     email: Optional[str] = None
     name: str

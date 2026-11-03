@@ -26,7 +26,7 @@ from app.pipedrive.tasks import (
     sync_organization,
     sync_person,
 )
-from tests.helpers import pipedrive_http_error
+from tests.helpers import pipedrive_http_error, support_link_params
 
 
 class SessionMock:
@@ -1783,6 +1783,7 @@ class TestSyncMeetingToPipedrive:
         meeting_data = {
             'admin_id': test_admin.id,
             'company_id': test_company.id,
+            **await support_link_params(test_admin.id, test_company.id),
             'name': 'Test Person',
             'email': 'test@example.com',
             'meeting_dt': datetime(2030, 7, 3, 9, tzinfo=utc).isoformat(),
