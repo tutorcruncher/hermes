@@ -19,7 +19,8 @@ from app.pipedrive.tasks import create_contact_for_pd_deal
 
 logger = logging.getLogger('hermes.pipedrive')
 
-router = APIRouter(prefix='/pipedrive', tags=['pipedrive'])
+# Pipedrive does not document the Content-Type it sends, so the body is read as JSON even when the header is missing
+router = APIRouter(prefix='/pipedrive', tags=['pipedrive'], strict_content_type=False)
 
 
 def _valid_basic_auth(authorization: str | None) -> bool:

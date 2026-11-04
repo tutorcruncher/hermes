@@ -2,6 +2,7 @@
 Tests for Pipedrive webhook endpoint.
 """
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -76,6 +77,23 @@ class TestPipedriveWebhookAuth:
         db.commit()
 
         r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.org_webhook(test_company))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.refresh(test_company)
+        assert test_company.name == 'Updated Name'
+
+    async def test_webhook_without_content_type_is_processed(self, client, db, test_company):
+        """A webhook whose JSON body has no Content-Type header is still processed"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            content=json.dumps(self.org_webhook(test_company)),
+            auth=(settings.pd_webhook_username, settings.pd_webhook_password),
+        )
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
