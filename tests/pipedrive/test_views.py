@@ -2,10 +2,12 @@
 Tests for Pipedrive webhook endpoint.
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.core.config import settings
@@ -910,8 +912,5 @@ class TestPipedriveOrgCreateRace:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
-        assert (
-            'Error processing Pipedrive webhook: (sqlite3.IntegrityError) UNIQUE constraint failed: '
-            'company.tc2_cligency_id'
-        ) in caplog.text
+        assert [rec.exc_info[0] for rec in caplog.records if rec.levelno >= logging.ERROR] == [IntegrityError]
         assert _org_companies() == []
