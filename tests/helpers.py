@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from app.common.utils import sign_args
 from app.core.config import settings
 
 
@@ -175,3 +176,9 @@ def create_mock_gcal_resource(admin_email: str):
             return self
 
     return MockGCalResource()
+
+
+async def support_link_params(admin_id: int, company_id: int, expiry: datetime | None = None) -> dict:
+    """The e and s values of a support link for the admin and company, as the website passes them on when booking"""
+    e = int((expiry or datetime.now() + timedelta(days=1)).timestamp())
+    return {'e': e, 's': await sign_args(admin_id, company_id, e)}

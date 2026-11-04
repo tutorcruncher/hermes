@@ -9,7 +9,7 @@ from pytz import utc
 from sqlmodel import select
 
 from app.main_app.models import Admin, Company, Config, Contact, Deal, Meeting, Pipeline, Stage
-from tests.helpers import fake_gcal_builder, pd_webhook, pipedrive_http_error
+from tests.helpers import fake_gcal_builder, pd_webhook, pipedrive_http_error, support_link_params
 
 SIGNUP_SIG_CLI_10 = '8b65d6380493a2127b54f860c6eb19b2eea3d3df2feac3fbd0101ecff586f327'
 
@@ -1090,6 +1090,7 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['company_id'] = company.id
+        meeting_data.update(await support_link_params(admin.id, company.id))
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
 
@@ -1116,6 +1117,7 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data.update(email='BRAIN@JUNES.COM', company_id=company.id)
+        meeting_data.update(await support_link_params(admin.id, company.id))
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
 
@@ -1131,10 +1133,83 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['company_id'] = 999
+        meeting_data.update(await support_link_params(admin.id, 999))
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
 
         assert r.status_code == 404
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_rejects_wrong_link_signature(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test a support booking with a signature that does not match the link is rejected"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email='support@example.com')
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+        other_company = db.create(Company(name='Other Ltd', sales_person_id=admin.id, price_plan='payg', country='GB'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_id'] = company.id
+
+        for link_params in [
+            {**await support_link_params(admin.id, company.id), 's': 'wrong'},
+            {**await support_link_params(admin.id, company.id), 's': 'é' * 40},
+            await support_link_params(admin.id, other_company.id),
+        ]:
+            r = client.post(
+                client.app.url_path_for('book-support-call'),
+                json={'admin_id': admin.id, **meeting_data, **link_params},
+            )
+            assert r.status_code == 403
+            assert r.json() == {'status': 'error', 'message': 'Invalid signature'}
+
+        assert db.exec(select(Contact)).all() == []
+        assert db.exec(select(Meeting)).all() == []
+        assert captured_events == []
+        assert not mock_add_task.called
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_support_call_rejects_expired_link(
+        self, mock_gcal_builder, mock_add_task, client, db, test_pipeline, test_stage, test_config
+    ):
+        """Test a support booking from a link that has expired is rejected"""
+        captured_events = []
+        mock_gcal_builder.side_effect = capturing_gcal_builder(captured_events, admin_email='support@example.com')
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_id'] = company.id
+        meeting_data.update(
+            await support_link_params(admin.id, company.id, expiry=datetime.now() - timedelta(minutes=10))
+        )
+
+        r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Link has expired'}
+        assert db.exec(select(Contact)).all() == []
+        assert db.exec(select(Meeting)).all() == []
+        assert captured_events == []
+        assert not mock_add_task.called
+
+    async def test_support_call_requires_link_values(self, client, db):
+        """Test a support booking without the link's e and s values is rejected"""
+        admin = db.create(Admin(first_name='Support', last_name='Person', username='support@example.com'))
+        company = db.create(Company(name='Test Company', sales_person_id=admin.id, price_plan='payg', country='GB'))
+
+        meeting_data = CB_MEETING_DATA.copy()
+        meeting_data['company_id'] = company.id
+
+        r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
+
+        assert r.status_code == 422
+        assert db.exec(select(Contact)).all() == []
+        assert db.exec(select(Meeting)).all() == []
 
     async def test_support_call_handles_booking_error(self, client, db, caplog):
         """Test that support call handles MeetingBookingError and logs it as an error"""
@@ -1144,6 +1219,7 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['company_id'] = company.id
+        meeting_data.update(await support_link_params(admin.id, company.id))
         del meeting_data['email']
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
@@ -1173,6 +1249,7 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data.update(name='brain junes', company_id=company.id)
+        meeting_data.update(await support_link_params(admin.id, company.id))
         del meeting_data['email']
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
@@ -1198,6 +1275,7 @@ class TestSupportCallBooking:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data.update(name='Someone %', company_id=company.id)
+        meeting_data.update(await support_link_params(admin.id, company.id))
         del meeting_data['email']
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
@@ -1286,6 +1364,7 @@ class TestSignupLinkAttribution:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['company_id'] = company.id
+        meeting_data.update(await support_link_params(admin.id, company.id))
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
 
@@ -1316,6 +1395,7 @@ class TestSignupLinkAttribution:
 
         meeting_data = CB_MEETING_DATA.copy()
         meeting_data['company_id'] = company.id
+        meeting_data.update(await support_link_params(admin.id, company.id))
 
         r = client.post(client.app.url_path_for('book-support-call'), json={'admin_id': admin.id, **meeting_data})
 
@@ -1452,6 +1532,7 @@ class TestCallbookerValidation:
         meeting_data = {
             'admin_id': admin.id,
             'company_id': company.id,
+            **await support_link_params(admin.id, company.id),
             'name': 'Test Person',
             'email': 'test@example.com',
             'meeting_dt': past_dt.isoformat(),
@@ -1475,6 +1556,7 @@ class TestCallbookerValidation:
         meeting_data = {
             'admin_id': admin.id,
             'company_id': company.id,
+            **await support_link_params(admin.id, company.id),
             'name': 'Cher',  # Single name
             'email': 'cher@example.com',
             'meeting_dt': future_dt.isoformat(),
