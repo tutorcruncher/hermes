@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     log_level: str = 'INFO'
 
     logfire_token: Optional[str] = None
+    # Shown as deployment_environment on all telemetry, e.g. 'production' / 'beta'
+    logfire_environment: Optional[str] = None
 
     # Postgres
     database_url: PostgresDsn = Field(
@@ -27,6 +29,9 @@ class Settings(BaseSettings):
     db_max_overflow: int = 15
     db_pool_pre_ping: bool = True
     db_pool_recycle: int = 3600
+
+    # Redis
+    redis_url: str = Field(validation_alias='REDISCLOUD_URL')
 
     # Sentry
     sentry_dsn: Optional[str] = None
@@ -54,6 +59,9 @@ class Settings(BaseSettings):
     # Pipedrive
     pd_api_key: str = 'test-key'
     pd_base_url: str = 'https://tutorcruncher.pipedrive.com'
+    # The HTTP Basic auth set on the Pipedrive webhook. Every webhook is rejected while no password is set.
+    pd_webhook_username: str = 'hermes'
+    pd_webhook_password: str | None = None
     sync_create_deals: bool = True
     pd_api_max_rate: int = 9
     pd_api_rate_period: int = 2  # seconds

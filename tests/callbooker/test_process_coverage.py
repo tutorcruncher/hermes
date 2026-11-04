@@ -8,10 +8,14 @@ from unittest.mock import AsyncMock, patch
 from pytz import utc
 from sqlmodel import select
 
+from app.callbooker.meeting_templates import MEETING_CONTENT_TEMPLATES
 from app.callbooker.models import CBSalesCall
-from app.callbooker.process import book_meeting
-from app.main_app.models import Config, Deal, Pipeline, Stage
+from app.callbooker.process import _build_meeting_template_vars, book_meeting
+from app.main_app.models import Company, Config, Contact, Deal, Meeting, Pipeline, Stage
+from tests.factories import CompanyFactory
 from tests.helpers import fake_gcal_builder
+
+SIGNUP_SIG_CLI_10 = '8b65d6380493a2127b54f860c6eb19b2eea3d3df2feac3fbd0101ecff586f327'
 
 
 class TestCallbookerProcessEdgeCases:
@@ -67,7 +71,7 @@ class TestCallbookerProcessEdgeCases:
 
     @patch('app.callbooker.process.check_gcal_open_slots')
     async def test_sales_call_admin_not_found_raises_error(
-        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config
+        self, mock_check_gcal, client, db, test_company, test_pipeline, test_stage, test_config, caplog
     ):
         """Test that booking raises error when admin doesn't exist"""
         mock_check_gcal.return_value = True
@@ -77,8 +81,7 @@ class TestCallbookerProcessEdgeCases:
             'admin_id': 999,  # Non-existent
             'name': 'John Doe',
             'email': 'john@example.com',
-            'company_name': 'Test Company',
-            'company_id': test_company.id,
+            'company_name': test_company.name,
             'country': 'GB',
             'estimated_income': 1000,
             'currency': 'GBP',
@@ -90,13 +93,19 @@ class TestCallbookerProcessEdgeCases:
 
         assert r.status_code == 400
         assert 'Admin not found' in r.json()['message']
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        # Unlike an expected refusal, a missing admin is logged as an error, once
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == [
+            f'Admin 999 not found, could not book a call for contact {contact.id}'
+        ]
 
-    async def test_sales_call_no_config_raises_error(self, client, db, test_admin):
-        """Test that booking raises error when no config exists"""
-        # Ensure no Config exists
-        for config in db.exec(select(Config)).all():
-            db.delete(config)
-        db.commit()
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_without_config_books_without_deal(
+        self, mock_gcal_builder, mock_add_task, client, db, test_admin, caplog
+    ):
+        """Test that a missing config is logged and the meeting is still booked, without a deal"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
 
         future_dt = datetime.now(utc) + timedelta(days=1)
         meeting_data = {
@@ -113,26 +122,40 @@ class TestCallbookerProcessEdgeCases:
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
-        assert r.status_code == 400
-        assert 'Config not found' in r.json()['message']
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
 
+        company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.company_id == company.id
+        assert meeting.deal_id is None
+        assert db.exec(select(Deal)).all() == []
+        assert company.has_booked_call is True
+        assert (
+            'ERROR',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            'Config not found',
+        ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
+        assert [(c.args[0].__name__, c.args[1]) for c in mock_add_task.call_args_list] == [
+            ('sync_company_to_pipedrive', company.id),
+            ('sync_meeting_to_pipedrive', meeting.id),
+        ]
+
+    @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
-    async def test_sales_call_stage_not_found_raises_error(
-        self, mock_gcal_builder, client, db, test_admin, test_pipeline, test_config
+    async def test_sales_call_with_missing_stage_books_without_deal(
+        self, mock_gcal_builder, mock_add_task, client, db, test_admin, test_pipeline, test_config, caplog
     ):
-        """Test that booking raises error when stage referenced by pipeline doesn't exist"""
-        mock_gcal_builder.side_effect = fake_gcal_builder()
+        """Test that a pipeline pointing at a missing stage is logged and the meeting is still booked, without a deal"""
+        mock_gcal_builder.side_effect = fake_gcal_builder(admin_email=test_admin.email)
 
-        # Create a pipeline with an invalid dft_entry_stage_id
         stage = db.create(Stage(pd_stage_id=999, name='Test Stage'))
-        pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage.id))
-
-        # Update config to use this pipeline
+        stage_id = stage.id
+        pipeline = db.create(Pipeline(pd_pipeline_id=998, name='Test Pipeline', dft_entry_stage_id=stage_id))
         test_config.payg_pipeline_id = pipeline.id
         db.add(test_config)
         db.commit()
-
-        # Delete the stage to simulate it being missing
         db.delete(stage)
         db.commit()
 
@@ -151,8 +174,20 @@ class TestCallbookerProcessEdgeCases:
 
         r = client.post(client.app.url_path_for('book-sales-call'), json=meeting_data)
 
-        assert r.status_code == 400
-        assert 'Stage' in r.json()['message'] and 'not found' in r.json()['message']
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        company = db.exec(select(Company)).one()
+        contact = db.exec(select(Contact).where(Contact.email == 'john@example.com')).one()
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.deal_id is None
+        assert db.exec(select(Deal)).all() == []
+        assert company.has_booked_call is True
+        assert (
+            'ERROR',
+            f'Booked meeting {meeting.id} for company {company.id} and contact {contact.id} without a deal: '
+            f'Stage {stage_id} not found',
+        ) in [(rec.levelname, rec.getMessage()) for rec in caplog.records if rec.name == 'hermes.callbooker']
 
     @patch('fastapi.BackgroundTasks.add_task')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
@@ -268,8 +303,7 @@ class TestCallbookerProcessEdgeCases:
             'admin_id': test_admin.id,
             'name': 'John Doe',
             'email': 'john@example.com',
-            'company_name': 'Test Company',
-            'company_id': test_company.id,
+            'company_name': test_company.name,
             'country': 'GB',
             'estimated_income': 1000,
             'currency': 'GBP',
@@ -371,3 +405,47 @@ class TestAvailabilityEndpoint:
         assert data['status'] == 'ok'
         # Should have some slots but not at 10:00-11:00
         assert isinstance(data['slots'], list)
+
+
+class TestMeetingTemplateVars:
+    """Test the signup link in the meeting description carries the company's utm"""
+
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
+    def test_signup_link_uses_company_utm(self, db, test_admin, test_contact):
+        """Test the signup link carries the company's utm_source and utm_campaign"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='google', utm_campaign='US Search'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=google&tc_campaign=US+Search'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=google&tc_campaign=US+Search' in description
+
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
+    def test_signup_link_omits_campaign_when_only_source_is_set(self, db, test_admin, test_contact):
+        """Test the signup link carries tc_source alone when the company has no utm_campaign"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='google'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=google'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=google">' in description
+
+    @patch('app.core.config.settings.tc2_api_key', 'tc2-test-key')
+    def test_signup_link_escapes_hostile_utm_source(self, db, test_admin, test_contact):
+        """Test a utm_source from the public booking endpoint cannot break out of the href"""
+        company = CompanyFactory.create_with_db(
+            db, sales_person_id=test_admin.id, tc2_cligency_id=10, utm_source='a&b="x"<script>'
+        )
+        template_vars = _build_meeting_template_vars(company, test_contact, test_admin, Meeting.TYPE_SUPPORT)
+        assert template_vars['signup_tracking_params'] == 'tc_source=a%26b%3D%22x%22%3Cscript%3E'
+        description = MEETING_CONTENT_TEMPLATES['support'].format(**template_vars)
+        assert f'/start/1/?cli_id=10&s={SIGNUP_SIG_CLI_10}&tc_source=a%26b%3D%22x%22%3Cscript%3E">' in description
+
+    def test_signup_link_falls_back_to_call_booker(self, test_admin, test_company, test_contact):
+        """Test the signup link falls back to call_booker when no utm was ever captured"""
+        template_vars = _build_meeting_template_vars(test_company, test_contact, test_admin, Meeting.TYPE_SALES)
+        assert template_vars['signup_tracking_params'] == 'tc_source=call_booker'
+        description = MEETING_CONTENT_TEMPLATES['sales'].format(**template_vars)
+        assert '/start/1/?cli_id=&s=&tc_source=call_booker"' in description

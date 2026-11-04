@@ -5,6 +5,7 @@ from sqlmodel import select
 
 from app.main_app.models import Deal
 from app.pipedrive.field_mappings import DEAL_PD_FIELD_MAP
+from tests.helpers import pd_webhook
 
 
 @pytest.mark.asyncio
@@ -41,7 +42,7 @@ class TestDealCreationFromPipedrive:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -89,7 +90,7 @@ class TestDealCreationFromPipedrive:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -135,7 +136,7 @@ class TestDealCreationFromPipedrive:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -191,7 +192,7 @@ class TestDealCreationFromPipedrive:
             'previous': {'title': 'Original Deal Name'},
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -234,7 +235,7 @@ class TestDealCreationFromPipedrive:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
 

@@ -6,6 +6,7 @@ from datetime import date
 
 from app.main_app.models import Deal
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+from tests.helpers import pd_webhook
 
 
 class TestPipedriveWebhookNullFields:
@@ -29,7 +30,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -55,7 +56,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -77,7 +78,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -106,7 +107,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -140,7 +141,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -166,7 +167,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -193,7 +194,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -220,7 +221,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -249,7 +250,7 @@ class TestPipedriveWebhookNullFields:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}

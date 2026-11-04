@@ -29,6 +29,8 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'signup_questionnaire': 'd4db234b06f753a951c0de94456740f270e0f2ed',
     'utm_source': 'd30bf32a173cdfa780901d5eeb92a8f2d1ccd980',
     'utm_campaign': '4be5bf6e60e2a01e2653532e872cd15b5308da23',
+    'signup_email': '947c107172aafa62b4823358cacd69d03b725f21',
+    'signup_phone': 'e651b58add3ed5e1af88a3bfd9d5d5adacc46964',
     'created': '02ccf8be2c19db0d88f46b9fac20982f43cf1394',
     'pay0_dt': '8ca7c3d5c4d2a343ddfbca712606e27ad9714188',
     'pay1_dt': '291ac593816f0a5ab018f61905274312008c8c9b',
@@ -37,6 +39,21 @@ _DEFAULT_COMPANY_PD_FIELD_MAP = {
     'gclid_expiry_dt': '21685501a4a4fc347f609adcafc9908d774034f9',
     'email_confirmed_dt': '35d6e7ef145f1966d2a53fe7c02c87efd1455587',
     'card_saved_dt': '90af5597493bd9a2a0637df22fb29038cbb2a2db',
+    'receive_marketing_emails': 'f96180f45c324d57c3dd42b02a9ec511311e9638',
+    'operate_as_ea': 'd7b0103a652d3ea61ca1084cc2330ae524f7d52f',
+    'country': 'c6ccb56c5a4b82149a7c9de4687dc0914581b0c0',
+}
+
+# Pipedrive single-option (enum) IDs for bool fields — option IDs are per Pipedrive account.
+_DEFAULT_COMPANY_PD_ENUM_OPTION_MAP = {
+    'receive_marketing_emails': {
+        'yes': 505,
+        'no': 506,
+    },
+    'operate_as_ea': {
+        'yes': 596,
+        'no': 597,
+    },
 }
 
 _DEFAULT_DEAL_PD_FIELD_MAP = {
@@ -61,6 +78,7 @@ _DEFAULT_CONTACT_PD_FIELD_MAP = {
 COMPANY_PD_FIELD_MAP = _DEFAULT_COMPANY_PD_FIELD_MAP.copy()
 DEAL_PD_FIELD_MAP = _DEFAULT_DEAL_PD_FIELD_MAP.copy()
 CONTACT_PD_FIELD_MAP = _DEFAULT_CONTACT_PD_FIELD_MAP.copy()
+COMPANY_PD_ENUM_OPTION_MAP = {field: options.copy() for field, options in _DEFAULT_COMPANY_PD_ENUM_OPTION_MAP.items()}
 
 override_path = PROJECT_ROOT / 'field_mappings_override.py'
 
@@ -80,5 +98,12 @@ if os.path.exists(override_path):
 
         if hasattr(field_mappings_override, 'CONTACT_PD_FIELD_MAP'):
             CONTACT_PD_FIELD_MAP.update(field_mappings_override.CONTACT_PD_FIELD_MAP)
+
+        if hasattr(field_mappings_override, 'COMPANY_PD_ENUM_OPTION_MAP'):
+            for field_name, options in field_mappings_override.COMPANY_PD_ENUM_OPTION_MAP.items():
+                if field_name in COMPANY_PD_ENUM_OPTION_MAP:
+                    COMPANY_PD_ENUM_OPTION_MAP[field_name].update(options)
+                else:
+                    COMPANY_PD_ENUM_OPTION_MAP[field_name] = options.copy()
 
         logger.info(f'Loaded field mapping overrides from {override_path}')

@@ -7,13 +7,16 @@ with existing deals in Pipedrive using the hermes_id custom field.
 """
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime
 
 import click
+from sqlalchemy import text
 from sqlmodel import select
 
 from app.core.database import get_session
+from app.main_app.models import Admin, Company, Config, Contact, Deal, Pipeline, Stage
 from app.pipedrive import api
 
 logging.basicConfig(level=logging.INFO)
@@ -563,6 +566,185 @@ async def reassign_deals_with_invalid_admin(db):
     print(f'Updated {deals_updated} deals')
 
 
+@command
+async def insert_missing_stages(db):
+    """
+    Fetch all stages from Pipedrive and insert any that are missing from Hermes.
+
+    Hermes only learns about stages via system_setup or PD stage-entity webhooks.
+    If a stage was created in PD after initial setup and no stage webhook was sent,
+    it won't exist in Hermes. Deal webhooks referencing that stage_id then silently
+    fail to update the deal's stage.
+
+    This patch fetches every stage across all pipelines from the PD API and inserts
+    any that don't already exist in the Hermes stage table.
+    """
+
+    existing = {s.pd_stage_id for s in db.exec(select(Stage)).all()}
+    print(f'{len(existing)} stages already in Hermes')
+
+    pipelines = await api.pipedrive_request('pipelines', method='GET')
+    pd_pipelines = pipelines.get('data') or []
+    print(f'Found {len(pd_pipelines)} pipelines in Pipedrive')
+
+    inserted = []
+    for pd_pipeline in pd_pipelines:
+        result = await api.pipedrive_request('stages', method='GET', query_params={'pipeline_id': pd_pipeline['id']})
+        pd_stages = result.get('data') or []
+
+        for pd_stage in pd_stages:
+            if pd_stage['id'] not in existing:
+                stage = Stage(pd_stage_id=pd_stage['id'], name=pd_stage['name'])
+                db.add(stage)
+                inserted.append((pd_stage['id'], pd_stage['name'], pd_pipeline['name']))
+                print(f'  INSERT stage {pd_stage["id"]}: {pd_stage["name"]} (pipeline: {pd_pipeline["name"]})')
+
+    if inserted:
+        print(f'\nInserted {len(inserted)} missing stages')
+    else:
+        print('\nNo missing stages found')
+
+
+@command
+async def add_jewel_bdr_admin(db):
+    """
+    Create the Admin record for Jewel, the new BDR (#411), with the same BDR-only flags as Gabe (id=7)
+    and Drew (id=15). Without it, TC2 webhooks and callbooker bookings naming her as BDR save the
+    company with bdr_person_id NULL.
+
+    admin_id_seq is first moved up to MAX(admin.id): insert_admin_placeholders inserted Drew at id=15
+    explicitly and left the sequence at 13, so a plain insert would collide with id 15. setval is not
+    transactional, so this applies even without --live.
+
+    The id printed by the --live run is the bdr_person_id for her callbooker links.
+    """
+    TC2_ADMIN_ID = 5800431  # TC2 meta admin id, from the issue
+    PD_OWNER_ID = 27488253  # Pipedrive user id
+    EMAIL = 'jewel@tutorcruncher.com'
+
+    existing = db.exec(select(Admin).where(Admin.tc2_admin_id == TC2_ADMIN_ID)).one_or_none()
+    if existing:
+        print(f'Admin {existing.id} already has tc2_admin_id {TC2_ADMIN_ID}, nothing to do')
+        return
+
+    db.execute(
+        text("SELECT setval('admin_id_seq', GREATEST(last_value, (SELECT MAX(id) FROM admin))) FROM admin_id_seq")
+    )
+
+    admin = Admin(
+        tc2_admin_id=TC2_ADMIN_ID,
+        pd_owner_id=PD_OWNER_ID,
+        first_name='Jewel',
+        username=EMAIL,
+        timezone='Europe/London',
+        is_bdr_person=True,
+    )
+    db.add(admin)
+    db.flush()
+
+    print(
+        f'Created admin {admin.id}: {admin.name} <{admin.username}> '
+        f'tc2_admin_id={TC2_ADMIN_ID} pd_owner_id={PD_OWNER_ID}'
+    )
+
+
+@command
+async def fix_repeated_contact_names(db, live=False):
+    """
+    Remove the repeated words from contact names damaged by #418.
+
+    Pipedrive puts a name that starts lowercase and has a capital (e.g. 'john Smith') all in last_name,
+    and Hermes kept its own first_name, so every sync sent the first name once more ('john john Smith')
+    until the name was over 255 characters and Pipedrive rejected it.
+
+    Only names that start lowercase, have a capital and repeat a word are changed. The new name is the
+    words in order without repeats: first_name is the first word and last_name the rest, the same split
+    Person.parse_name makes when Pipedrive sends the name back. A name that is one word repeated keeps
+    that word as both first_name and last_name. Contacts of deleted or narc companies are skipped, as
+    Hermes no longer syncs them.
+
+    With --live the changes are committed and the new names are sent to Pipedrive straight away, so a
+    Pipedrive webhook before the company's next sync can't bring the repeated name back. Run this after
+    the #418 fix is deployed, or the names start repeating again.
+    """
+    contacts = db.exec(
+        select(Contact)
+        .join(Company)
+        .where(Company.is_deleted == False, Company.narc == False)  # noqa: E712
+        .order_by(Contact.id)
+    ).all()
+    print(f'Checking {len(contacts)} contacts')
+
+    fixed = []
+    for contact in contacts:
+        name = contact.name
+        if not name or not name[0].islower() or not any(c.isupper() for c in name):
+            continue
+        words = name.split()
+        unique_words = list(dict.fromkeys(words))
+        if len(unique_words) == 1:
+            unique_words *= 2
+        if len(unique_words) >= len(words):
+            continue
+
+        contact.first_name = unique_words[0][:255]
+        contact.last_name = ' '.join(unique_words[1:])[:255]
+        db.add(contact)
+        fixed.append(contact)
+        print(f'Contact {contact.id} (pd_person_id={contact.pd_person_id}): {name!r} -> {contact.name!r}')
+
+    print(f'Fixed {len(fixed)} contacts')
+    if not live:
+        return
+
+    db.commit()
+    for contact in fixed:
+        if not contact.pd_person_id:
+            continue
+        try:
+            await api.update_person(contact.pd_person_id, {'name': contact.name})
+            print(f'Updated Pipedrive person {contact.pd_person_id}')
+        except Exception as e:
+            print(f'Failed to update Pipedrive person {contact.pd_person_id}: {e}')
+
+
+@command
+async def point_enterprise_deals_to_onboarding(db):
+    """
+    Send new enterprise deals to the Onboarding pipeline, and stop syncing the enterprise deals that never reached
+    Pipedrive (#372).
+
+    Pipedrive deleted the Enterprise pipeline (pd_pipeline_id=3) and its stages. Hermes ignores pipeline deletes, so
+    Config kept giving new enterprise deals that pipeline and Pipedrive rejected every create with a 400. Config now
+    gives them the Onboarding pipeline (pd_pipeline_id=1) and its entry stage.
+
+    The open deals left in the Enterprise pipeline without a pd_deal_id are marked deleted, as
+    _delete_unsynced_deals does, so the company sync stops trying to create them. TC2 webhooks find the deleted deal
+    and create no other; a sales call booking creates a new deal when the company has no open one, as for any company.
+    """
+    onboarding = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 1)).one()
+    enterprise = db.exec(select(Pipeline).where(Pipeline.pd_pipeline_id == 3)).one()
+    config = db.exec(select(Config)).one()
+
+    entry_stage = onboarding.dft_entry_stage
+    print(
+        f'Config enterprise_pipeline_id {config.enterprise_pipeline_id} -> {onboarding.id} ({onboarding.name}, '
+        f'entry stage pd_stage_id={entry_stage.pd_stage_id} {entry_stage.name})'
+    )
+    config.enterprise_pipeline_id = onboarding.id
+    db.add(config)
+
+    deals = db.exec(
+        select(Deal)
+        .where(Deal.pipeline_id == enterprise.id, Deal.status == Deal.STATUS_OPEN, Deal.pd_deal_id.is_(None))
+        .order_by(Deal.id)
+    ).all()
+    for deal in deals:
+        deal.status = Deal.STATUS_DELETED
+        db.add(deal)
+    print(f'Marked {len(deals)} enterprise deals deleted: {[d.id for d in deals]}')
+
+
 @click.command()
 @click.argument('command', type=click.Choice([c.__name__ for c in commands]))
 @click.option('--live', is_flag=True)
@@ -571,7 +753,9 @@ def patch(command, live):
 
     start = datetime.now()
     with get_session() as db:
-        asyncio.run(command_lookup[command](db=db))
+        func = command_lookup[command]
+        kwargs = {'live': live} if 'live' in inspect.signature(func).parameters else {}
+        asyncio.run(func(db=db, **kwargs))
         if live:
             db.commit()
             print('Committing changes')

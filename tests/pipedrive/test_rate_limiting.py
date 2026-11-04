@@ -6,15 +6,20 @@ and verify that rate limiting works correctly with actual Pipedrive API calls.
 """
 
 import asyncio
+import socket
 import threading
 import time
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from aiohttp import web
 from sqlmodel import select
 
 from app.main_app.models import Company
+from app.pipedrive import api
+from tests.helpers import MockResponse, tc2_webhook
 
 
 @pytest.fixture(scope='session')
@@ -58,10 +63,16 @@ def mock_pipedrive_server():
     runner = web.AppRunner(app)
     loop = asyncio.new_event_loop()
 
+    # Port 0: the OS picks a free port, so two test runs at once (or another program on a
+    # fixed port) never meet on the same server.
+    sock = socket.socket()
+    sock.bind(('127.0.0.1', 0))
+    port = sock.getsockname()[1]
+
     def run_server():
         asyncio.set_event_loop(loop)
         loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, '127.0.0.1', 8765)
+        site = web.SockSite(runner, sock)
         loop.run_until_complete(site.start())
         loop.run_forever()
 
@@ -69,7 +80,7 @@ def mock_pipedrive_server():
     thread.start()
     time.sleep(1)  # Wait for server to start
 
-    yield 'http://127.0.0.1:8765'
+    yield f'http://127.0.0.1:{port}'
 
     # Cleanup
     loop.call_soon_threadsafe(loop.stop)
@@ -147,7 +158,7 @@ class TestEndToEndRateLimiting:
         """Test single TC2 webhook triggers Pipedrive sync with rate limiting"""
         monkeypatch.setattr('app.core.config.settings.pd_base_url', mock_pipedrive_server)
 
-        response = client.post(client.app.url_path_for('tc2-callback'), json=sample_tc_webhook_data)
+        response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(sample_tc_webhook_data))
 
         assert response.status_code == 200
         assert response.json() == {'status': 'ok'}
@@ -201,7 +212,7 @@ class TestEndToEndRateLimiting:
             )
 
         for webhook in webhooks:
-            response = client.post(client.app.url_path_for('tc2-callback'), json=webhook)
+            response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook))
             assert response.status_code == 200
 
         companies = db.exec(select(Company)).all()
@@ -253,7 +264,7 @@ class TestEndToEndRateLimiting:
             '_request_time': 1234567890,
         }
 
-        response = client.post(client.app.url_path_for('tc2-callback'), json=webhook_data)
+        response = client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook_data))
         assert response.status_code == 200
 
         companies = db.exec(select(Company).where(Company.tc2_cligency_id >= 500)).all()
@@ -341,7 +352,7 @@ class TestEndToEndRateLimiting:
 
         # Fire all webhooks rapidly - some will fail with 429
         for webhook in webhooks:
-            client.post(client.app.url_path_for('tc2-callback'), json=webhook)
+            client.post(client.app.url_path_for('tc2-callback'), **tc2_webhook(webhook))
 
         # Verify 429 errors occurred in logs
         assert '429' in caplog.text
@@ -600,3 +611,63 @@ class TestCloudflareRateLimiting:
                 await api.pipedrive_request('organizations/404')
 
             assert mock_request.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_403_pipedrive_error_does_not_retry(self, mock_request, monkeypatch, caplog):
+        """A 403 with Pipedrive's own JSON error body is a real refusal, not Cloudflare, so it is not retried"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        mock_request.return_value = MockResponse(
+            json_data={'success': False, 'error': 'Cannot update a deleted organization.', 'code': 'ERR_FORBIDDEN'},
+            status_code=403,
+            headers={'x-ratelimit-limit': '100', 'x-ratelimit-remaining': '88', 'x-ratelimit-reset': '2'},
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await api.pipedrive_request('organizations/21407', method='PATCH', data={'name': 'Test Org'})
+
+        assert mock_request.call_count == 1
+        assert 'Cannot update a deleted organization.' in caplog.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'body',
+        [
+            '<html><body>This error is produced by Cloudflare</body></html>',
+            '',
+            'null',
+            '[]',
+            '"blocked"',
+            '{"success": true}',
+        ],
+        ids=['cloudflare-html', 'empty', 'json-null', 'json-list', 'json-string', 'success-true'],
+    )
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_403_without_pipedrive_error_body_retries(self, mock_request, body, monkeypatch):
+        """A 403 that is not Pipedrive's JSON error, such as Cloudflare's HTML page or an empty body, is retried"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        request = httpx.Request('GET', 'https://example.pipedrive.com/api/v2/organizations/999')
+        mock_request.side_effect = [
+            httpx.Response(403, text=body, request=request),
+            MockResponse(json_data={'data': {'id': 999}}),
+        ]
+
+        result = await api.pipedrive_request('organizations/999')
+
+        assert result == {'data': {'id': 999}}
+        assert mock_request.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient.request', new_callable=AsyncMock)
+    async def test_429_with_pipedrive_error_body_retries(self, mock_request, monkeypatch):
+        """A 429 is always retried, even though Pipedrive sends it with its JSON error body"""
+        monkeypatch.setattr('app.core.config.settings.pd_api_enable_retry', True)
+        mock_request.side_effect = [
+            MockResponse(json_data={'success': False, 'error': 'Request over limit'}, status_code=429),
+            MockResponse(json_data={'data': {'id': 999}}),
+        ]
+
+        result = await api.pipedrive_request('organizations/999')
+
+        assert result == {'data': {'id': 999}}
+        assert mock_request.call_count == 2

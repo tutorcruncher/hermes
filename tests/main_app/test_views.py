@@ -4,6 +4,7 @@ Tests for core Hermes endpoints.
 
 from unittest.mock import patch
 
+from app.core.config import settings
 from app.main_app.models import Admin, Company
 
 
@@ -329,12 +330,14 @@ class TestLocationEndpoint:
 class TestCompanySearchEndpoint:
     """Test company search endpoint"""
 
+    headers = {'Authorization': f'Bearer {settings.tc2_api_key}'}
+
     async def test_get_companies_by_name(self, client, db, test_admin):
         """Test getting companies by name"""
         db.create(Company(name='Alpha Company', sales_person_id=test_admin.id, price_plan='payg'))
         db.create(Company(name='Beta Company', sales_person_id=test_admin.id, price_plan='startup'))
 
-        r = client.get(client.app.url_path_for('get-companies'), params={'name': 'Alpha Company'})
+        r = client.get(client.app.url_path_for('get-companies'), params={'name': 'Alpha Company'}, headers=self.headers)
 
         assert r.status_code == 200
         companies = r.json()
@@ -343,7 +346,7 @@ class TestCompanySearchEndpoint:
 
     async def test_get_companies_requires_params(self, client):
         """Test that companies endpoint requires at least one parameter"""
-        r = client.get(client.app.url_path_for('get-companies'))
+        r = client.get(client.app.url_path_for('get-companies'), headers=self.headers)
 
         assert r.status_code == 422
 
@@ -352,11 +355,33 @@ class TestCompanySearchEndpoint:
         for i in range(15):
             db.create(Company(name=f'Company {i}', sales_person_id=test_admin.id, price_plan='payg', country='US'))
 
-        r = client.get(client.app.url_path_for('get-companies'), params={'country': 'US'})
+        r = client.get(client.app.url_path_for('get-companies'), params={'country': 'US'}, headers=self.headers)
 
         assert r.status_code == 200
         companies = r.json()
         assert len(companies) == 10
+
+    async def test_get_companies_without_auth(self, client, db, test_admin):
+        """Test that companies endpoint rejects requests without the TC2 API key"""
+        db.create(Company(name='Alpha Company', sales_person_id=test_admin.id, price_plan='payg'))
+
+        r = client.get(client.app.url_path_for('get-companies'), params={'name': 'Alpha Company'})
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
+
+    async def test_get_companies_wrong_key(self, client, db, test_admin):
+        """Test that companies endpoint rejects requests with the wrong API key"""
+        db.create(Company(name='Alpha Company', sales_person_id=test_admin.id, price_plan='payg'))
+
+        r = client.get(
+            client.app.url_path_for('get-companies'),
+            params={'name': 'Alpha Company'},
+            headers={'Authorization': 'Bearer wrong-key'},
+        )
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
 
     @patch('app.main_app.views.get_next_sales_person')
     async def test_choose_sales_person_admin_not_found_edge_case(self, mock_get_next, client, db, test_admin):

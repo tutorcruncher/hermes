@@ -2,8 +2,31 @@
 Test helpers and utilities for Hermes v4 tests.
 """
 
+import hashlib
+import hmac
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
+
+import httpx
+
+from app.common.utils import sign_args
+from app.core.config import settings
+
+
+def tc2_webhook(data: dict, key: str | None = None) -> dict:
+    """
+    The request kwargs for posting `data` to the TC2 callback the way Chronos sends it: the JSON body and its
+    HMAC-SHA256 signature, keyed with the TC2 API key unless another key is given.
+    """
+    body = json.dumps(data).encode()
+    sig = hmac.new((key or settings.tc2_api_key).encode(), body, hashlib.sha256).hexdigest()
+    return {'content': body, 'headers': {'Content-Type': 'application/json', 'webhook-signature': sig}}
+
+
+def pd_webhook(data: dict) -> dict:
+    """The request kwargs for posting `data` to the Pipedrive callback with the webhook's HTTP Basic auth."""
+    return {'json': data, 'auth': (settings.pd_webhook_username, settings.pd_webhook_password)}
 
 
 class MockResponse:
@@ -54,6 +77,28 @@ def create_mock_response(data: Dict[str, Any], status_code: int = 200) -> MockRe
 def create_error_response(status_code: int = 500, text: str = 'Internal Server Error') -> MockResponse:
     """Helper to create an error response"""
     return MockResponse(status_code=status_code, text=text, raise_for_status_error=True)
+
+
+PD_NOT_FOUND_BODY = {'success': False, 'error': 'Not found', 'code': 'ERR_NOT_FOUND'}
+
+
+def pipedrive_http_error(
+    status_code: int, endpoint: str = 'persons/1', method: str = 'GET', body: dict | str | None = None
+) -> httpx.HTTPStatusError:
+    """
+    Helper to create the error api.pipedrive_request raises when Pipedrive answers with an error status.
+    A 404 gets Pipedrive's not-found body unless another body is given; a str body is sent as plain text.
+    """
+    url = f'https://example.pipedrive.com/api/v2/{endpoint}'
+    if body is None:
+        body = PD_NOT_FOUND_BODY if status_code == 404 else {'success': False, 'error': 'Error', 'code': 'ERR'}
+    if isinstance(body, str):
+        response = httpx.Response(status_code, text=body)
+    else:
+        response = httpx.Response(status_code, json=body)
+    return httpx.HTTPStatusError(
+        f"Client error '{status_code}' for url '{url}'", request=httpx.Request(method, url), response=response
+    )
 
 
 def fake_gcal_builder(
@@ -131,3 +176,9 @@ def create_mock_gcal_resource(admin_email: str):
             return self
 
     return MockGCalResource()
+
+
+async def support_link_params(admin_id: int, company_id: int, expiry: datetime | None = None) -> dict:
+    """The e and s values of a support link for the admin and company, as the website passes them on when booking"""
+    e = int((expiry or datetime.now() + timedelta(days=1)).timestamp())
+    return {'e': e, 's': await sign_args(admin_id, company_id, e)}

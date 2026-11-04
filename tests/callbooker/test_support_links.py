@@ -137,6 +137,19 @@ class TestSupportLinks:
         assert r.status_code == 403
         assert r.json() == {'status': 'error', 'message': 'Invalid signature'}
 
+    async def test_validate_support_link_non_ascii_signature(self, client, db):
+        """Test a support link with non-ASCII characters in its signature is rejected rather than raising"""
+        admin = db.create(Admin(first_name='Steve', last_name='Jobs', username='steve@example.com'))
+        company = db.create(Company(name='Junes Ltd', sales_person_id=admin.id, country='GB'))
+
+        expiry = datetime.now() + timedelta(minutes=10)
+        params = {'s': 'é' * 40, 'e': int(expiry.timestamp()), 'company_id': company.id, 'admin_id': admin.id}
+
+        r = client.get(client.app.url_path_for('validate-support-link'), params=params)
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Invalid signature'}
+
     async def test_validate_support_link_expired(self, client, db):
         """Test validating expired support link"""
         admin = db.create(Admin(first_name='Steve', last_name='Jobs', username='steve@example.com'))

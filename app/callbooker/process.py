@@ -1,8 +1,12 @@
 import asyncio
+import hashlib
+import hmac
+import html
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.callbooker.google import AdminGoogleCalendar
@@ -23,13 +27,13 @@ async def get_or_create_contact(company: Company, event: CBSalesCall | CBSupport
     if event.email:
         contact = db.exec(
             select(Contact)
-            .where(Contact.company_id == company.id, Contact.email == event.email)
+            .where(Contact.company_id == company.id, func.lower(Contact.email) == event.email)
             .order_by(Contact.id.desc())
         ).first()
     else:
         contact = db.exec(
             select(Contact)
-            .where(Contact.company_id == company.id, Contact.last_name.ilike(event.last_name))
+            .where(Contact.company_id == company.id, func.lower(Contact.last_name) == func.lower(event.last_name))
             .order_by(Contact.id.desc())
         ).first()
 
@@ -49,41 +53,31 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     Get or create contact and company based on CBSalesCall data.
 
     The company is found by:
-    - Submitted company_id (if provided)
-    - Contact's email (if they exist) and get company from that
+    - The contact with the submitted email (if they exist) and get company from that
     - Company name
 
-    The contact is found by:
-    - Contact's email
-    - Contact's phone
-    - Their last name
+    The contact is only ever the one with the submitted email, so the calendar invite goes to the email that was
+    typed in.
 
     If neither exist, they are created.
     """
     contact = None
     company = None
 
-    # Try to get company by ID
-    if event.company_id:
-        company = db.get(Company, event.company_id)
-
-    # Try to find contact by email or phone, then get their company
-    if not company and event.email:
-        contact = db.exec(select(Contact).where(Contact.email == event.email).order_by(Contact.id.desc())).first()
-        if contact:
-            logger.info(f'Found contact {contact.id} by email')
-            company = db.get(Company, contact.company_id)
-
-    if not company and event.phone:
-        contact = db.exec(select(Contact).where(Contact.phone == event.phone).order_by(Contact.id.desc())).first()
-        if contact:
-            logger.info(f'Found contact {contact.id} by phone')
-            company = db.get(Company, contact.company_id)
+    # Try to find the contact by email, then get their company
+    contact = db.exec(
+        select(Contact).where(func.lower(Contact.email) == event.email).order_by(Contact.id.desc())
+    ).first()
+    if contact:
+        logger.info(f'Found contact {contact.id} by email')
+        company = db.get(Company, contact.company_id)
 
     # Try to find company by name
     if not company:
         company = db.exec(
-            select(Company).where(Company.name.ilike(event.company_name)).order_by(Company.id.desc())
+            select(Company)
+            .where(func.lower(Company.name) == func.lower(event.company_name))
+            .order_by(Company.id.desc())
         ).first()
         if company:
             logger.info(f'Found company {company.id} by name')
@@ -91,40 +85,40 @@ async def get_or_create_contact_company(event: CBSalesCall, db: DBSession) -> tu
     # Create company if not found
     if not company:
         company_data = event.company_dict()
+        bdr_id = company_data['bdr_person_id']
+        company_data['bdr_person_id'] = _resolve_bdr_person_id(bdr_id, db)
         company = Company(**company_data)
         db.add(company)
-        try:
-            db.commit()
-        except IntegrityError:
-            # Previously tc2_admin_id was passed as bdr_id, but with the rebuild we expect the hermes_admin_id.
-            # So this handles those old urls.
-            db.rollback()
-            bdr_id = company_data.get('bdr_person_id')
-            if not bdr_id:
-                raise
-
-            admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_id)).one_or_none()
-            if not admin:
-                logger.error(f'Could not find admin with tc2_admin_id {bdr_id}')
-                raise
-
-            company.bdr_person_id = admin.id
-            db.add(company)
-            db.commit()
-
+        db.commit()
         db.refresh(company)
         logger.info(f'Created company {company.id}')
+        if bdr_id and not company.bdr_person_id:
+            logger.error(
+                f'Could not find admin with id or tc2_admin_id {bdr_id}, created company {company.id} without a BDR'
+            )
 
     # Get or create contact
     contact = contact or await get_or_create_contact(company, event, db)
     logger.info(f'Got company {company.id} and contact {contact.id}')
 
-    # Mark that company has booked a call
-    company.has_booked_call = True
-    db.add(company)
-    db.commit()
-
     return company, contact
+
+
+def _resolve_bdr_person_id(bdr_person_id: int | None, db: DBSession) -> int | None:
+    """
+    Get the Hermes admin id for the submitted bdr_person_id.
+
+    Old callbooker links pass the BDR's tc2_admin_id rather than their Hermes admin id, so both are accepted. An
+    unknown id gives None so that the booking still goes through.
+    """
+    if not bdr_person_id:
+        return None
+
+    if db.get(Admin, bdr_person_id):
+        return bdr_person_id
+
+    admin = db.exec(select(Admin).where(Admin.tc2_admin_id == bdr_person_id)).one_or_none()
+    return admin.id if admin else None
 
 
 async def book_meeting(
@@ -145,6 +139,7 @@ async def book_meeting(
 
     admin = db.get(Admin, event.admin_id)
     if not admin:
+        logger.error(f'Admin {event.admin_id} not found, could not book a call for contact {contact.id}')
         raise MeetingBookingError('Admin not found.')
 
     meeting_start = event.meeting_dt
@@ -172,7 +167,7 @@ def _check_no_duplicate_meeting(contact_id: int, meeting_dt: datetime, db: DBSes
             Meeting.start_time >= two_hours_before,
             Meeting.start_time <= two_hours_after,
         )
-    ).one_or_none()
+    ).first()
 
     if existing_meeting:
         raise MeetingBookingError('You already have a meeting booked around this time.')
@@ -218,23 +213,43 @@ def _delete_meeting_on_calendar_failure(meeting_id: int, db: DBSession) -> None:
         logger.info(f'Deleted meeting {meeting_id} due to Google Calendar failure')
 
 
+def _html_text(value) -> str:
+    """A value shown as typed in the HTML meeting description"""
+    return html.escape(str(value))
+
+
 def _build_meeting_template_vars(company: Company, contact: Contact, admin: Admin, meeting_type: str) -> dict:
     """Build template variables for meeting description"""
+    # The signup link carries the company's recorded acquisition source so that signing up from
+    # this email doesn't overwrite it with 'call_booker'. That is whatever source was first
+    # captured for the company - get_or_create_contact_company only applies the booking payload's
+    # utm when it creates the company, so a repeat booking does not update it.
+    # 'call_booker' is only a fallback when no source was ever captured.
+    tracking_params = {'tc_source': company.utm_source or 'call_booker'}
+    if company.utm_campaign:
+        tracking_params['tc_campaign'] = company.utm_campaign
+    if company.tc2_cligency_id:
+        msg = f'signup-link:{company.tc2_cligency_id}'.encode()
+        signup_sig = hmac.new(settings.tc2_api_key.encode(), msg, hashlib.sha256).hexdigest()
+    else:
+        signup_sig = ''
     template_vars = {
-        'contact_first_name': contact.first_name or 'there',
-        'company_name': company.name,
-        'admin_name': admin.first_name,
+        'contact_first_name': _html_text(contact.first_name or 'there'),
+        'company_name': _html_text(company.name),
+        'admin_name': _html_text(admin.first_name),
         'tc2_cligency_id': company.tc2_cligency_id or '',
+        'signup_sig': signup_sig,
         'tc2_cligency_url': company.tc2_cligency_url or '',
+        'signup_tracking_params': urlencode(tracking_params),
     }
 
     if meeting_type == Meeting.TYPE_SALES:
         template_vars.update(
             {
-                'contact_email': contact.email,
-                'contact_phone': contact.phone,
-                'company_estimated_monthly_revenue': company.estimated_income,
-                'company_country': company.country,
+                'contact_email': _html_text(contact.email),
+                'contact_phone': _html_text(contact.phone),
+                'company_estimated_monthly_revenue': _html_text(company.estimated_income),
+                'company_country': _html_text(company.country),
                 'crm_url': company.pd_org_url or '',
             }
         )

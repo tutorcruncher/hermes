@@ -1,68 +1,106 @@
 import logging
 from datetime import datetime
 
+import httpx
 import logfire
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from app.core.database import get_session
+from app.core.database import DBSession, get_session
+from app.core.locks import RedisLockRegistry
 from app.main_app.models import Company, Contact, Deal, Meeting
 from app.pipedrive import api
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP, DEAL_PD_FIELD_MAP
+from app.pipedrive.field_mappings import (
+    COMPANY_PD_ENUM_OPTION_MAP,
+    COMPANY_PD_FIELD_MAP,
+    CONTACT_PD_FIELD_MAP,
+    DEAL_PD_FIELD_MAP,
+)
+from app.pipedrive.models import Person
+from app.pipedrive.process import find_or_create_pd_contact, mark_deleted_from_pipedrive
 
 logger = logging.getLogger('hermes.pipedrive')
 
-SYNCABLE_DEAL_FIELDS = ['paid_invoice_count']  # these fields get synced from deal company
+SYNCABLE_DEAL_FIELDS = ['paid_invoice_count', 'tc2_status']  # synced from deal company; tc2_status from the deal
+
+# Per-company locks to serialise concurrent syncs for the same company.
+# A sync holds its lock while its Pipedrive calls queue behind every other sync's calls in the
+# shared rate limiter, so during a TC2 burst a sync can hold it for over 1000s. The lease is renewed
+# while held, so it only bounds how long a killed sync keeps the company locked. Waiters wait until
+# the lock is released, and max_hold_seconds caps how long a stuck sync can keep it.
+_company_sync_locks = RedisLockRegistry('hermes:company-lck', lease_timeout_seconds=300, max_hold_seconds=3600)
 
 
-async def sync_company_to_pipedrive(company_id: int):
+async def sync_company_to_pipedrive(company_id: int, booked_contact_id: int | None = None):
     """
     Sync company and related data to Pipedrive.
     This is called after TC2 or Callbooker updates.
+
+    When Pipedrive no longer has the org, a person or a deal, it is marked deleted in Hermes, as the delete webhook
+    would do. A sales call booking passes the booked contact, so the booking always reaches Pipedrive: the company
+    and that contact are brought back if they were marked deleted, and a gone org or person is recreated.
     """
-    with logfire.span('sync_company_to_pipedrive'):
-        try:
-            with get_session() as db:
-                company = db.get(Company, company_id)
-                if not company:
-                    logger.warning(f'Company {company_id} not found, skipping sync')
+    recreate_on_404 = booked_contact_id is not None
+    async with _company_sync_locks.acquire(company_id):
+        with logfire.span('sync_company_to_pipedrive'):
+            try:
+                with get_session() as db:
+                    company = db.get(Company, company_id)
+                    if not company:
+                        logger.warning(f'Company {company_id} not found, skipping sync')
+                        return
+                    if booked_contact_id:
+                        _bring_back_for_booking(db, company, booked_contact_id)
+                    if company.is_deleted:
+                        logger.info(f'Company {company_id} is marked as deleted, skipping sync')
+                        return
+
+                    contact_ids = [
+                        c.id
+                        for c in db.exec(
+                            select(Contact).where(Contact.company_id == company_id, Contact.is_deleted == False)  # noqa: E712
+                        ).all()
+                    ]
+
+                    deal_query = select(Deal).where(Deal.company_id == company_id)
+                    if not company.paid_invoice_count:
+                        # Full sync for non-paying companies (update existing + create new open deals)
+                        deal_query = deal_query.where(
+                            (Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN)
+                        )
+                        only_syncable_deal_fields = False
+                    else:
+                        # Only sync fields for paying companies' existing open deals
+                        deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
+                        only_syncable_deal_fields = True
+
+                    deal_ids = [d.id for d in db.exec(deal_query).all()]
+
+                if not await sync_organization(company_id, recreate_on_404):
+                    logger.info(f'Company {company_id} has no Pipedrive org, skipping its contacts and deals')
                     return
-                if company.is_deleted:
-                    logger.info(f'Company {company_id} is marked as deleted, skipping sync')
-                    return
 
-                contact_ids = [c.id for c in db.exec(select(Contact).where(Contact.company_id == company_id)).all()]
+                for contact_id in contact_ids:
+                    await sync_person(contact_id, recreate_on_404)
 
-                deal_query = select(Deal).where(Deal.company_id == company_id)
-                if not company.paid_invoice_count:
-                    # Full sync for non-paying companies (update existing + create new open deals)
-                    deal_query = deal_query.where((Deal.pd_deal_id.is_not(None)) | (Deal.status == Deal.STATUS_OPEN))
-                    only_syncable_deal_fields = False
-                else:
-                    # Only sync fields for paying companies' existing open deals
-                    deal_query = deal_query.where(Deal.pd_deal_id.is_not(None), Deal.status == Deal.STATUS_OPEN)
-                    only_syncable_deal_fields = True
+                for deal_id in deal_ids:
+                    await sync_deal(deal_id, only_syncable_deal_fields)
 
-                deal_ids = [d.id for d in db.exec(deal_query).all()]
-
-            await sync_organization(company_id)
-
-            for contact_id in contact_ids:
-                await sync_person(contact_id)
-
-            for deal_id in deal_ids:
-                await sync_deal(deal_id, only_syncable_deal_fields)
-
-            logger.info(f'Successfully synced company {company_id} to Pipedrive')
-        except Exception as e:
-            logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
+                logger.info(f'Successfully synced company {company_id} to Pipedrive')
+            except Exception as e:
+                logger.error(f'Error syncing company {company_id}: {e}', exc_info=True)
 
 
-async def sync_organization(company_id: int):
-    """Sync a single organization to Pipedrive"""
+async def sync_organization(company_id: int, recreate_on_404: bool = False) -> bool:
+    """
+    Sync a single organization to Pipedrive.
+    Returns False when the company should not sync further: it is missing, or Pipedrive no longer has its org and
+    the company was marked deleted.
+    """
     with get_session() as db:
         company = db.get(Company, company_id)
         if not company:
-            return
+            return False
         org_data = _company_to_org_data(company)
         pd_org_id = company.pd_org_id
 
@@ -70,17 +108,21 @@ async def sync_organization(company_id: int):
         try:
             pd_org = await api.get_organisation(pd_org_id)
             current_data = pd_org.get('data', {})
+            _keep_pd_country(org_data, current_data)
+            _keep_pd_address(org_data, current_data)
             changed_fields = api.get_changed_fields(current_data, org_data)
 
             if changed_fields:
                 await api.update_organisation(pd_org_id, changed_fields)
                 logger.info(f'Updated organization {pd_org_id} for company {company_id}')
         except Exception as e:
-            logger.error(f'Error updating organization {pd_org_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
-                pd_org_id = None
-            else:
+            if not _is_deleted_in_pipedrive(e):
+                logger.error(f'Error updating organization {pd_org_id}: {e}')
                 raise
+            if not recreate_on_404:
+                _mark_deleted_after_404(Company, company_id, 'pd_org_id', pd_org_id)
+                return False
+            pd_org_id = None
 
     if not pd_org_id:
         try:
@@ -99,12 +141,17 @@ async def sync_organization(company_id: int):
             logger.error(f'Error creating organization for company {company_id}: {e}')
             raise
 
+    return True
 
-async def sync_person(contact_id: int):
+
+async def sync_person(contact_id: int, recreate_on_404: bool = False):
     """Sync a single person to Pipedrive"""
     with get_session() as db:
         contact = db.get(Contact, contact_id)
         if not contact:
+            return
+        if contact.is_deleted:
+            logger.info(f'Contact {contact_id} is marked as deleted, skipping sync')
             return
         person_data = _contact_to_person_data(contact, db)
         pd_person_id = contact.pd_person_id
@@ -119,12 +166,22 @@ async def sync_person(contact_id: int):
                 await api.update_person(pd_person_id, changed_fields)
                 logger.info(f'Updated person {pd_person_id} for contact {contact_id}')
         except Exception as e:
-            logger.error(f'Error updating person {pd_person_id}: {e}')
-            if '404' in str(e) or '410' in str(e):
+            if _is_deleted_in_pipedrive(e):
+                if not recreate_on_404:
+                    _mark_deleted_after_404(Contact, contact_id, 'pd_person_id', pd_person_id)
+                    return
                 pd_person_id = None
+            else:
+                logger.error(f'Error updating person {pd_person_id}: {e}')
 
     if not pd_person_id:
+        if 'emails' not in person_data:
+            # e.g. TC2 hides a cligency's email when its owner signs up again with the same email
+            logger.info(f'Contact {contact_id} has no email, skipping person create')
+            return
         try:
+            # Only on create — PD allows each status transition once, don't overwrite manual unsubscribes.
+            person_data['marketing_status'] = 'subscribed'
             result = await api.create_person(person_data)
             new_pd_person_id = result['data']['id']
 
@@ -143,13 +200,14 @@ async def sync_person(contact_id: int):
 async def partial_sync_deal_from_company(company: Company, deal: Deal):
     """
     Sets custom fields on a deal based on company data and only sends them to the PD via PATCH.
+    tc2_status is the deal's own copy, which the TC2 webhook updates only when the company's status changes.
     """
     if not (company and deal.pd_deal_id):
         return
 
     custom_fields = {}
     for field in SYNCABLE_DEAL_FIELDS:
-        value = getattr(company, field, None)
+        value = deal.tc2_status if field == 'tc2_status' else getattr(company, field, None)
         if value is None:
             continue
         pd_field_id = DEAL_PD_FIELD_MAP.get(field)
@@ -163,7 +221,11 @@ async def partial_sync_deal_from_company(company: Company, deal: Deal):
         await api.update_deal(deal.pd_deal_id, {'custom_fields': custom_fields})
         logger.info(f'Updated deal {deal.pd_deal_id}')
     except Exception as e:
-        logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
+        # The PATCH only sends custom fields, so a not-found answer can only mean the deal itself is gone
+        if _is_deleted_in_pipedrive(e, method='PATCH'):
+            _mark_deleted_after_404(Deal, deal.id, 'pd_deal_id', deal.pd_deal_id)
+        else:
+            logger.error(f'Error updating deal {deal.pd_deal_id}: {e}')
 
 
 async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
@@ -181,6 +243,12 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
             company = db.get(Company, deal.company_id)
         else:
             deal_data = _deal_to_pd_data(deal, db)
+            # pipeline/stage are excluded from _deal_to_pd_data (issue #399) so that
+            # updates never overwrite stages set by sales in Pipedrive. But new deals
+            # still need them so PD places them in the correct pipeline. Captured here
+            # while the session is open so as to put into deal_data only on the create path.
+            pd_pipeline_id = deal.pipeline.pd_pipeline_id if deal.pipeline else None
+            pd_stage_id = deal.stage.pd_stage_id if deal.stage else None
         pd_deal_id = deal.pd_deal_id
 
     if only_syncable_deal_fields:
@@ -210,14 +278,21 @@ async def sync_deal(deal_id: int, only_syncable_deal_fields: bool = False):
                 await api.update_deal(pd_deal_id, changed_fields)
                 logger.info(f'Updated deal {pd_deal_id} for deal {deal_id}')
         except Exception as e:
-            logger.error(f'Error updating deal {pd_deal_id}: {e}')
+            if _is_deleted_in_pipedrive(e):
+                _mark_deleted_after_404(Deal, deal_id, 'pd_deal_id', pd_deal_id)
+            else:
+                logger.error(f'Error updating deal {pd_deal_id}: {e}')
 
-    if not pd_deal_id:
+    else:
+        # We don't have a deal and creating one
         if not settings.sync_create_deals:
             logger.warning(f'Deal {deal_id} has no pd_deal_id, skipping sync (deal creation disabled)')
             return
 
         try:
+            # Only include pipeline/stage for creation (see comment above)
+            deal_data['pipeline_id'] = pd_pipeline_id
+            deal_data['stage_id'] = pd_stage_id
             result = await api.create_deal(deal_data)
             new_pd_deal_id = result['data']['id']
 
@@ -274,6 +349,167 @@ async def purge_company_from_pipedrive(company_id: int):
             logger.error(f'Error purging company {company_id}: {e}', exc_info=True)
 
 
+def _deal_company_needing_contact(db, deal_id: int, pd_person_id: int) -> int | None:
+    """The id of the deal's company if the deal can still get its Pipedrive person as its contact, otherwise None"""
+    deal = db.get(Deal, deal_id)
+    if not deal or deal.status == Deal.STATUS_DELETED:
+        logger.info(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: the deal is deleted')
+        return None
+    if deal.contact_id:
+        logger.info(
+            f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it already has contact {deal.contact_id}'
+        )
+        return None
+    company = db.get(Company, deal.company_id)
+    if company.is_deleted or company.narc or company.price_plan not in Company.PRICE_PLANS:
+        # A later booking that needs a new deal for this company would fail on its price plan
+        logger.info(
+            f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: company {company.id} is deleted, '
+            f'NARC or has price plan {company.price_plan!r}'
+        )
+        return None
+    return company.id
+
+
+async def create_contact_for_pd_deal(deal_id: int, pd_person_id: int) -> None:
+    """
+    Background task that links a deal created outside Hermes to its Pipedrive person, creating the contact if needed.
+
+    The person is fetched with no DB session open, because the Pipedrive rate limiter can wait for minutes. The contact
+    is found or created under the company's sync lock, so sync_person can't be creating a Pipedrive person for a
+    contact that is adopted here.
+    """
+    with logfire.span('create_contact_for_pd_deal'):
+        try:
+            with get_session() as db:
+                company_id = _deal_company_needing_contact(db, deal_id, pd_person_id)
+            if not company_id:
+                return
+            try:
+                pd_person = Person(**(await api.get_person(pd_person_id))['data'])
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code not in (404, 410):
+                    raise
+                logger.info(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it no longer exists')
+                return
+
+            async with _company_sync_locks.acquire(company_id):
+                with get_session() as db:
+                    # The deal can change while the person is fetched. If it moved company, the lock is the wrong one
+                    if _deal_company_needing_contact(db, deal_id, pd_person_id) != company_id:
+                        return
+                    deal = db.get(Deal, deal_id)
+                    company = db.get(Company, company_id)
+                    try:
+                        contact, outcome = find_or_create_pd_contact(db, pd_person, company)
+                        if contact:
+                            deal.contact_id = contact.id
+                            db.add(deal)
+                        db.commit()
+                    except IntegrityError:
+                        # The other web process added a contact for the same person first
+                        db.rollback()
+                        contact = db.exec(select(Contact).where(Contact.pd_person_id == pd_person_id)).one()
+                        deal = db.get(Deal, deal_id)
+                        if deal.contact_id:
+                            logger.info(
+                                f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: the other process '
+                                f'linked contact {deal.contact_id}'
+                            )
+                            return
+                        deal.contact_id = contact.id
+                        db.add(deal)
+                        db.commit()
+                        outcome = 'existing'
+                    contact_id = contact.id if contact else None
+
+            if outcome == 'hermes_id':
+                logger.warning(f'Not adding Pipedrive person {pd_person_id} to deal {deal_id}: it has a hermes_id')
+            else:
+                logger.info(
+                    f'Pipedrive person {pd_person_id} for deal {deal_id} of company {company_id}: {outcome}, '
+                    f'contact {contact_id}'
+                )
+        except Exception as e:
+            logger.error(f'Error adding Pipedrive person {pd_person_id} to deal {deal_id}: {e}', exc_info=True)
+
+
+def _bring_back_for_booking(db: DBSession, company: Company, contact_id: int) -> None:
+    """
+    A sales call was booked, so the customer is live. If the company or the booked contact was marked deleted
+    (deleted or merged away in Pipedrive), bring it back so the sync recreates it and the booking is not lost.
+    A NARC company is left as it is: TC2 would delete it from Pipedrive again on its next update.
+    """
+    if company.narc:
+        return
+    contact = db.get(Contact, contact_id)
+    booked = [company]
+    if contact and contact.company_id == company.id:
+        booked.append(contact)
+    deleted = [obj for obj in booked if obj.is_deleted]
+    for obj in deleted:
+        obj.is_deleted = False
+        db.add(obj)
+        logger.warning(f'Sales call booked for deleted {type(obj).__name__} {obj.id}, bringing it back')
+    if deleted:
+        db.commit()
+
+
+def _is_deleted_in_pipedrive(e: Exception, method: str = 'GET') -> bool:
+    """
+    Whether the error says Pipedrive no longer has the object, see api.is_not_found.
+    Syncs only trust the GET: a PATCH after a successful GET can fail for another reason, such as a missing linked
+    object.
+    """
+    if not isinstance(e, httpx.HTTPStatusError) or e.request.method != method:
+        return False
+    return api.is_not_found(e.response)
+
+
+def _mark_deleted_after_404(
+    model: type[Company | Contact | Deal], hermes_id: int, pd_id_field: str, pd_id: int
+) -> None:
+    """
+    Do what the Pipedrive delete webhook would have done for an object Pipedrive answered 404/410 for.
+    The row is re-read and only marked if it still holds that Pipedrive id, so a webhook that already
+    deleted or relinked it wins.
+    """
+    with get_session() as db:
+        obj = db.get(model, hermes_id)
+        if obj and getattr(obj, pd_id_field) == pd_id:
+            logger.warning(
+                f'Pipedrive no longer has {pd_id_field} {pd_id}, marking {model.__name__} {hermes_id} deleted'
+            )
+            mark_deleted_from_pipedrive(db, obj, pd_id_field)
+
+
+def _bool_to_pd_enum_option(field_name: str, value: bool) -> int | None:
+    """Map a Hermes bool to a Pipedrive single-option (enum) field option ID."""
+    options = COMPANY_PD_ENUM_OPTION_MAP.get(field_name)
+    if not options:
+        return None
+    if value:
+        option_id = options.get('yes')
+    else:
+        option_id = options.get('no')
+    if option_id is None:
+        return None
+    return int(option_id)
+
+
+def _keep_pd_country(org_data: dict, current_data: dict) -> None:
+    """Sales own the org's custom Country field once it is set in Pipedrive, so Hermes only fills it when empty"""
+    pd_field = COMPANY_PD_FIELD_MAP['country']
+    if pd_country := (current_data.get('custom_fields') or {}).get(pd_field):
+        org_data['custom_fields'][pd_field] = pd_country
+
+
+def _keep_pd_address(org_data: dict, current_data: dict) -> None:
+    """Sales own the org's address once it is set in Pipedrive, so Hermes only fills it when empty"""
+    if (current_data.get('address') or {}).get('value'):
+        org_data.pop('address', None)
+
+
 def _company_to_org_data(company: Company) -> dict:
     """Convert Company model to Pipedrive organization data"""
     data = {
@@ -298,6 +534,13 @@ def _company_to_org_data(company: Company) -> dict:
         else:
             value = getattr(company, field_name, None)
 
+        # Pipedrive has no native boolean field type — use enum option IDs where configured.
+        if isinstance(value, bool):
+            enum_option_id = _bool_to_pd_enum_option(field_name, value)
+            if enum_option_id is None:
+                continue
+            value = enum_option_id
+
         if value is not None and value != '':
             # Convert datetime to ISO date string
             if isinstance(value, datetime):
@@ -316,7 +559,7 @@ def _contact_to_person_data(contact: Contact, db) -> dict:
     company = db.get(Company, contact.company_id)
 
     data = {
-        'name': contact.name,
+        'name': contact.name[:255] if contact.name else None,
         'org_id': company.pd_org_id if company else None,
         'owner_id': company.sales_person.pd_owner_id if (company and company.sales_person) else None,
     }
@@ -345,12 +588,12 @@ def _deal_to_pd_data(deal: Deal, db) -> dict:
     data = {
         'title': deal.name,
         'org_id': company.pd_org_id if company else None,
-        'person_id': contact.pd_person_id if contact else None,
         'owner_id': deal.admin.pd_owner_id if deal.admin else None,
-        'pipeline_id': deal.pipeline.pd_pipeline_id if deal.pipeline else None,
-        'stage_id': deal.stage.pd_stage_id if deal.stage else None,
         'status': deal.status,
     }
+    # Sending person_id None would remove the deal's person in Pipedrive, so only send a person Hermes knows
+    if contact and contact.pd_person_id:
+        data['person_id'] = contact.pd_person_id
 
     # Build custom_fields using field mapping
     custom_fields = {}

@@ -2,8 +2,85 @@
 Tests for Pipedrive webhook endpoint.
 """
 
-from app.main_app.models import Pipeline, Stage
-from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP
+from unittest.mock import patch
+
+import pytest
+
+from app.core.config import settings
+from app.main_app.models import Company, Contact, Pipeline, Stage
+from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP
+from app.pipedrive.tasks import sync_person
+from tests.helpers import pd_webhook
+
+
+class TestPipedriveWebhookAuth:
+    """Test the HTTP Basic auth check on the Pipedrive webhook"""
+
+    @staticmethod
+    def org_webhook(company: Company) -> dict:
+        """An organization update that renames the company"""
+        return {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {'id': 999, COMPANY_PD_FIELD_MAP['hermes_id']: company.id, 'name': 'Updated Name'},
+            'previous': {},
+        }
+
+    @pytest.mark.parametrize(
+        'kwargs',
+        [
+            {},
+            {'auth': (settings.pd_webhook_username, 'wrong-password')},
+            {'auth': ('another-user', settings.pd_webhook_password)},
+            {'headers': {'Authorization': f'Bearer {settings.pd_webhook_password}'}},
+            {'headers': {'Authorization': 'Basic é'.encode()}},
+        ],
+    )
+    async def test_webhook_without_valid_credentials_is_rejected(self, client, db, test_company, kwargs):
+        """A webhook without the webhook's Basic auth is rejected and changes nothing"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+        name = test_company.name
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.org_webhook(test_company), **kwargs)
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
+        db.refresh(test_company)
+        assert test_company.name == name
+
+    @patch('app.pipedrive.views.settings.pd_webhook_password', None)
+    async def test_webhook_is_rejected_while_no_password_is_set(self, client, db, test_company):
+        """Every webhook is rejected while no password is set"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+        name = test_company.name
+
+        r = client.post(
+            client.app.url_path_for('pipedrive-callback'),
+            json=self.org_webhook(test_company),
+            auth=(settings.pd_webhook_username, ''),
+        )
+
+        assert r.status_code == 403
+        assert r.json() == {'status': 'error', 'message': 'Unauthorized'}
+        db.refresh(test_company)
+        assert test_company.name == name
+
+    @patch('app.pipedrive.views.settings.dev_mode', True)
+    async def test_dev_mode_skips_the_auth_check(self, client, db, test_company):
+        """dev_mode processes a webhook without the Basic auth"""
+        test_company.pd_org_id = 999
+        db.add(test_company)
+        db.commit()
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), json=self.org_webhook(test_company))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        db.refresh(test_company)
+        assert test_company.name == 'Updated Name'
 
 
 class TestPipedriveWebhookEndpoint:
@@ -26,7 +103,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': {},
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -35,6 +112,182 @@ class TestPipedriveWebhookEndpoint:
         db.refresh(test_company)
         assert test_company.name == 'Updated Name'
         assert test_company.paid_invoice_count == 15
+
+    async def test_pipedrive_callback_does_not_overwrite_marketing_consent(self, client, db, test_company):
+        """receive_marketing_emails is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.receive_marketing_emails = True
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Updated Name',
+                COMPANY_PD_FIELD_MAP['receive_marketing_emails']: 'No',
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+
+        db.refresh(test_company)
+        assert test_company.receive_marketing_emails is True
+
+    async def test_pipedrive_callback_does_not_overwrite_operate_as_ea(self, client, db, test_company):
+        """operate_as_ea is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.operate_as_ea = True
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'updated'},
+            'data': {
+                'id': 999,
+                COMPANY_PD_FIELD_MAP['hermes_id']: test_company.id,
+                'name': 'Updated Name',
+                COMPANY_PD_FIELD_MAP['operate_as_ea']: 'No',
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+
+        db.refresh(test_company)
+        assert (test_company.name, test_company.operate_as_ea) == ('Updated Name', True)
+
+    async def test_pipedrive_callback_ignores_tc2_status(self, client, db, test_company):
+        """tc2_status is TC2-authoritative: an inbound Pipedrive org webhook must not change it."""
+        test_company.pd_org_id = 999
+        test_company.tc2_status = 'trial'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                    COMPANY_PD_FIELD_MAP['tc2_status']: {'type': 'varchar', 'value': 'terminated'},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.name == 'Updated Name'
+        assert test_company.tc2_status == 'trial'
+
+    async def test_pipedrive_callback_does_not_overwrite_country(self, client, db, test_company):
+        """The custom Country field is never read back: an org webhook carrying it must not change country."""
+        test_company.pd_org_id = 999
+        test_company.country = 'GB'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                    COMPANY_PD_FIELD_MAP['country']: {'type': 'varchar', 'value': 'Canada'},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.name == 'Updated Name'
+        assert test_company.country == 'GB'
+
+    @pytest.mark.parametrize('country', ['AU', 'au'])
+    async def test_pipedrive_callback_updates_country_from_address(self, client, db, test_company, country):
+        """An ISO2 country sales set on the org address is saved to the company as an upper-case code."""
+        test_company.pd_org_id = 999
+        test_company.country = 'GB'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'address': {
+                    'value': '1 George St, Sydney',
+                    'country': country,
+                    'locality': 'Sydney',
+                    'postal_code': None,
+                },
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                },
+            },
+            'previous': {
+                'address': {'value': 'GB', 'country': 'GB', 'locality': None, 'postal_code': None},
+            },
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert test_company.country == 'AU'
+
+    @pytest.mark.parametrize(
+        'address',
+        [
+            None,
+            {'value': 'GB', 'country': None, 'locality': None, 'postal_code': None},
+            {'value': 'GB', 'country': 826, 'locality': None, 'postal_code': None},
+            {'value': 'Toronto, Canada', 'country': 'Canada', 'locality': 'Toronto', 'postal_code': None},
+            {'value': 'x', 'country': 'A' * 300, 'locality': None, 'postal_code': None},
+        ],
+    )
+    async def test_pipedrive_callback_keeps_country_without_address(self, client, db, test_company, address):
+        """An org with no address, or an address whose country is not an ISO2 code, leaves the company's country as it is."""
+        test_company.pd_org_id = 999
+        test_company.country = 'GB'
+        db.add(test_company)
+        db.commit()
+
+        webhook_data = {
+            'meta': {'entity': 'organization', 'action': 'change'},
+            'data': {
+                'id': 999,
+                'name': 'Updated Name',
+                'address': address,
+                'custom_fields': {
+                    COMPANY_PD_FIELD_MAP['hermes_id']: {'type': 'varchar', 'value': str(test_company.id)},
+                },
+            },
+            'previous': {},
+        }
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+
+        db.refresh(test_company)
+        assert (test_company.name, test_company.country) == ('Updated Name', 'GB')
 
     async def test_pipedrive_callback_organization_with_previous(self, client, db, test_company):
         """Test webhook for organization with previous data"""
@@ -52,7 +305,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -65,7 +318,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -86,7 +339,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -99,7 +352,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -120,7 +373,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -137,7 +390,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -165,7 +418,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -183,7 +436,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -213,7 +466,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -226,7 +479,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -237,7 +490,7 @@ class TestPipedriveWebhookEndpoint:
             'invalid': 'data',
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200  # Endpoint accepts any dict and ignores invalid data
         assert r.json() == {'status': 'ok'}
@@ -254,7 +507,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -278,7 +531,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -299,7 +552,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -320,7 +573,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -341,7 +594,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -364,7 +617,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -396,7 +649,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -435,7 +688,7 @@ class TestPipedriveWebhookEndpoint:
             },
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -444,7 +697,7 @@ class TestPipedriveWebhookEndpoint:
         db.refresh(test_company)
         assert test_company.name == 'Test Agency V2'
         assert test_company.paid_invoice_count == 10
-        assert test_company.tc2_status == 'trial'
+        assert test_company.tc2_status == 'pending_email_conf'
 
     async def test_pipedrive_callback_organization_creation_with_bdr_and_support(self, client, db, test_admin):
         """Test creating organization with BDR and support person IDs"""
@@ -478,7 +731,7 @@ class TestPipedriveWebhookEndpoint:
                 'id': 777,
                 'name': 'New Company with BDR',
                 'owner_id': test_admin.pd_owner_id,
-                'address_country': 'GB',
+                'address': {'value': 'GB', 'country': 'GB', 'locality': None, 'postal_code': None},
                 COMPANY_PD_FIELD_MAP['paid_invoice_count']: 5,
                 COMPANY_PD_FIELD_MAP['support_person_id']: support_admin.pd_owner_id,
                 COMPANY_PD_FIELD_MAP['bdr_person_id']: bdr_admin.pd_owner_id,
@@ -487,7 +740,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
@@ -500,6 +753,7 @@ class TestPipedriveWebhookEndpoint:
         assert company.bdr_person_id == bdr_admin.id
         assert company.paid_invoice_count == 5
         assert company.website == 'https://example.com'
+        assert company.country == 'GB'
 
     async def test_pipedrive_callback_person_creation(self, client, db, test_company):
         """Test creating person via webhook"""
@@ -522,7 +776,7 @@ class TestPipedriveWebhookEndpoint:
             'previous': None,
         }
 
-        r = client.post(client.app.url_path_for('pipedrive-callback'), json=webhook_data)
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(webhook_data))
 
         assert r.status_code == 200
 
@@ -531,3 +785,44 @@ class TestPipedriveWebhookEndpoint:
         assert contact is not None
         assert contact.first_name == 'Test'
         assert contact.last_name == 'Person'
+
+
+def _lowercase_name_webhook(contact: Contact) -> dict:
+    return {
+        'meta': {'entity': 'person', 'action': 'change'},
+        'data': {
+            'id': contact.pd_person_id,
+            CONTACT_PD_FIELD_MAP['hermes_id']: contact.id,
+            'name': 'john Smith',
+            'first_name': '',
+            'last_name': 'john Smith',
+        },
+        'previous': {},
+    }
+
+
+class TestPipedriveLowercaseNameWebhook:
+    """Pipedrive puts a name that starts lowercase ('john Smith') all in last_name with an empty first_name (#418)"""
+
+    async def test_person_webhook_with_empty_first_name_splits_name(self, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(_lowercase_name_webhook(contact)))
+
+        assert r.status_code == 200
+        db.refresh(contact)
+        assert contact.first_name == 'john'
+        assert contact.last_name == 'Smith'
+
+    @patch('app.pipedrive.api.pipedrive_request')
+    async def test_next_sync_does_not_repeat_first_name(self, mock_api, client, db, test_company):
+        contact = db.create(Contact(first_name='john', last_name='Smith', pd_person_id=999, company_id=test_company.id))
+        client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(_lowercase_name_webhook(contact)))
+        mock_api.return_value = {'data': {'id': 999, 'name': 'john Smith', 'first_name': '', 'last_name': 'john Smith'}}
+
+        await sync_person(contact.id)
+
+        sent_names = [
+            c.kwargs['data']['name'] for c in mock_api.call_args_list if 'name' in (c.kwargs.get('data') or {})
+        ]
+        assert sent_names == []

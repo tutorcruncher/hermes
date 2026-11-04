@@ -20,8 +20,12 @@ COMPANY_SYNCABLE_FIELDS = {
     'email_confirmed_dt',
     'gclid',
     'gclid_expiry_dt',
+    'signup_email',
+    'signup_phone',
     'tc2_status',
     'narc',
+    'receive_marketing_emails',
+    'operate_as_ea',
     'paid_invoice_count',
     'signup_questionnaire',
 }
@@ -53,6 +57,34 @@ def _close_open_deals_if_narc_or_terminated(company: Company, db: DBSession):
             logger.info(
                 f'Closed {len(open_deals)} open deals for company {company.id} (narc={company.narc}, status={company.tc2_status})'
             )
+
+
+def _copy_questionnaire_to_open_deals(company: Company, db: DBSession):
+    """
+    Copy the company's signup questionnaire onto its open deals. TC2 saves the questionnaire in a second write after
+    the agency exists, so the first webhook has already created the deal without it. Closed deals are left as they are.
+    """
+    open_deals = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).all()
+    for deal in open_deals:
+        deal.signup_questionnaire = company.signup_questionnaire
+        db.add(deal)
+    if open_deals:
+        logger.info(f'Copied the signup questionnaire of company {company.id} to deals {[d.id for d in open_deals]}')
+
+
+def _copy_tc2_status_to_open_deals(company: Company, db: DBSession):
+    """
+    Copy the company's TC2 status onto its open deals, as the deal's copy is otherwise only set when the deal is
+    created. Closed deals are left as they are.
+    """
+    open_deals = db.exec(select(Deal).where(Deal.company_id == company.id, Deal.status == Deal.STATUS_OPEN)).all()
+    for deal in open_deals:
+        deal.tc2_status = company.tc2_status
+        db.add(deal)
+    if open_deals:
+        logger.info(
+            f'Copied tc2_status {company.tc2_status} of company {company.id} to deals {[d.id for d in open_deals]}'
+        )
 
 
 async def get_or_create_company_from_tc2(tc2_cligency_id: int, db: DBSession) -> Company:
@@ -125,8 +157,15 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             extra_attrs_dict[attr.machine_name] = attr.value
 
     if company:
+        old_questionnaire = company.signup_questionnaire
+        old_tc2_status = company.tc2_status
         _update_syncable_fields(company, tc_client)
+        # Copied before the deals are closed, so a terminated company's lost deals say terminated too
+        if company.tc2_status != old_tc2_status:
+            _copy_tc2_status_to_open_deals(company, db)
         _close_open_deals_if_narc_or_terminated(company, db)
+        if company.signup_questionnaire and company.signup_questionnaire != old_questionnaire:
+            _copy_questionnaire_to_open_deals(company, db)
 
         # handle extra attrs
         if 'utm_source' in extra_attrs_dict:
@@ -151,6 +190,8 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             paid_invoice_count=tc_client.meta_agency.paid_invoice_count,
             price_plan=tc_client.meta_agency.price_plan,
             narc=tc_client.meta_agency.narc or False,
+            receive_marketing_emails=tc_client.meta_agency.receive_marketing_emails or False,
+            operate_as_ea=tc_client.meta_agency.operate_as_ea,
             pay0_dt=tc_client.meta_agency.pay0_dt,
             pay1_dt=tc_client.meta_agency.pay1_dt,
             pay3_dt=tc_client.meta_agency.pay3_dt,
@@ -158,6 +199,8 @@ async def process_tc_client(tc_client: TCClient, db: DBSession, create_deal: boo
             email_confirmed_dt=tc_client.meta_agency.email_confirmed_dt,
             gclid=tc_client.meta_agency.gclid,
             gclid_expiry_dt=tc_client.meta_agency.gclid_expiry_dt,
+            signup_email=tc_client.meta_agency.signup_email,
+            signup_phone=tc_client.meta_agency.signup_phone,
             utm_source=extra_attrs_dict.get('utm_source'),
             utm_campaign=extra_attrs_dict.get('utm_campaign'),
             signup_questionnaire=tc_client.meta_agency.signup_questionnaire,
