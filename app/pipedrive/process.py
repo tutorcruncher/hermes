@@ -173,22 +173,21 @@ class PipedriveObjProcessor:
         elif not getattr(new_pd_obj, 'hermes_id', None):
             # The object is brand new
             new_obj = await self._add_obj(new_pd_obj)
-            if not new_obj:
-                return
-            try:
-                await self.save_obj(new_obj, new_pd_obj, 'Created')
-            except IntegrityError:
-                self.db.rollback()
-                hermes_obj = self._linked_obj(new_pd_obj)
-                if not hermes_obj:
-                    raise
-                # The other web process added it between the lookup and the insert
-                logger.info(
-                    f'Not creating {self.hermes_model.__name__} from Pipedrive {self.pd_model.__name__} '
-                    f'{new_pd_obj.id}: the other process added {self.hermes_model.__name__} {hermes_obj.id} first'
-                )
-                return
-            self._on_created(new_obj, new_pd_obj)
+            if new_obj:
+                try:
+                    await self.save_obj(new_obj, new_pd_obj, 'Created')
+                except IntegrityError:
+                    self.db.rollback()
+                    hermes_obj = self._linked_obj(new_pd_obj)
+                    if not hermes_obj:
+                        raise
+                    # Another process linked an object to this Pipedrive id between the lookup and the insert
+                    logger.info(
+                        f'Not creating from Pipedrive {self.pd_model.__name__} {new_pd_obj.id}: '
+                        f'{self.hermes_model.__name__} {hermes_obj.id} was linked to it first'
+                    )
+                else:
+                    self._on_created(new_obj, new_pd_obj)
 
 
 class _LinkedObjProcessor(PipedriveObjProcessor):

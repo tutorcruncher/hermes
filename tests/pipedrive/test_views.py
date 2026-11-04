@@ -835,6 +835,7 @@ ORG_ID = 456
 
 
 def _org_create_webhook(owner_id: int) -> dict:
+    """A Pipedrive org create webhook with no hermes_id, as for an org added in Pipedrive"""
     return {
         'meta': {'entity': 'organization', 'action': 'create'},
         'data': {'id': ORG_ID, 'name': 'Racing Co', 'owner_id': owner_id},
@@ -851,9 +852,10 @@ def _org_companies() -> list[Company]:
 @pytest.fixture
 def before_org_insert():
     """Runs the given function, with the pending company, just before this process inserts its company for ORG_ID"""
-    listeners = []
+    listener = None
 
     def setup(action):
+        nonlocal listener
         fired = False
 
         def run_action(session, flush_context, instances):
@@ -864,12 +866,11 @@ def before_org_insert():
             fired = True
             action(company)
 
-        event.listen(DBSession, 'before_flush', run_action)
-        listeners.append(run_action)
+        listener = run_action
+        event.listen(DBSession, 'before_flush', listener)
 
     yield setup
-    for listener in listeners:
-        event.remove(DBSession, 'before_flush', listener)
+    event.remove(DBSession, 'before_flush', listener)
 
 
 class TestPipedriveOrgCreateRace:
@@ -892,7 +893,8 @@ class TestPipedriveOrgCreateRace:
         assert 'Error processing Pipedrive webhook' not in caplog.text
         companies = _org_companies()
         assert [c.name for c in companies] == ['Racer']
-        assert f'the other process added Company {companies[0].id} first' in caplog.text
+        assert f'Company {companies[0].id} was linked to it first' in caplog.text
+        assert 'Racing Co' not in caplog.text
 
     async def test_other_integrity_error_still_surfaces(self, client, db, test_admin, before_org_insert, caplog):
         """A constraint failure with no other company on the org is still reported"""
@@ -908,5 +910,8 @@ class TestPipedriveOrgCreateRace:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
-        assert 'Error processing Pipedrive webhook' in caplog.text
+        assert (
+            'Error processing Pipedrive webhook: (sqlite3.IntegrityError) UNIQUE constraint failed: '
+            'company.tc2_cligency_id'
+        ) in caplog.text
         assert _org_companies() == []
