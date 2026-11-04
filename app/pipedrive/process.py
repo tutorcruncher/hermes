@@ -2,6 +2,7 @@ import logging
 from functools import cached_property
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.core.database import DBSession
@@ -172,9 +173,22 @@ class PipedriveObjProcessor:
         elif not getattr(new_pd_obj, 'hermes_id', None):
             # The object is brand new
             new_obj = await self._add_obj(new_pd_obj)
-            if new_obj:
+            if not new_obj:
+                return
+            try:
                 await self.save_obj(new_obj, new_pd_obj, 'Created')
-                self._on_created(new_obj, new_pd_obj)
+            except IntegrityError:
+                self.db.rollback()
+                hermes_obj = self._linked_obj(new_pd_obj)
+                if not hermes_obj:
+                    raise
+                # The other web process added it between the lookup and the insert
+                logger.info(
+                    f'Not creating {self.hermes_model.__name__} from Pipedrive {self.pd_model.__name__} '
+                    f'{new_pd_obj.id}: the other process added {self.hermes_model.__name__} {hermes_obj.id} first'
+                )
+                return
+            self._on_created(new_obj, new_pd_obj)
 
 
 class _LinkedObjProcessor(PipedriveObjProcessor):

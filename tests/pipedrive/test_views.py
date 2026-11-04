@@ -5,8 +5,11 @@ Tests for Pipedrive webhook endpoint.
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import event
+from sqlmodel import select
 
 from app.core.config import settings
+from app.core.database import DBSession, get_session
 from app.main_app.models import Company, Contact, Pipeline, Stage
 from app.pipedrive.field_mappings import COMPANY_PD_FIELD_MAP, CONTACT_PD_FIELD_MAP
 from app.pipedrive.tasks import sync_person
@@ -826,3 +829,84 @@ class TestPipedriveLowercaseNameWebhook:
             c.kwargs['data']['name'] for c in mock_api.call_args_list if 'name' in (c.kwargs.get('data') or {})
         ]
         assert sent_names == []
+
+
+ORG_ID = 456
+
+
+def _org_create_webhook(owner_id: int) -> dict:
+    return {
+        'meta': {'entity': 'organization', 'action': 'create'},
+        'data': {'id': ORG_ID, 'name': 'Racing Co', 'owner_id': owner_id},
+        'previous': None,
+    }
+
+
+def _org_companies() -> list[Company]:
+    """The companies linked to the org, read in a separate session as the other process would see them"""
+    with get_session() as other_db:
+        return other_db.exec(select(Company).where(Company.pd_org_id == ORG_ID)).all()
+
+
+@pytest.fixture
+def before_org_insert():
+    """Runs the given function, with the pending company, just before this process inserts its company for ORG_ID"""
+    listeners = []
+
+    def setup(action):
+        fired = False
+
+        def run_action(session, flush_context, instances):
+            nonlocal fired
+            company = next((o for o in session.new if isinstance(o, Company) and o.pd_org_id == ORG_ID), None)
+            if fired or not company:
+                return
+            fired = True
+            action(company)
+
+        event.listen(DBSession, 'before_flush', run_action)
+        listeners.append(run_action)
+
+    yield setup
+    for listener in listeners:
+        event.remove(DBSession, 'before_flush', listener)
+
+
+class TestPipedriveOrgCreateRace:
+    """Two web processes can both find no company for an org and both insert one (#460)"""
+
+    async def test_org_create_clashes_with_other_process(self, client, test_admin, before_org_insert, caplog):
+        """If the insert clashes with the company the other process just added, that company is kept with no error"""
+        admin_id, owner_id = test_admin.id, test_admin.pd_owner_id
+
+        def other_process_wins(company: Company):
+            with get_session() as other_db:
+                other_db.create(Company(name='Racer', sales_person_id=admin_id, price_plan='payg', pd_org_id=ORG_ID))
+
+        before_org_insert(other_process_wins)
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(_org_create_webhook(owner_id)))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert 'Error processing Pipedrive webhook' not in caplog.text
+        companies = _org_companies()
+        assert [c.name for c in companies] == ['Racer']
+        assert f'the other process added Company {companies[0].id} first' in caplog.text
+
+    async def test_other_integrity_error_still_surfaces(self, client, db, test_admin, before_org_insert, caplog):
+        """A constraint failure with no other company on the org is still reported"""
+        admin_id, owner_id = test_admin.id, test_admin.pd_owner_id
+        db.create(Company(name='Existing', sales_person_id=admin_id, price_plan='payg', tc2_cligency_id=1))
+
+        def clash_on_another_constraint(company: Company):
+            company.tc2_cligency_id = 1
+
+        before_org_insert(clash_on_another_constraint)
+
+        r = client.post(client.app.url_path_for('pipedrive-callback'), **pd_webhook(_org_create_webhook(owner_id)))
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        assert 'Error processing Pipedrive webhook' in caplog.text
+        assert _org_companies() == []
