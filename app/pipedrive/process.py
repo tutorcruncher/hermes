@@ -2,6 +2,7 @@ import logging
 from functools import cached_property
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.core.database import DBSession
@@ -173,8 +174,20 @@ class PipedriveObjProcessor:
             # The object is brand new
             new_obj = await self._add_obj(new_pd_obj)
             if new_obj:
-                await self.save_obj(new_obj, new_pd_obj, 'Created')
-                self._on_created(new_obj, new_pd_obj)
+                try:
+                    await self.save_obj(new_obj, new_pd_obj, 'Created')
+                except IntegrityError:
+                    self.db.rollback()
+                    hermes_obj = self._linked_obj(new_pd_obj)
+                    if not hermes_obj:
+                        raise
+                    # Another process linked an object to this Pipedrive id between the lookup and the insert
+                    logger.info(
+                        f'Not creating from Pipedrive {self.pd_model.__name__} {new_pd_obj.id}: '
+                        f'{self.hermes_model.__name__} {hermes_obj.id} was linked to it first'
+                    )
+                else:
+                    self._on_created(new_obj, new_pd_obj)
 
 
 class _LinkedObjProcessor(PipedriveObjProcessor):
