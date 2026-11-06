@@ -872,7 +872,8 @@ def before_org_insert():
         event.listen(DBSession, 'before_flush', listener)
 
     yield setup
-    event.remove(DBSession, 'before_flush', listener)
+    if listener:
+        event.remove(DBSession, 'before_flush', listener)
 
 
 class TestPipedriveOrgCreateRace:
