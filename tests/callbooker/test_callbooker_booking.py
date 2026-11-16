@@ -1008,9 +1008,7 @@ class TestSalesCallBooking:
             )
         )
         sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
-        company = db.create(
-            Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan='payg, startup', pd_org_id=999)
-        )
+        company = db.create(Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan='payg, startup'))
         db.create(Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id))
 
         r = client.post(
@@ -1020,9 +1018,7 @@ class TestSalesCallBooking:
 
         assert r.status_code == 200
         assert r.json() == {'status': 'ok'}
-        deals = db.exec(select(Deal)).all()
-        assert len(deals) == 1
-        deal = deals[0]
+        deal = db.exec(select(Deal)).one()
         assert deal.company_id == company.id
         assert deal.pipeline_id == startup_pipeline.id
         assert deal.price_plan == Company.PP_STARTUP
@@ -1031,6 +1027,9 @@ class TestSalesCallBooking:
         db.refresh(company)
         assert company.price_plan == Company.PP_STARTUP
         assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
+        assert (f"Replacing price plan 'payg, startup' of company {company.id} with the booked plan 'startup'") in [
+            rec.getMessage() for rec in caplog.records if rec.levelname == 'INFO'
+        ]
         assert [(c.args[0].__name__, c.args[1]) for c in mock_add_task.call_args_list] == [
             ('sync_company_to_pipedrive', company.id),
             ('sync_meeting_to_pipedrive', meeting.id),

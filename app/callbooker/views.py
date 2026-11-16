@@ -54,6 +54,10 @@ async def sales_call(event: CBSalesCall, background_tasks: BackgroundTasks, db: 
         company.has_booked_call = True
         if company.price_plan not in Company.PRICE_PLANS:
             # e.g. 'payg, startup' joined by a Pipedrive org merge, which no deal pipeline matches
+            logger.info(
+                f'Replacing price plan {company.price_plan!r} of company {company.id} with the booked plan '
+                f'{event.price_plan!r}'
+            )
             company.price_plan = event.price_plan
         db.add(company)
         db.commit()
