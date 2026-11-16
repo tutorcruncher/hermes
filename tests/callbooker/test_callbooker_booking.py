@@ -989,6 +989,86 @@ class TestSalesCallBooking:
             f'{contact.id} at 2030-07-03 10:00:00+00:00: Admin is not free at this time.'
         ) in [rec.getMessage() for rec in caplog.records if rec.levelname == 'INFO']
 
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_for_company_with_merge_joined_price_plan_creates_deal(
+        self, mock_gcal_builder, mock_add_task, client, db, caplog
+    ):
+        """A company whose price plan was joined by a Pipedrive org merge takes the booked plan, so the deal is
+        created in that plan's pipeline"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        stage = db.create(Stage(pd_stage_id=200, name='Initial Stage'))
+        payg_pipeline = db.create(Pipeline(pd_pipeline_id=100, name='PAYG Pipeline', dft_entry_stage_id=stage.id))
+        startup_pipeline = db.create(Pipeline(pd_pipeline_id=101, name='Startup Pipeline', dft_entry_stage_id=stage.id))
+        db.create(
+            Config(
+                payg_pipeline_id=payg_pipeline.id,
+                startup_pipeline_id=startup_pipeline.id,
+                enterprise_pipeline_id=payg_pipeline.id,
+            )
+        )
+        sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
+        company = db.create(
+            Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan='payg, startup', pd_org_id=999)
+        )
+        db.create(Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id))
+
+        r = client.post(
+            client.app.url_path_for('book-sales-call'),
+            json={**CB_MEETING_DATA, 'admin_id': sales_person.id, 'price_plan': Company.PP_STARTUP},
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        deals = db.exec(select(Deal)).all()
+        assert len(deals) == 1
+        deal = deals[0]
+        assert deal.company_id == company.id
+        assert deal.pipeline_id == startup_pipeline.id
+        assert deal.price_plan == Company.PP_STARTUP
+        meeting = db.exec(select(Meeting)).one()
+        assert meeting.deal_id == deal.id
+        db.refresh(company)
+        assert company.price_plan == Company.PP_STARTUP
+        assert [rec.getMessage() for rec in caplog.records if rec.levelname == 'ERROR'] == []
+        assert [(c.args[0].__name__, c.args[1]) for c in mock_add_task.call_args_list] == [
+            ('sync_company_to_pipedrive', company.id),
+            ('sync_meeting_to_pipedrive', meeting.id),
+        ]
+
+    @patch('fastapi.BackgroundTasks.add_task')
+    @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
+    async def test_sales_call_keeps_existing_company_price_plan(self, mock_gcal_builder, mock_add_task, client, db):
+        """A company with a valid price plan keeps it when a booking picks a different plan, and its deal goes in its
+        own plan's pipeline"""
+        mock_gcal_builder.side_effect = fake_gcal_builder()
+        stage = db.create(Stage(pd_stage_id=200, name='Initial Stage'))
+        payg_pipeline = db.create(Pipeline(pd_pipeline_id=100, name='PAYG Pipeline', dft_entry_stage_id=stage.id))
+        startup_pipeline = db.create(Pipeline(pd_pipeline_id=101, name='Startup Pipeline', dft_entry_stage_id=stage.id))
+        db.create(
+            Config(
+                payg_pipeline_id=payg_pipeline.id,
+                startup_pipeline_id=startup_pipeline.id,
+                enterprise_pipeline_id=startup_pipeline.id,
+            )
+        )
+        sales_person = db.create(Admin(first_name='Steve', last_name='Jobs', username='climan@example.com'))
+        company = db.create(Company(name='Junes Ltd', sales_person_id=sales_person.id, price_plan=Company.PP_PAYG))
+        db.create(Contact(first_name='Brain', last_name='Junes', email='brain@junes.com', company_id=company.id))
+
+        r = client.post(
+            client.app.url_path_for('book-sales-call'),
+            json={**CB_MEETING_DATA, 'admin_id': sales_person.id, 'price_plan': Company.PP_STARTUP},
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {'status': 'ok'}
+        deal = db.exec(select(Deal)).one()
+        assert deal.pipeline_id == payg_pipeline.id
+        assert deal.price_plan == Company.PP_PAYG
+        db.refresh(company)
+        assert company.price_plan == Company.PP_PAYG
+
     @patch('app.pipedrive.api.pipedrive_request')
     @patch('app.callbooker.google.AdminGoogleCalendar._create_resource')
     async def test_sales_call_recreates_org_gone_from_pipedrive(
